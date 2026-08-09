@@ -14,6 +14,7 @@ import socket
 import subprocess
 import time
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Callable, Dict, Iterable, Mapping, Optional, Sequence, Tuple
 
 
@@ -135,6 +136,34 @@ class ActionReceipt:
     path: str
 
 
+class MissionDisposition(str, Enum):
+    """Observed task-page state proven only from reviewed Unity Buttons."""
+
+    CLAIMABLE_ALL = "claimable-all"
+    CLAIMABLE_ROW = "claimable-row"
+    UNFINISHED = "unfinished"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class MissionPageState:
+    disposition: MissionDisposition
+    generation: int
+    back: ButtonState
+    claim_all: Optional[ButtonState]
+    claim_rows: Tuple[ButtonState, ...]
+    unfinished_rows: Tuple[ButtonState, ...]
+
+    @property
+    def signature(self) -> Tuple[Any, ...]:
+        return (
+            self.disposition,
+            self.claim_all.path if self.claim_all is not None else None,
+            tuple(button.path for button in self.claim_rows),
+            tuple(button.path for button in self.unfinished_rows),
+        )
+
+
 DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
     SemanticTarget(
         "login/enter",
@@ -155,9 +184,34 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
         "NewBulletinBoardUI(Clone)/bg/close_btn",
     ),
     SemanticTarget(
+        "overlay/guild-message/close",
+        "close",
+        "GuildMsgBoxUI(Clone)/frame/close",
+    ),
+    SemanticTarget(
         "settings/back",
         "back_btn",
         "NewSettingsUI(Clone)/blur_panel/adapt/top/back_btn",
+    ),
+    SemanticTarget(
+        "task/page/back",
+        "back_btn",
+        "TaskScene(Clone)/blur_panel/adapt/top/back_btn",
+    ),
+    SemanticTarget(
+        "task/claim/all",
+        "GetAllButton",
+        "TaskScene(Clone)/blur_panel/adapt/top/GetAllButton",
+    ),
+    SemanticTarget(
+        "reward/award-info/close",
+        "close",
+        "AwardInfoUI(Clone)/items/close",
+    ),
+    SemanticTarget(
+        "reward/award-info1/close",
+        "close",
+        "AwardInfoUI1(Clone)/items/close",
     ),
 )
 
@@ -168,6 +222,21 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
         "bulletin",
         "/NewBulletinBoardUI(Clone)/",
         ("overlay/bulletin/close",),
+    ),
+    BlockerRule(
+        "guild-message",
+        "/GuildMsgBoxUI(Clone)/",
+        ("overlay/guild-message/close",),
+    ),
+    BlockerRule(
+        "award-info",
+        "/AwardInfoUI(Clone)/",
+        ("reward/award-info/close",),
+    ),
+    BlockerRule(
+        "award-info1",
+        "/AwardInfoUI1(Clone)/",
+        ("reward/award-info1/close",),
     ),
 )
 
@@ -636,6 +705,114 @@ class SemanticOracle:
     def current_scene(self) -> int:
         return self.read_state().scene_handle
 
+    @staticmethod
+    def _mission_rows(
+        state: OracleState, button_name: str
+    ) -> Tuple[ButtonState, ...]:
+        pattern = re.compile(
+            r"(?:^|/)TaskScene\(Clone\)/pages/TaskListPage\(Clone\)/"
+            r"right_panel/content/([0-9]+)/frame/"
+            + re.escape(button_name)
+            + r"$"
+        )
+        rows = []
+        indexes = set()
+        for button in state.buttons:
+            if button.name != button_name:
+                continue
+            match = pattern.search(button.path)
+            if match is None:
+                continue
+            index = int(match.group(1))
+            if index in indexes:
+                raise SemanticGateClosed(
+                    "mission row Button index is ambiguous: {0}".format(index)
+                )
+            indexes.add(index)
+            rows.append((index, button))
+        rows.sort(key=lambda item: item[0])
+        return tuple(button for _, button in rows)
+
+    def mission_page_state(self) -> MissionPageState:
+        """Classify the reviewed TaskScene without treating absence as empty."""
+
+        state = self.read_state()
+        back = self._unique(state, "task/page/back")
+        if not back.actionable or self._blocking_rules(state, "task/page/back"):
+            raise SemanticGateClosed("mission page identity is not safely actionable")
+
+        claim_all_matches = self._matches(state, "task/claim/all")
+        if len(claim_all_matches) > 1:
+            raise SemanticGateClosed("mission claim-all target is ambiguous")
+        claim_all = claim_all_matches[0] if claim_all_matches else None
+        claim_rows = self._mission_rows(state, "get_btn")
+        unfinished_rows = self._mission_rows(state, "go_btn")
+
+        actionable_claim_rows = tuple(
+            button for button in claim_rows if button.actionable
+        )
+        actionable_unfinished_rows = tuple(
+            button for button in unfinished_rows if button.actionable
+        )
+        if claim_all is not None and claim_all.actionable:
+            disposition = MissionDisposition.CLAIMABLE_ALL
+        elif actionable_claim_rows:
+            disposition = MissionDisposition.CLAIMABLE_ROW
+        elif claim_all is not None or claim_rows:
+            # A claim object hidden by clipping or an overlay is not evidence of
+            # a safe click, and it must not be misreported as no work.
+            disposition = MissionDisposition.UNKNOWN
+        elif actionable_unfinished_rows:
+            disposition = MissionDisposition.UNFINISHED
+        else:
+            # The empty-list prefab has no reviewed Button marker.  Never infer
+            # EMPTY from mere absence while a page may still be loading.
+            disposition = MissionDisposition.UNKNOWN
+
+        return MissionPageState(
+            disposition=disposition,
+            generation=state.generation,
+            back=back,
+            claim_all=claim_all,
+            claim_rows=actionable_claim_rows,
+            unfinished_rows=actionable_unfinished_rows,
+        )
+
+    def wait_for_mission_state(
+        self,
+        timeout_seconds: float,
+        interval_seconds: float = 0.5,
+        required_generations: int = 2,
+    ) -> MissionPageState:
+        if required_generations < 2:
+            raise ValueError("mission state requires at least two generations")
+        deadline = self._monotonic() + timeout_seconds
+        last_state: Optional[MissionPageState] = None
+        stable_generations = 0
+        last_error: Optional[SemanticOracleError] = None
+        while self._monotonic() < deadline:
+            try:
+                candidate = self.mission_page_state()
+                if candidate.disposition == MissionDisposition.UNKNOWN:
+                    last_state = None
+                    stable_generations = 0
+                elif last_state is None or candidate.signature != last_state.signature:
+                    last_state = candidate
+                    stable_generations = 1
+                elif candidate.generation > last_state.generation:
+                    last_state = candidate
+                    stable_generations += 1
+                if last_state is not None and stable_generations >= required_generations:
+                    return last_state
+            except SemanticOracleError as exc:
+                last_error = exc
+                last_state = None
+                stable_generations = 0
+            self._sleep(interval_seconds)
+        if last_error is not None:
+            raise SemanticGateClosed("stable mission-state wait timed out") from last_error
+        raise SemanticGateClosed("stable mission-state wait timed out")
+
     def click(self, semantic_id: str) -> ActionReceipt:
         state = self.read_state()
         target = self._unique(state, semantic_id)
@@ -686,12 +863,57 @@ class SemanticOracle:
                 if (
                     matches
                     and matches[0].actionable
+                    and not self._blocking_rules(state, semantic_id)
                     and (
                         minimum_generation is None
                         or state.generation > minimum_generation
                     )
                 ):
                     return matches[0]
+            except SemanticOracleError as exc:
+                last_error = exc
+            self._sleep(interval_seconds)
+        if last_error is not None:
+            raise SemanticGateClosed("semantic wait timed out") from last_error
+        raise SemanticGateClosed("semantic wait timed out")
+
+    def wait_for_any(
+        self,
+        semantic_ids: Tuple[str, ...],
+        timeout_seconds: float,
+        minimum_generation: Optional[int] = None,
+        interval_seconds: float = 0.5,
+    ) -> Tuple[str, ButtonState]:
+        if not semantic_ids or len(set(semantic_ids)) != len(semantic_ids):
+            raise ValueError("semantic wait set must contain unique targets")
+        deadline = self._monotonic() + timeout_seconds
+        last_error: Optional[SemanticOracleError] = None
+        while self._monotonic() < deadline:
+            try:
+                state = self.read_state()
+                actionable = []
+                for semantic_id in semantic_ids:
+                    matches = self._matches(state, semantic_id)
+                    if len(matches) > 1:
+                        raise SemanticGateClosed(
+                            "semantic target mapping is ambiguous"
+                        )
+                    if (
+                        matches
+                        and matches[0].actionable
+                        and not self._blocking_rules(state, semantic_id)
+                    ):
+                        actionable.append((semantic_id, matches[0]))
+                if len(actionable) > 1:
+                    raise SemanticGateClosed("semantic wait set is ambiguous")
+                if (
+                    len(actionable) == 1
+                    and (
+                        minimum_generation is None
+                        or state.generation > minimum_generation
+                    )
+                ):
+                    return actionable[0]
             except SemanticOracleError as exc:
                 last_error = exc
             self._sleep(interval_seconds)

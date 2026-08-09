@@ -2,6 +2,48 @@
 
 Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
+## 2026-08-09
+
+### G5a/G5b - ALAS mission no-claim and controlled claim-all: passed
+
+- The final observer evaluates the exact task-page back and `GetAllButton`
+  paths plus bounded task-row `get_btn` and `go_btn` shapes. The controller
+  accepts only exact numeric row indexes. These targets are subject to the same
+  top-EventSystem-raycast gate as earlier actions.
+- Mission state must have the same non-unknown signature across at least two
+  increasing generations. Duplicate rows, clipped claim controls, blockers,
+  and mere absence of task Buttons fail closed.
+- The pinned upstream ALAS patch routes `Reward.reward_mission()` through the
+  semantic adapter only when semantic mode is explicitly enabled. Claim input
+  requires the separate `ALAS_SEMANTIC_ALLOW_MISSION_CLAIM_ONCE=1` opt-in.
+- G5a entered the exact main task Button, observed five stable unfinished
+  `go_btn` rows, returned to main, and injected zero claim inputs.
+- G5b's zero-claim preflight observed a unique actionable `GetAllButton` and
+  three numeric-row `get_btn` targets, all with top-raycast proof.
+- The controlled run injected exactly one claim at `GetAllButton`, observed the
+  exact `AwardInfoUI(Clone)/items/close`, closed it, and proved claim rows
+  changed from three to zero while five unfinished rows remained stable.
+- It then returned through the exact task back Button. An independent second
+  task-page run reported `nothing-claimable`, and a no-input main-page oracle
+  found no blockers with all eight reviewed targets actionable.
+
+Primary evidence is in
+`evidence/g4-game-init-20260809T013349Z-emulator-5580`; see the
+[G5 validation report](g5-mission-validation-report.md).
+
+### Final-driver regressions: passed
+
+- Final observer ANGLE APK SHA-256:
+  `990454578249bfb96df7d3d3fcbabf48fee1174f75ccc0063e544813232615c7`.
+- The real game passed login/main reachability and a 40-second sustained run:
+  40/40 valid samples, 36 fresh, generations 2 through 28, and 27 distinct
+  generations. This did not repeat the earlier formal settings round trip.
+- G3 passed in `evidence/g3-observer-20260809T013932Z-emulator-5570` with the
+  exact contract Button raycast, foreground/freshness refusal, and recovery.
+- G2 passed in `evidence/g2-null-20260809T014015Z-emulator-5570`: 47.117
+  seconds, 20 structured events, three scenes, eight completed readbacks over
+  the full run, and zero readback errors.
+
 ## 2026-08-08
 
 ### G0 - baseline capture tooling: implemented and exercised
@@ -103,20 +145,20 @@ See the [G2 validation report](g2-validation-report.md) for the evidence scope.
   identity, state flags, screen/ADB points, and four-corner RectTransform
   bounds. It exposes no object addresses or generic invocation.
 - Final G3 evidence with bounds and top-raycast validation is
-  `evidence/g3-observer-20260808T172655Z-emulator-5570`; its manifest passed
+  `evidence/g3-observer-20260809T013932Z-emulator-5570`; its manifest passed
   with no failures. The final observer ANGLE and Unity APK SHA-256 values are
-  `ac5c9bd696badd7d9b3bd62cce27c74acf474808f712ab78632be91b9e5c33bf`
+  `990454578249bfb96df7d3d3fcbabf48fee1174f75ccc0063e544813232615c7`
   and `87e845359bc1d957b0c75f685f461b017ed6e05d0a593088683511400e8e99ba`.
-- A final 46.745-second G2 regression with the 32-symbol, typed-bounds,
+- A final 47.117-second G2 regression with the 32-symbol, typed-bounds,
   reviewed-target raycast observer passed in
-  `evidence/g2-null-20260808T173503Z-emulator-5570`: 600 Updates, 1,871
-  FixedUpdates, 599 end-of-frame resumes, eight completed readbacks, and zero
-  readback errors.
+  `evidence/g2-null-20260809T014015Z-emulator-5570`: 900 Updates, 1,689
+  FixedUpdates, 899 end-of-frame resumes, eight completed readbacks over the
+  full run, and zero readback errors.
 
 See the [G3 validation report](g3-validation-report.md) for evidence scope and
 remaining limitations.
 
-### G4 - harmless real-game closed loop: passed; ALAS task coverage remains open
+### G4 - harmless real-game closed loop: passed
 
 - After the user completed agreement and account login, Chinese 9.7.10 reached
   its login/main Unity UI on the dedicated API 32 x86_64 AVD under NULL.
@@ -146,9 +188,9 @@ Evidence is in
 `evidence/g4-game-init-20260808T160921Z-emulator-5580`,
 `evidence/g4-game-init-20260808T172750Z-emulator-5580`, and
 `evidence/g4-game-init-20260808T172941Z-emulator-5580` (including
-`alas-adapter-live.json`). G4 is passed; task-specific semantic coverage is the
-next gate. See
-the [G4 validation report](g4-preflight-report.md).
+`alas-adapter-live.json`). G4 is passed. The later G5a result covers only the
+mission no-claim branch and does not retroactively broaden G4. See the
+[G4 validation report](g4-preflight-report.md).
 
 ## Android loader compatibility found during G1
 

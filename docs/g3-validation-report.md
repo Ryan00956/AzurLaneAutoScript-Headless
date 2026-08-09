@@ -16,8 +16,8 @@ reported separately.
 Final evidence:
 
 ```text
-evidence/g3-observer-20260808T172655Z-emulator-5570
-evidence/g2-null-20260808T173503Z-emulator-5570
+evidence/g3-observer-20260809T013932Z-emulator-5570
+evidence/g2-null-20260809T014015Z-emulator-5570
 ```
 
 ## Artifacts
@@ -25,7 +25,7 @@ evidence/g2-null-20260808T173503Z-emulator-5570
 | Artifact | Value |
 | --- | --- |
 | ANGLE revision | `be80ce591a481c12d60c50d6040d40c035b40a2b` |
-| Observer ANGLE APK SHA-256 | `ac5c9bd696badd7d9b3bd62cce27c74acf474808f712ab78632be91b9e5c33bf` |
+| Observer ANGLE APK SHA-256 | `990454578249bfb96df7d3d3fcbabf48fee1174f75ccc0063e544813232615c7` |
 | Unity contract APK SHA-256 | `87e845359bc1d957b0c75f685f461b017ed6e05d0a593088683511400e8e99ba` |
 | Unity command line | `-force-gfx-st` through Intent extra `unity` |
 | Protocols | `alas-headless.observer/v1`, `alas-headless.buttons/v1` |
@@ -42,7 +42,7 @@ snapshot rendezvous.
 Unity's stock `UnityPlayerActivity` reads the Intent string extra named
 `unity`. Launching with `-force-gfx-st` removed the graphics worker and made
 NULL Swap and managed `Update()` share one TID. The final G3 run recorded TID
-8789 in both the Unity telemetry and every checked observer snapshot. A G4
+2625 in both the Unity telemetry and every checked observer snapshot. A G4
 follow-up showed that Android HWUI and WebView may create additional ANGLE
 displays in the same process. The final observer therefore accepts only the
 first thread that is already attached to IL2CPP and ignores every other
@@ -78,11 +78,11 @@ The final bounds-enabled run observed:
 
 | Checkpoint | Generation | Scene generation | Semantic generation | Buttons active/interactable | Age |
 | --- | ---: | ---: | ---: | --- | ---: |
-| Before click | 2 | 2 | 2 | 1 / 1 | 496 ms |
-| After click | 3 | 2 | 3 | 1 / 0 | 63 ms |
-| After scene change | 5 | 3 | 3 | 1 / 0 | 497 ms |
-| Home | 5 | 3 | 3 | 1 / 0 | 5,486 ms |
-| After resume | 6 | 3 | 3 | 1 / 0 | 116 ms |
+| Before click | 2 | 2 | 2 | 1 / 1 | 87 ms |
+| After click | 3 | 2 | 3 | 1 / 0 | 90 ms |
+| After scene change | 9 | 3 | 3 | 1 / 0 | 136 ms |
+| Home | 9 | 3 | 3 | 1 / 0 | 4,523 ms |
+| After resume | 10 | 3 | 3 | 1 / 0 | 452 ms |
 
 The top-resumed package changed from the contract to Launcher at Home. The
 combined foreground/freshness gate stayed closed even though the socket still
@@ -107,9 +107,10 @@ held the last read-only snapshot.
 ## Regression and limitations
 
 With typed sampling and reviewed-target top-raycast checks enabled, the final
-46.745-second G2 run still passed Update, FixedUpdate, WaitForEndOfFrame, UI
-animation, the safe click, and pause/resume. Its final heartbeat reported eight
-completed AsyncGPUReadback outcomes with no errors or timeouts.
+47.117-second G2 run still passed Update, FixedUpdate, WaitForEndOfFrame, UI
+animation, the safe click, and pause/resume. Eight AsyncGPUReadback requests
+completed across the full run; seven were complete by the last heartbeat, with
+no errors or timeouts.
 
 An intermediate EventSystem prototype invoked `RaycastResult.gameObject` on a
 boxed value-type receiver and crashed only the Unity contract process. The
@@ -123,5 +124,5 @@ Remaining risks are explicit:
 
 - Lua/game-state observation is not yet implemented.
 - The liveness pause cost must be remeasured during a long real-game soak.
-- Only the login/main/settings loop and seven ALAS main-page mappings are
-  implemented; task coverage remains fail closed.
+- The later G5b result covers one controlled default-page claim-all closure.
+  Row-only claims, tab traversal, and every other task flow remain fail closed.

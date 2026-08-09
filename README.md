@@ -15,7 +15,8 @@ coordinates.
 - `G1`: build a pinned ANGLE APK with only the NULL backend and run a GLES contract probe.
 - `G2`: run an exact Unity `2022.3.62f3` IL2CPP contract project.
 - `G3`: validate a main-thread, typed, local semantic observer contract.
-- `G4+`: route the game only after G3, then validate a harmless closed loop and ALAS integration.
+- `G4`: route the game only after G3, then validate a harmless closed loop.
+- `G5`: replace one ALAS task flow at a time with stable, fail-closed semantics.
 
 See [acceptance gates](docs/acceptance-gates.md) and [architecture](docs/architecture.md).
 The latest evidence-scoped result is recorded in [validation status](docs/status.md).
@@ -25,13 +26,18 @@ The Unity IL2CPP functional run is documented in the
 [G2 validation report](docs/g2-validation-report.md).
 The in-process typed observer contract is documented in the
 [G3 validation report](docs/g3-validation-report.md).
+The first task-specific ALAS slice is documented in the
+[G5 mission validation report](docs/g5-mission-validation-report.md).
 
-G1, G2, G3, and the formal G4 harmless closed loop passed. G4 now includes
+G1, G2, G3, and the formal G4 harmless closed loop passed. G4 includes
 EventSystem top-raycast proof for every injected target, not only object state
-and RectTransform bounds. A standard-library Python `SemanticOracle` passed a
-live, no-input main-page smoke test, and a commit-pinned upstream ALAS hook
-patch is staged under `integration/alas`. Lua/game-state coverage, campaign
-maps, battle state, and full ALAS tasks remain open.
+and RectTransform bounds. G5a passed the real ALAS mission-reward no-claim
+branch. G5b then passed one controlled `GetAllButton` claim: three claimable
+rows became zero, the exact `AwardInfoUI` close target was verified, five
+unfinished rows remained stable, and main returned. Automatic mission claiming
+requires a second explicit environment opt-in. Lua/game-state coverage,
+campaign maps, battle state, weekly-tab coverage, and full ALAS task coverage
+remain open.
 
 ## Repository layout
 
@@ -130,5 +136,6 @@ python -m unittest discover -s tests -v
 
 The staged ALAS integration overlay targets upstream commit
 `81ccf63b4540f00241628c82a58c02c7a2bb11af`; see
-[integration instructions](integration/alas/README.md). It is intentionally not
-enabled for normal ALAS tasks yet.
+[integration instructions](integration/alas/README.md). The reviewed mission
+flow remains no-claim by default; one `GetAllButton` claim per invocation is
+available only through the separate controlled-claim opt-in.

@@ -132,9 +132,32 @@ pages.
 
 ## Remaining scope
 
-G4 and the controller plumbing are proven. This is still not an ALAS task
-backend: sufficient task-specific state and controls are not mapped. No
-scheduler task should be enabled before those later gates pass.
+G4 and the controller plumbing are proven. The later G5a experiment added only
+the mission no-claim vertical slice; it does not broaden this historical G4
+result to other ALAS tasks.
 
 All test runs restored the modified global ANGLE settings. Unless a successful
 run explicitly requested otherwise, the runner also stopped the game process.
+
+## 2026-08-09 final-driver regression
+
+The formal settings round trip above remains the G4 acceptance artifact and
+used observer APK SHA-256
+`ac5c9bd696badd7d9b3bd62cce27c74acf474808f712ab78632be91b9e5c33bf`.
+After adding the G5 task allowlist, the final observer APK SHA-256 became
+`e3362d3f2a293d5ae983c8ce28e3165514fe1115ef45b62c872804e372dfec38`.
+That final driver independently passed login/main reachability and a 40-second
+sustained run in
+`evidence/g4-game-init-20260809T004616Z-emulator-5580`: 40/40 valid samples,
+36 fresh samples, generations 2 through 29, and 28 distinct generations. It
+also passed the task-page/back G5a loop. The full settings round trip was not
+repeated with the final driver, so this regression must not be read as a second
+formal settings-loop result.
+
+The later controlled G5b driver added only reviewed reward-popup close paths.
+Its APK SHA-256 is
+`990454578249bfb96df7d3d3fcbabf48fee1174f75ccc0063e544813232615c7`.
+It passed another 40-second real-game run in
+`evidence/g4-game-init-20260809T013349Z-emulator-5580`: 40/40 valid samples,
+36 fresh samples, generations 2 through 28, and 27 distinct generations. This
+also did not repeat the formal settings round trip.

@@ -113,3 +113,30 @@ diff --git a/module/device/device.py b/module/device/device.py
          # Auto-fill emulator info
          if IS_WINDOWS and self.config.EmulatorInfo_Emulator == 'auto':
              _ = self.emulator_instance
+diff --git a/module/reward/reward.py b/module/reward/reward.py
+--- a/module/reward/reward.py
++++ b/module/reward/reward.py
+@@ -1,3 +1,5 @@
++import os
++
+ from module.base.button import ButtonGrid
+ from module.base.decorator import cached_property
+ from module.base.timer import Timer
+@@ -231,5 +231,17 @@ class Reward(UI):
+         if not daily and not weekly:
+             return False
++        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
++        if semantic_adapter is not None:
++            receipt = semantic_adapter.run_mission_reward(
++                daily=daily,
++                weekly=weekly,
++                allow_claim_once=(
++                    os.environ.get('ALAS_SEMANTIC_ALLOW_MISSION_CLAIM_ONCE') == '1'
++                ),
++            )
++            logger.attr('SemanticMission', receipt.outcome)
++            return False
++
+         logger.hr('Mission reward')
+         if not self.reward_mission_notice():
+             return False

@@ -1,12 +1,15 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from alas_headless import (
     AlasSemanticAdapter,
     AlasSemanticSession,
     AlasSemanticUnmapped,
+    MissionClaimableDetected,
     AndroidPackageFingerprint,
     Bounds,
+    MissionDisposition,
     PINNED_CN_GAME_FINGERPRINT,
     PinnedPackageGate,
     Point,
@@ -25,10 +28,16 @@ class FakeOracle:
         self.enabled_calls = []
         self.bounds_calls = []
         self.click_calls = []
+        self.wait_calls = []
+        self.wait_any_calls = []
+        self.mission_disposition = MissionDisposition.UNFINISHED
+        self.mission_dispositions = []
+        self.enabled_values = {}
+        self.enable_main_after_overlay_click = False
 
     def enabled(self, semantic_id):
         self.enabled_calls.append(semantic_id)
-        return True
+        return self.enabled_values.get(semantic_id, True)
 
     def bounds(self, semantic_id):
         self.bounds_calls.append(semantic_id)
@@ -36,12 +45,43 @@ class FakeOracle:
 
     def click(self, semantic_id):
         self.click_calls.append(semantic_id)
+        if self.enable_main_after_overlay_click and semantic_id.startswith("overlay/"):
+            self.enabled_values["main/task"] = True
         return ActionReceipt(
             semantic_id=semantic_id,
             generation=7,
             point=Point(2, 3),
             bounds=Bounds(1, 2, 3, 4),
             path="root/target",
+        )
+
+    def wait_for(self, semantic_id, timeout_seconds, minimum_generation=None):
+        self.wait_calls.append((semantic_id, timeout_seconds, minimum_generation))
+        return SimpleNamespace(path="root/" + semantic_id)
+
+    def wait_for_mission_state(self, timeout_seconds):
+        disposition = (
+            self.mission_dispositions.pop(0)
+            if self.mission_dispositions
+            else self.mission_disposition
+        )
+        return SimpleNamespace(
+            disposition=disposition,
+            generation=9,
+            claim_all=(object() if disposition == MissionDisposition.CLAIMABLE_ALL else None),
+            claim_rows=((object(),) if disposition == MissionDisposition.CLAIMABLE_ROW else ()),
+            unfinished_rows=(object(),),
+        )
+
+    def wait_for_any(
+        self, semantic_ids, timeout_seconds, minimum_generation=None
+    ):
+        self.wait_any_calls.append(
+            (semantic_ids, timeout_seconds, minimum_generation)
+        )
+        return (
+            "reward/award-info/close",
+            SimpleNamespace(path="root/AwardInfoUI(Clone)/items/close"),
         )
 
 
@@ -98,6 +138,113 @@ class AlasSemanticAdapterTests(unittest.TestCase):
 
         self.assertEqual(gate_calls, [])
         self.assertEqual(oracle.click_calls, [])
+
+    def test_mission_no_claim_round_trip_enters_and_exits(self):
+        adapter, oracle, gate_calls = self.make_adapter()
+
+        receipt = adapter.run_mission_reward(timeout_seconds=12)
+
+        self.assertEqual(receipt.outcome, "nothing-claimable")
+        self.assertFalse(receipt.claim_injected)
+        self.assertEqual(oracle.click_calls, ["main/task", "task/page/back"])
+        self.assertEqual(
+            [call[0] for call in oracle.wait_calls],
+            ["task/page/back", "main/task"],
+        )
+        self.assertEqual(len(gate_calls), 1)
+
+    def test_mission_claimable_state_exits_then_fails_closed(self):
+        adapter, oracle, gate_calls = self.make_adapter()
+        oracle.mission_disposition = MissionDisposition.CLAIMABLE_ALL
+
+        with self.assertRaises(MissionClaimableDetected) as raised:
+            adapter.run_mission_reward(timeout_seconds=12)
+
+        self.assertEqual(oracle.click_calls, ["main/task", "task/page/back"])
+        self.assertEqual(
+            raised.exception.page.disposition,
+            MissionDisposition.CLAIMABLE_ALL,
+        )
+        self.assertFalse(hasattr(raised.exception, "claim_receipt"))
+        self.assertEqual(len(gate_calls), 1)
+
+    @patch("alas_headless.alas_adapter.time.sleep", return_value=None)
+    def test_mission_dismisses_only_reviewed_overlay_close(self, _sleep):
+        adapter, oracle, gate_calls = self.make_adapter()
+        oracle.enabled_values = {
+            "main/task": False,
+            "overlay/bulletin/close": False,
+            "overlay/guild-message/close": True,
+        }
+        oracle.enable_main_after_overlay_click = True
+
+        receipt = adapter.run_mission_reward(timeout_seconds=12)
+
+        self.assertEqual(
+            receipt.dismissed_overlays,
+            ("overlay/guild-message/close",),
+        )
+        self.assertEqual(
+            oracle.click_calls,
+            ["overlay/guild-message/close", "main/task", "task/page/back"],
+        )
+        self.assertEqual(len(gate_calls), 1)
+
+    def test_mission_claim_all_closes_popup_and_proves_unfinished(self):
+        adapter, oracle, gate_calls = self.make_adapter()
+        oracle.mission_dispositions = [
+            MissionDisposition.CLAIMABLE_ALL,
+            MissionDisposition.UNFINISHED,
+        ]
+
+        receipt = adapter.claim_mission_rewards_once(timeout_seconds=12)
+
+        self.assertEqual(receipt.outcome, "claimed-all-once")
+        self.assertEqual(receipt.claim_input_count, 1)
+        self.assertEqual(
+            oracle.click_calls,
+            [
+                "main/task",
+                "task/claim/all",
+                "reward/award-info/close",
+                "task/page/back",
+            ],
+        )
+        self.assertEqual(
+            oracle.wait_any_calls[0][0],
+            (
+                "reward/award-info/close",
+                "reward/award-info1/close",
+            ),
+        )
+        self.assertEqual(len(gate_calls), 1)
+
+    def test_reward_hook_claim_requires_separate_opt_in(self):
+        adapter, oracle, gate_calls = self.make_adapter()
+        oracle.mission_dispositions = [
+            MissionDisposition.CLAIMABLE_ALL,
+            MissionDisposition.UNFINISHED,
+        ]
+
+        receipt = adapter.run_mission_reward(
+            timeout_seconds=12,
+            allow_claim_once=True,
+        )
+
+        self.assertEqual(receipt.outcome, "claimed-all-once")
+        self.assertEqual(receipt.claim_input_count, 1)
+        self.assertIn("task/claim/all", oracle.click_calls)
+        self.assertEqual(len(gate_calls), 1)
+
+    def test_mission_claim_refuses_row_only_before_claim_input(self):
+        adapter, oracle, gate_calls = self.make_adapter()
+        oracle.mission_disposition = MissionDisposition.CLAIMABLE_ROW
+
+        with self.assertRaises(SemanticGateClosed):
+            adapter.claim_mission_rewards_once(timeout_seconds=12)
+
+        self.assertEqual(oracle.click_calls, ["main/task", "task/page/back"])
+        self.assertEqual(len(gate_calls), 1)
 
     def test_package_gate_verifies_once_per_bridge_pid(self):
         bridge = FakePackageBridge()

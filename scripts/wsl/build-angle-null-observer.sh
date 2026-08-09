@@ -25,6 +25,16 @@ if ! grep -Fq 'kIl2CppAllowlistSize = 32' \
   echo "32-symbol raycast observer allowlist is missing" >&2
   exit 1
 fi
+if ! grep -Fq 'TaskScene(Clone)/blur_panel/adapt/top/GetAllButton' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "G5 mission Button raycast allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'AwardInfoUI(Clone)/items/close' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "G5 reward popup raycast allowlist is missing" >&2
+  exit 1
+fi
 
 export PATH="${depot_tools_dir}:${PATH}"
 cd "${angle_dir}"

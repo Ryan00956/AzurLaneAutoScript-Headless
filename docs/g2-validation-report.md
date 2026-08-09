@@ -130,23 +130,25 @@ and a positive CPU/RSS advantage before emitting a passing manifest.
 
 After the observer gained the 32-symbol IL2CPP allowlist, typed Button bounds,
 and reviewed-target `EventSystem.RaycastAll` checks, the final driver was run
-against the same Unity contract for another 46.745 seconds:
+against the same Unity contract for another 47.117 seconds:
 
 ```text
-evidence/g2-null-20260808T173503Z-emulator-5570
+evidence/g2-null-20260809T014015Z-emulator-5570
 ```
 
 That manifest passed with no failures. It identifies `ANGLE (NULL, NULL, )`,
-OpenGLES3, and the `1280x720` surface. The last heartbeat at 44.578 seconds
-reported 600 Updates, 1,871 FixedUpdates, 599 end-of-frame resumes, eight
-completed zero-filled AsyncGPUReadbacks, and zero readback errors. The safe
-contract click still advanced `contract/button-clicked` to generation 2.
+OpenGLES3, and the `1280x720` surface. The last heartbeat at 39.056 seconds
+reported 900 Updates, 1,689 FixedUpdates, 899 end-of-frame resumes, seven
+completed zero-filled AsyncGPUReadbacks, and zero readback errors. Eight
+readbacks completed across the full run. The safe contract click still
+advanced `contract/button-clicked` to generation 2.
 
 The final observer ANGLE APK SHA-256 is
-`ac5c9bd696badd7d9b3bd62cce27c74acf474808f712ab78632be91b9e5c33bf`;
+`990454578249bfb96df7d3d3fcbabf48fee1174f75ccc0063e544813232615c7`;
 the final contract APK SHA-256 is
 `87e845359bc1d957b0c75f685f461b017ed6e05d0a593088683511400e8e99ba`.
-This short regression protects G2 behavior after observer changes; it does not
+This 47.117-second regression protects G2 behavior after observer and G5 task
+raycast changes; it does not
 replace the cold-process SwiftShader/NULL performance comparison above.
 
 ## Remaining scope

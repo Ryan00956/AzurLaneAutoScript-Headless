@@ -2,6 +2,7 @@ import copy
 import unittest
 
 from alas_headless.semantic_oracle import (
+    MissionDisposition,
     OracleFingerprint,
     SemanticGateClosed,
     SemanticOracle,
@@ -253,6 +254,57 @@ class SemanticOracleTests(unittest.TestCase):
         self.assertEqual(receipt.semantic_id, "overlay/bulletin/close")
         self.assertEqual(backend.taps, [(1204, 83)])
 
+    def test_guild_message_blocks_main_but_allows_exact_close(self):
+        backend = FakeBackend(
+            [
+                make_button("task", "root/frame/bottom/frame/task", 875, 684),
+                make_button(
+                    "close",
+                    "Overlay/UIMain/GuildMsgBoxUI(Clone)/frame/close",
+                    1150,
+                    90,
+                ),
+            ]
+        )
+        oracle = make_oracle(backend)
+
+        self.assertFalse(oracle.enabled("main/task"))
+        self.assertTrue(oracle.enabled("overlay/guild-message/close"))
+        with self.assertRaises(SemanticGateClosed):
+            oracle.click("main/task")
+        receipt = oracle.click("overlay/guild-message/close")
+
+        self.assertEqual(receipt.semantic_id, "overlay/guild-message/close")
+        self.assertEqual(backend.taps, [(1150, 90)])
+
+    def test_award_info_blocks_task_page_but_allows_exact_close(self):
+        backend = FakeBackend(
+            [
+                make_button(
+                    "back_btn",
+                    "root/TaskScene(Clone)/blur_panel/adapt/top/back_btn",
+                    58,
+                    53,
+                ),
+                make_button(
+                    "close",
+                    "root/AwardInfoUI(Clone)/items/close",
+                    640,
+                    650,
+                ),
+            ]
+        )
+        oracle = make_oracle(backend)
+
+        self.assertFalse(oracle.enabled("task/page/back"))
+        self.assertTrue(oracle.enabled("reward/award-info/close"))
+        with self.assertRaises(SemanticGateClosed):
+            oracle.click("task/page/back")
+        receipt = oracle.click("reward/award-info/close")
+
+        self.assertEqual(receipt.semantic_id, "reward/award-info/close")
+        self.assertEqual(backend.taps, [(640, 650)])
+
     def test_generation_rollback_fails_closed(self):
         backend = FakeBackend([])
         oracle = make_oracle(backend)
@@ -289,6 +341,194 @@ class SemanticOracleTests(unittest.TestCase):
 
         self.assertEqual(target.name, "back_btn")
         self.assertEqual(backend.taps, [(1221, 36)])
+
+    def test_mission_unfinished_state_requires_reviewed_go_button(self):
+        backend = FakeBackend(
+            [
+                make_button(
+                    "back_btn",
+                    "root/TaskScene(Clone)/blur_panel/adapt/top/back_btn",
+                    58,
+                    53,
+                ),
+                make_button(
+                    "go_btn",
+                    "root/TaskScene(Clone)/pages/TaskListPage(Clone)/"
+                    "right_panel/content/0/frame/go_btn",
+                    1170,
+                    158,
+                ),
+            ]
+        )
+
+        state = make_oracle(backend).mission_page_state()
+
+        self.assertEqual(state.disposition, MissionDisposition.UNFINISHED)
+        self.assertEqual(len(state.unfinished_rows), 1)
+        self.assertEqual(state.claim_rows, ())
+
+    def test_mission_claim_all_takes_precedence(self):
+        backend = FakeBackend(
+            [
+                make_button(
+                    "back_btn",
+                    "root/TaskScene(Clone)/blur_panel/adapt/top/back_btn",
+                    58,
+                    53,
+                ),
+                make_button(
+                    "GetAllButton",
+                    "root/TaskScene(Clone)/blur_panel/adapt/top/GetAllButton",
+                    1080,
+                    40,
+                ),
+                make_button(
+                    "get_btn",
+                    "root/TaskScene(Clone)/pages/TaskListPage(Clone)/"
+                    "right_panel/content/0/frame/get_btn",
+                    1170,
+                    158,
+                ),
+            ]
+        )
+
+        state = make_oracle(backend).mission_page_state()
+
+        self.assertEqual(state.disposition, MissionDisposition.CLAIMABLE_ALL)
+        self.assertIsNotNone(state.claim_all)
+
+    def test_mission_row_claims_are_ordered_by_runtime_index(self):
+        backend = FakeBackend(
+            [
+                make_button(
+                    "back_btn",
+                    "root/TaskScene(Clone)/blur_panel/adapt/top/back_btn",
+                    58,
+                    53,
+                ),
+                make_button(
+                    "get_btn",
+                    "root/TaskScene(Clone)/pages/TaskListPage(Clone)/"
+                    "right_panel/content/3/frame/get_btn",
+                    1170,
+                    620,
+                ),
+                make_button(
+                    "get_btn",
+                    "root/TaskScene(Clone)/pages/TaskListPage(Clone)/"
+                    "right_panel/content/1/frame/get_btn",
+                    1170,
+                    310,
+                ),
+            ]
+        )
+
+        state = make_oracle(backend).mission_page_state()
+
+        self.assertEqual(state.disposition, MissionDisposition.CLAIMABLE_ROW)
+        self.assertIn("content/1/", state.claim_rows[0].path)
+        self.assertIn("content/3/", state.claim_rows[1].path)
+
+    def test_mission_absence_is_unknown_not_empty(self):
+        backend = FakeBackend(
+            [
+                make_button(
+                    "back_btn",
+                    "root/TaskScene(Clone)/blur_panel/adapt/top/back_btn",
+                    58,
+                    53,
+                )
+            ]
+        )
+
+        state = make_oracle(backend).mission_page_state()
+
+        self.assertEqual(state.disposition, MissionDisposition.UNKNOWN)
+
+    def test_mission_duplicate_runtime_row_fails_closed(self):
+        row = make_button(
+            "get_btn",
+            "root/TaskScene(Clone)/pages/TaskListPage(Clone)/"
+            "right_panel/content/0/frame/get_btn",
+            1170,
+            158,
+        )
+        backend = FakeBackend(
+            [
+                make_button(
+                    "back_btn",
+                    "root/TaskScene(Clone)/blur_panel/adapt/top/back_btn",
+                    58,
+                    53,
+                ),
+                row,
+                copy.deepcopy(row),
+            ]
+        )
+
+        with self.assertRaises(SemanticGateClosed):
+            make_oracle(backend).mission_page_state()
+
+    def test_mission_wait_requires_increasing_generations(self):
+        backend = FakeBackend(
+            [
+                make_button(
+                    "back_btn",
+                    "root/TaskScene(Clone)/blur_panel/adapt/top/back_btn",
+                    58,
+                    53,
+                ),
+                make_button(
+                    "go_btn",
+                    "root/TaskScene(Clone)/pages/TaskListPage(Clone)/"
+                    "right_panel/content/0/frame/go_btn",
+                    1170,
+                    158,
+                ),
+            ]
+        )
+        oracle = make_oracle(backend)
+
+        with self.assertRaises(SemanticGateClosed):
+            oracle.wait_for_mission_state(
+                timeout_seconds=0.001,
+                interval_seconds=0,
+            )
+
+    def test_mission_wait_accepts_same_signature_on_new_generation(self):
+        backend = FakeBackend(
+            [
+                make_button(
+                    "back_btn",
+                    "root/TaskScene(Clone)/blur_panel/adapt/top/back_btn",
+                    58,
+                    53,
+                ),
+                make_button(
+                    "go_btn",
+                    "root/TaskScene(Clone)/pages/TaskListPage(Clone)/"
+                    "right_panel/content/0/frame/go_btn",
+                    1170,
+                    158,
+                ),
+            ]
+        )
+        oracle = make_oracle(backend)
+
+        def advance_generation(_):
+            generation = backend.snapshot["generation"] + 1
+            backend.snapshot["generation"] = generation
+            backend.buttons["generation"] = generation
+
+        oracle._sleep = advance_generation
+
+        state = oracle.wait_for_mission_state(
+            timeout_seconds=1,
+            interval_seconds=0,
+        )
+
+        self.assertEqual(state.disposition, MissionDisposition.UNFINISHED)
+        self.assertEqual(state.generation, 11)
 
 
 if __name__ == "__main__":
