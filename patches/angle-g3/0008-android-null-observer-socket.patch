@@ -1,0 +1,45 @@
+From f64483e6d563ad1084121d332aafbe25b6ca37fc Mon Sep 17 00:00:00 2001
+From: ALAS Headless Research <local@alas-headless.invalid>
+Date: Sat, 8 Aug 2026 20:42:00 +0800
+Subject: [PATCH] null: start the local read-only observer socket
+
+---
+ src/libANGLE/renderer/null/DisplayNULL.cpp  | 2 ++
+ src/libANGLE/renderer/null/null_backend.gni | 2 ++
+ 2 files changed, 4 insertions(+)
+
+diff --git a/src/libANGLE/renderer/null/DisplayNULL.cpp b/src/libANGLE/renderer/null/DisplayNULL.cpp
+index b93f5a728..d970c8ec1 100644
+--- a/src/libANGLE/renderer/null/DisplayNULL.cpp
++++ b/src/libANGLE/renderer/null/DisplayNULL.cpp
+@@ -25,6 +25,7 @@
+ #include "libANGLE/renderer/null/DeviceNULL.h"
+ #include "libANGLE/renderer/null/ImageNULL.h"
+ #include "libANGLE/renderer/null/Il2CppNamespaceProbe.h"
++#include "libANGLE/renderer/null/ObserverServer.h"
+ #include "libANGLE/renderer/null/SurfaceNULL.h"
+ 
+ #if defined(ANGLE_PLATFORM_ANDROID)
+@@ -157,6 +158,7 @@ egl::Error DisplayNULL::initialize(egl::Display *display)
+ 
+ #if defined(ANGLE_PLATFORM_ANDROID)
+     ProbeIl2CppNamespace();
++    alas::StartObserverServer();
+ #endif
+     return egl::NoError();
+ }
+diff --git a/src/libANGLE/renderer/null/null_backend.gni b/src/libANGLE/renderer/null/null_backend.gni
+index 8a531326f..ec2c5f7cc 100644
+--- a/src/libANGLE/renderer/null/null_backend.gni
++++ b/src/libANGLE/renderer/null/null_backend.gni
+@@ -23,6 +23,8 @@ null_backend_sources = [
+   "ImageNULL.h",
+   "Il2CppNamespaceProbe.cpp",
+   "Il2CppNamespaceProbe.h",
++  "ObserverServer.cpp",
++  "ObserverServer.h",
+   "ProgramExecutableNULL.cpp",
+   "ProgramExecutableNULL.h",
+   "ProgramNULL.cpp",
+-- 
+2.34.1

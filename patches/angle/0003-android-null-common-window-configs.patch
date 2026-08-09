@@ -1,0 +1,63 @@
+From ccb5c41108d6e63ecf51213e3ef610ea35fb9475 Mon Sep 17 00:00:00 2001
+From: ALAS Headless Research <local@alas-headless.invalid>
+Date: Sat, 8 Aug 2026 14:55:00 +0800
+Subject: [PATCH] Expose common Android window configs from NULL
+
+Android GLSurfaceView's default GLES config chooser asks for RGB888 with no
+alpha channel.  The upstream NULL renderer exposes only RGBA8888, so display
+creation succeeds but no config can be chosen.
+
+Add an RGBX8888 variant, mark the Android-compatible configs recordable, and
+advertise preserved swap behavior.  Configure the initial CPU buffer with the
+selected config's native visual rather than unconditionally forcing RGBA.
+---
+ src/libANGLE/renderer/null/DisplayNULL.cpp | 13 ++++++++++++-
+ src/libANGLE/renderer/null/SurfaceNULL.cpp |  5 +++--
+ 2 files changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/src/libANGLE/renderer/null/DisplayNULL.cpp b/src/libANGLE/renderer/null/DisplayNULL.cpp
+--- a/src/libANGLE/renderer/null/DisplayNULL.cpp
++++ b/src/libANGLE/renderer/null/DisplayNULL.cpp
+@@ -88,6 +88,7 @@ egl::ConfigSet DisplayNULL::generateConfigs()
+     config.samples               = 0;
+     config.stencilSize           = 8;
+-    config.surfaceType           = EGL_WINDOW_BIT | EGL_PBUFFER_BIT;
++    config.surfaceType =
++        EGL_WINDOW_BIT | EGL_PBUFFER_BIT | EGL_SWAP_BEHAVIOR_PRESERVED_BIT;
+     config.optimalOrientation    = 0;
+     config.transparentType       = EGL_NONE;
+     config.transparentRedValue   = 0;
+@@ -97,6 +98,17 @@ egl::ConfigSet DisplayNULL::generateConfigs()
+ 
+     egl::ConfigSet configSet;
++#if defined(ANGLE_PLATFORM_ANDROID)
++    config.recordable = EGL_TRUE;
++#endif
+     configSet.add(config);
++#if defined(ANGLE_PLATFORM_ANDROID)
++    egl::Config rgbxConfig      = config;
++    rgbxConfig.bufferSize       = 24;
++    rgbxConfig.alphaSize        = 0;
++    rgbxConfig.bindToTextureRGBA = EGL_FALSE;
++    rgbxConfig.nativeVisualID   = WINDOW_FORMAT_RGBX_8888;
++    configSet.add(rgbxConfig);
++#endif
+     return configSet;
+ }
+ 
+diff --git a/src/libANGLE/renderer/null/SurfaceNULL.cpp b/src/libANGLE/renderer/null/SurfaceNULL.cpp
+--- a/src/libANGLE/renderer/null/SurfaceNULL.cpp
++++ b/src/libANGLE/renderer/null/SurfaceNULL.cpp
+@@ -116,7 +116,8 @@ egl::Error SurfaceNULL::postInitialBlackFrame()
+ {
+ #if defined(ANGLE_PLATFORM_ANDROID)
+-    if (ANativeWindow_setBuffersGeometry(mNativeWindow, mWidth, mHeight,
+-                                         WINDOW_FORMAT_RGBA_8888) != 0)
++    const EGLint windowFormat =
++        mState.config != nullptr ? mState.config->nativeVisualID : WINDOW_FORMAT_RGBA_8888;
++    if (ANativeWindow_setBuffersGeometry(mNativeWindow, mWidth, mHeight, windowFormat) != 0)
+     {
+         return egl::Error(EGL_BAD_NATIVE_WINDOW,
+                           "NULL backend failed to configure the Android window buffer.");
+-- 
+2.47.0

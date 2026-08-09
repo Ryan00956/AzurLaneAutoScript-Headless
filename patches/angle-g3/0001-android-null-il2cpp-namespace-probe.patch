@@ -1,0 +1,133 @@
+From 4f1a5b5346611f5bbd4a036518991686e8545b17 Mon Sep 17 00:00:00 2001
+From: ALAS Headless Research <local@alas-headless.invalid>
+Date: Sat, 8 Aug 2026 19:25:00 +0800
+Subject: [PATCH] null: probe IL2CPP visibility from the ANGLE namespace
+
+Keep the first observer experiment read-only.  The probe records whether the
+process maps libil2cpp and whether the ANGLE-loaded component can obtain the
+library or a small allowlist of exported API addresses through normal dynamic
+linker lookup.  It does not call any IL2CPP function.
+---
+ src/libANGLE/renderer/null/DisplayNULL.cpp | 93 ++++++++++++++++++++++++++++++
+ 1 file changed, 93 insertions(+)
+
+diff --git a/src/libANGLE/renderer/null/DisplayNULL.cpp b/src/libANGLE/renderer/null/DisplayNULL.cpp
+index bb93ad6b8..ae1d2f350 100644
+--- a/src/libANGLE/renderer/null/DisplayNULL.cpp
++++ b/src/libANGLE/renderer/null/DisplayNULL.cpp
+@@ -10,6 +10,9 @@
+ #include "libANGLE/renderer/null/DisplayNULL.h"
+ 
+ #if defined(ANGLE_PLATFORM_ANDROID)
++#    include <dlfcn.h>
++#    include <stdio.h>
++#    include <string.h>
+ #    include <android/native_window.h>
+ #endif
+ 
+@@ -21,6 +24,93 @@
+ #include "libANGLE/renderer/null/ImageNULL.h"
+ #include "libANGLE/renderer/null/SurfaceNULL.h"
+ 
++#if defined(ANGLE_PLATFORM_ANDROID)
++namespace
++{
++std::string FindMappedIl2CppPath()
++{
++    FILE *maps = fopen("/proc/self/maps", "r");
++    if (maps == nullptr)
++    {
++        return std::string();
++    }
++
++    char line[2048];
++    std::string result;
++    while (fgets(line, sizeof(line), maps) != nullptr)
++    {
++        if (strstr(line, "libil2cpp.so") == nullptr)
++        {
++            continue;
++        }
++        char *path = strrchr(line, ' ');
++        if (path != nullptr)
++        {
++            ++path;
++            path[strcspn(path, "\r\n")] = '\0';
++            result.assign(path);
++        }
++        break;
++    }
++    fclose(maps);
++    return result;
++}
++
++void ProbeIl2CppNamespace()
++{
++    static bool probed = false;
++    if (probed)
++    {
++        return;
++    }
++    probed = true;
++
++    const std::string mappedPath = FindMappedIl2CppPath();
++    void *defaultDomain         = dlsym(RTLD_DEFAULT, "il2cpp_domain_get");
++    void *sonameHandle          = dlopen("libil2cpp.so", RTLD_NOW | RTLD_NOLOAD);
++    void *pathHandle            = nullptr;
++    if (sonameHandle == nullptr && !mappedPath.empty())
++    {
++        pathHandle = dlopen(mappedPath.c_str(), RTLD_NOW | RTLD_NOLOAD);
++    }
++    void *handle = sonameHandle != nullptr ? sonameHandle : pathHandle;
++
++    const char *symbols[] = {
++        "il2cpp_domain_get",
++        "il2cpp_domain_get_assemblies",
++        "il2cpp_assembly_get_image",
++        "il2cpp_image_get_name",
++        "il2cpp_thread_attach",
++        "il2cpp_thread_detach",
++    };
++    size_t visibleSymbols = 0;
++    if (handle != nullptr)
++    {
++        for (const char *symbol : symbols)
++        {
++            visibleSymbols += dlsym(handle, symbol) != nullptr ? 1 : 0;
++        }
++    }
++
++    INFO() << "ALAS_G3_NAMESPACE {\"maps\":" << (!mappedPath.empty() ? "true" : "false")
++           << ",\"mapped_path\":\"" << mappedPath << "\""
++           << ",\"rtld_default_domain_get\":" << (defaultDomain != nullptr ? "true" : "false")
++           << ",\"soname_noload\":" << (sonameHandle != nullptr ? "true" : "false")
++           << ",\"path_noload\":" << (pathHandle != nullptr ? "true" : "false")
++           << ",\"allowlisted_symbols\":" << visibleSymbols << ",\"allowlisted_total\":6}";
++
++    if (sonameHandle != nullptr)
++    {
++        dlclose(sonameHandle);
++    }
++    if (pathHandle != nullptr)
++    {
++        dlclose(pathHandle);
++    }
++}
++}  // namespace
++#endif
++
+ namespace rx
+ {
+ 
+@@ -31,6 +121,9 @@ egl::Error DisplayNULL::initialize(egl::Display *display)
+     constexpr size_t kMaxTotalAllocationSize = 1 << 28;  // 256MB
+     mAllocationTracker.reset(new AllocationTrackerNULL(kMaxTotalAllocationSize));
+ 
++#if defined(ANGLE_PLATFORM_ANDROID)
++    ProbeIl2CppNamespace();
++#endif
+     return egl::NoError();
+ }
+ 
+-- 
+2.34.1

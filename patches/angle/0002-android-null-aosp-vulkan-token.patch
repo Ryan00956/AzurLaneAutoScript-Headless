@@ -1,0 +1,65 @@
+From 7c77a4d2b3381ee2931791fe5af15a77d812399d Mon Sep 17 00:00:00 2001
+From: ALAS Headless Research <local@alas-headless.invalid>
+Date: Sat, 8 Aug 2026 14:45:00 +0800
+Subject: [PATCH] Translate Android's forced Vulkan token in NULL-only builds
+
+Android's GraphicsEnvironment does not request ANGLE's default renderer.  It
+always appends EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE when loading a developer
+ANGLE package.  Consequently, compiling ANGLE with only the NULL renderer is
+not sufficient: validation rejects the platform request before the NULL
+fallback can run.
+
+For the deliberately NULL-only Android build, accept that one Android loader
+compatibility token and rewrite it to EGL_PLATFORM_ANGLE_TYPE_NULL_ANGLE before
+the display key and implementation are created.  Do not advertise the Vulkan
+client extension and do not affect builds that actually contain Vulkan.
+---
+ src/libANGLE/Display.cpp       | 10 ++++++++++
+ src/libANGLE/validationEGL.cpp |  7 +++++++
+ 2 files changed, 17 insertions(+)
+
+diff --git a/src/libANGLE/Display.cpp b/src/libANGLE/Display.cpp
+--- a/src/libANGLE/Display.cpp
++++ b/src/libANGLE/Display.cpp
+@@ -772,6 +772,16 @@ void UpdateAttribsFromEnvironment(AttributeMap &attribMap)
+ {
+     EGLAttrib displayType =
+         attribMap.get(EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_DEFAULT_ANGLE);
++#if defined(ANGLE_PLATFORM_ANDROID) && defined(ANGLE_ENABLE_NULL) && \
++    !defined(ANGLE_ENABLE_VULKAN)
++    // Android's GraphicsEnvironment hard-codes the Vulkan token for developer ANGLE packages.
++    // In a deliberately NULL-only build it is a loader compatibility token, not a Vulkan claim.
++    if (displayType == EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE)
++    {
++        displayType = EGL_PLATFORM_ANGLE_TYPE_NULL_ANGLE;
++        attribMap.insert(EGL_PLATFORM_ANGLE_TYPE_ANGLE, displayType);
++    }
++#endif
+     if (displayType == EGL_PLATFORM_ANGLE_TYPE_DEFAULT_ANGLE)
+     {
+         displayType = GetDisplayTypeFromEnvironment();
+diff --git a/src/libANGLE/validationEGL.cpp b/src/libANGLE/validationEGL.cpp
+--- a/src/libANGLE/validationEGL.cpp
++++ b/src/libANGLE/validationEGL.cpp
+@@ -610,12 +610,19 @@ bool ValidatePlatformType(const ValidationContext *val,
+             break;
+ 
+         case EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE:
++#if defined(ANGLE_PLATFORM_ANDROID) && defined(ANGLE_ENABLE_NULL) && \
++    !defined(ANGLE_ENABLE_VULKAN)
++            // Android's loader always supplies the Vulkan token. Display.cpp rewrites it to NULL
++            // after validation in a NULL-only build.
++            break;
++#else
+             if (!clientExtensions.platformANGLEVulkan)
+             {
+                 val->setError(EGL_BAD_ATTRIBUTE, "Vulkan platform is unsupported.");
+                 return false;
+             }
+             break;
++#endif
+ 
+         case EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE:
+             if (!clientExtensions.platformANGLEMetal)
+-- 
+2.47.0

@@ -1,0 +1,30 @@
+plugins {
+    id "com.android.application"
+}
+
+def requestedCompileSdk = findProperty("alasCompileSdk") ?: "android-35"
+def requestedBuildTools = findProperty("alasBuildTools") ?: "35.0.0"
+def requestedTargetSdk = (findProperty("alasTargetSdk") ?: "32").toInteger()
+
+android {
+    namespace "io.github.alasheadless.glescontract"
+    compileSdkVersion requestedCompileSdk
+    buildToolsVersion requestedBuildTools
+
+    defaultConfig {
+        applicationId "io.github.alasheadless.glescontract"
+        minSdk 29
+        targetSdk requestedTargetSdk
+        versionCode 1
+        versionName "0.1.0"
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+        }
+        release {
+            minifyEnabled false
+        }
+    }
+}

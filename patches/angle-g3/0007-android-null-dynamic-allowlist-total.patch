@@ -1,0 +1,33 @@
+From 4bea70b1fc6f068da8f284b4ba2d32b0af277e45 Mon Sep 17 00:00:00 2001
+From: ALAS Headless Research <local@alas-headless.invalid>
+Date: Sat, 8 Aug 2026 20:30:00 +0800
+Subject: [PATCH] null: report the dynamic IL2CPP allowlist size
+
+---
+ src/libANGLE/renderer/null/DisplayNULL.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/libANGLE/renderer/null/DisplayNULL.cpp b/src/libANGLE/renderer/null/DisplayNULL.cpp
+index 60bc78be9..b93f5a728 100644
+--- a/src/libANGLE/renderer/null/DisplayNULL.cpp
++++ b/src/libANGLE/renderer/null/DisplayNULL.cpp
+@@ -119,7 +119,7 @@ void ProbeIl2CppNamespace()
+         "\"iterate_phdr\":%s,\"dynamic_parsed\":%s,\"manual_symbols\":%zu,"
+         "\"dynamic_stage\":%u,\"dynamic_found\":%s,\"symtab\":%s,\"strtab\":%s,"
+         "\"hash\":%s,\"raw_symbols\":%zu,\"allowlisted_symbols\":%zu,"
+-        "\"allowlisted_total\":6}",
++        "\"allowlisted_total\":%zu}",
+         !mappedPath.empty() ? "true" : "false", mappedPath.c_str(),
+         defaultDomain != nullptr ? "true" : "false",
+         sonameHandle != nullptr ? "true" : "false", pathHandle != nullptr ? "true" : "false",
+@@ -129,7 +129,7 @@ void ProbeIl2CppNamespace()
+         dynamicProbe.symbolTableFound ? "true" : "false",
+         dynamicProbe.stringTableFound ? "true" : "false", dynamicProbe.hashFound ? "true" : "false",
+         dynamicProbe.rawSymbolCount,
+-        visibleSymbols);
++        visibleSymbols, rx::alas::kIl2CppAllowlistSize);
+ 
+     if (sonameHandle != nullptr)
+     {
+-- 
+2.34.1

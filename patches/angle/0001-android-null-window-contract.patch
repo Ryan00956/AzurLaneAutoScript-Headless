@@ -1,0 +1,375 @@
+From 3aeeb80b65a84be29a733cefa31a6d3f27d2a49f Mon Sep 17 00:00:00 2001
+From: ALAS Headless Research <local@alas-headless.invalid>
+Date: Sat, 8 Aug 2026 14:00:00 +0800
+Subject: [PATCH] Add an Android window contract to the NULL backend
+
+The upstream NULL backend is a test renderer: it ignores the native window,
+reports a hard-coded 100x100 surface, returns from swap immediately, and fills
+readback bytes with a non-zero sentinel.  Those semantics are useful to ANGLE
+tests but insufficient for an Android Unity player.
+
+For Android NULL-only builds this patch:
+
+* validates and retains the ANativeWindow;
+* reports its logical size and posts one zero-filled RGBA compositor buffer;
+* paces eglSwapBuffers using a synthetic refresh rate;
+* implements basic sync-control counters; and
+* makes direct/PBO readback deterministically zero-filled.
+
+The synthetic refresh rate defaults to 60 Hz and can be changed on a custom
+Android image with debug.angle.null_refresh_hz.  Renderer and vendor strings
+remain honestly reported as NULL.
+---
+ BUILD.gn                                         |   4 +-
+ src/libANGLE/renderer/null/DisplayNULL.cpp       |  14 +-
+ src/libANGLE/renderer/null/FramebufferNULL.cpp   |   4 +-
+ src/libANGLE/renderer/null/SurfaceNULL.cpp       | 191 +++++++++++++++++++++--
+ src/libANGLE/renderer/null/SurfaceNULL.h         |  31 +++-
+ 5 files changed, 228 insertions(+), 16 deletions(-)
+
+diff --git a/BUILD.gn b/BUILD.gn
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -583,4 +583,4 @@ config("angle_common_config") {
+-    if (is_android && (angle_enable_gl || angle_enable_vulkan)) {
++    if (is_android && (angle_enable_gl || angle_enable_vulkan || angle_enable_null)) {
+       # In API level 26 ANativeWindow APIs were moved from libandroid.so
+       # into a separate library, libnativewindow.so
+       if (ndk_api_level_at_least_26) {
+@@ -1036,4 +1036,4 @@ config("libANGLE_config") {
+-  if (is_android && (angle_enable_gl || angle_enable_vulkan)) {
++  if (is_android && (angle_enable_gl || angle_enable_vulkan || angle_enable_null)) {
+     # In API level 26 ANativeWindow APIs were moved from libandroid.so
+     # into a separate library, libnativewindow.so
+     if (ndk_api_level_at_least_26) {
+diff --git a/src/libANGLE/renderer/null/DisplayNULL.cpp b/src/libANGLE/renderer/null/DisplayNULL.cpp
+--- a/src/libANGLE/renderer/null/DisplayNULL.cpp
++++ b/src/libANGLE/renderer/null/DisplayNULL.cpp
+@@ -8,6 +8,10 @@
+ 
+ #include "libANGLE/renderer/null/DisplayNULL.h"
+ 
++#if defined(ANGLE_PLATFORM_ANDROID)
++#    include <android/native_window.h>
++#endif
++
+ #include "common/debug.h"
+ 
+ #include "libANGLE/Display.h"
+@@ -73,7 +77,11 @@ egl::ConfigSet DisplayNULL::generateConfigs()
+     config.maxSwapInterval       = 1;
+     config.minSwapInterval       = 1;
+     config.nativeRenderable      = EGL_TRUE;
+-    config.nativeVisualID        = 0;
++#if defined(ANGLE_PLATFORM_ANDROID)
++    config.nativeVisualID = WINDOW_FORMAT_RGBA_8888;
++#else
++    config.nativeVisualID = 0;
++#endif
+     config.nativeVisualType      = EGL_NONE;
+     config.renderableType        = EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT;
+     config.sampleBuffers         = 0;
+@@ -105,7 +113,11 @@ egl::Error DisplayNULL::restoreLostDevice(const egl::Display *display)
+ 
+ bool DisplayNULL::isValidNativeWindow(EGLNativeWindowType window) const
+ {
++#if defined(ANGLE_PLATFORM_ANDROID)
++    return window != nullptr && ANativeWindow_getFormat(window) >= 0;
++#else
+     return true;
++#endif
+ }
+ 
+ std::string DisplayNULL::getRendererDescription()
+@@ -147,7 +159,7 @@ SurfaceImpl *DisplayNULL::createWindowSurface(const egl::SurfaceState &state,
+                                               EGLNativeWindowType window,
+                                               const egl::AttributeMap &attribs)
+ {
+-    return new SurfaceNULL(state);
++    return new SurfaceNULL(state, window);
+ }
+ 
+ SurfaceImpl *DisplayNULL::createPbufferSurface(const egl::SurfaceState &state,
+diff --git a/src/libANGLE/renderer/null/FramebufferNULL.cpp b/src/libANGLE/renderer/null/FramebufferNULL.cpp
+--- a/src/libANGLE/renderer/null/FramebufferNULL.cpp
++++ b/src/libANGLE/renderer/null/FramebufferNULL.cpp
+@@ -130,10 +130,10 @@ angle::Result FramebufferNULL::readPixels(const gl::Context *context,
+     int topClip  = area.y - origArea.y;
+     ANGLE_UNSAFE_TODO(pixels += leftClip * glFormat.pixelBytes + topClip * rowBytes);
+ 
+-    // Write the in-bounds readpixels data with non-zero values
++    // Headless contract: readback is deterministic black/zero data.
+     for (GLint y = area.y; y < area.y + area.height; ++y)
+     {
+-        ANGLE_UNSAFE_TODO(memset(pixels, 42, glFormat.pixelBytes * area.width));
++        ANGLE_UNSAFE_TODO(memset(pixels, 0, glFormat.pixelBytes * area.width));
+         ANGLE_UNSAFE_TODO(pixels += rowBytes);
+     }
+ 
+diff --git a/src/libANGLE/renderer/null/SurfaceNULL.h b/src/libANGLE/renderer/null/SurfaceNULL.h
+--- a/src/libANGLE/renderer/null/SurfaceNULL.h
++++ b/src/libANGLE/renderer/null/SurfaceNULL.h
+@@ -9,6 +9,8 @@
+ #ifndef LIBANGLE_RENDERER_NULL_SURFACENULL_H_
+ #define LIBANGLE_RENDERER_NULL_SURFACENULL_H_
+ 
++#include <chrono>
++
+ #include "libANGLE/renderer/SurfaceImpl.h"
+ 
+ namespace rx
+@@ -18,9 +20,11 @@ class SurfaceNULL : public SurfaceImpl
+ {
+   public:
+     SurfaceNULL(const egl::SurfaceState &surfaceState);
++    SurfaceNULL(const egl::SurfaceState &surfaceState, EGLNativeWindowType nativeWindow);
+     ~SurfaceNULL() override;
+ 
+     egl::Error initialize(const egl::Display *display) override;
++    void destroy(const egl::Display *display) override;
+     egl::Error swap(const gl::Context *context, SurfaceSwapFeedback *feedback) override;
+     egl::Error postSubBuffer(const gl::Context *context,
+                              EGLint x,
+@@ -51,5 +55,18 @@ class SurfaceNULL : public SurfaceImpl
+     egl::Error detachFromFramebuffer(const gl::Context *context,
+                                      gl::Framebuffer *framebuffer) override;
++
++  private:
++    void releaseNativeWindow();
++    egl::Error postInitialBlackFrame();
++    void paceSwap();
++
++    EGLNativeWindowType mNativeWindow;
++    EGLint mWidth;
++    EGLint mHeight;
++    EGLint mSwapInterval;
++    EGLint mRefreshRateHz;
++    EGLuint64KHR mSwapCount;
++    std::chrono::steady_clock::time_point mNextSwapDeadline;
+ };
+ 
+ }  // namespace rx
+diff --git a/src/libANGLE/renderer/null/SurfaceNULL.cpp b/src/libANGLE/renderer/null/SurfaceNULL.cpp
+--- a/src/libANGLE/renderer/null/SurfaceNULL.cpp
++++ b/src/libANGLE/renderer/null/SurfaceNULL.cpp
+@@ -9,24 +9,167 @@
+ 
+ #include "libANGLE/renderer/null/SurfaceNULL.h"
+ 
++#include <algorithm>
++#include <chrono>
++#include <cstdlib>
++#include <cstring>
++#include <thread>
++
++#if defined(ANGLE_PLATFORM_ANDROID)
++#    include <android/native_window.h>
++#    include <android/rect.h>
++#    include <sys/system_properties.h>
++#endif
++
+ #include "common/debug.h"
+ 
++#include "libANGLE/Surface.h"
+ #include "libANGLE/renderer/null/FramebufferNULL.h"
+ 
+ namespace rx
+ {
++namespace
++{
++constexpr EGLint kDefaultRefreshRateHz = 60;
++constexpr EGLint kMinimumRefreshRateHz = 1;
++constexpr EGLint kMaximumRefreshRateHz = 240;
++
++EGLint GetRefreshRateHz()
++{
++#if defined(ANGLE_PLATFORM_ANDROID)
++    char propertyValue[PROP_VALUE_MAX] = {};
++    if (__system_property_get("debug.angle.null_refresh_hz", propertyValue) > 0)
++    {
++        char *end       = nullptr;
++        const long rate = ANGLE_UNSAFE_TODO(std::strtol(propertyValue, &end, 10));
++        if (end != propertyValue && *end == '\0' && rate >= kMinimumRefreshRateHz &&
++            rate <= kMaximumRefreshRateHz)
++        {
++            return static_cast<EGLint>(rate);
++        }
++    }
++#endif
++    return kDefaultRefreshRateHz;
++}
++}  // namespace
+ 
+-SurfaceNULL::SurfaceNULL(const egl::SurfaceState &surfaceState) : SurfaceImpl(surfaceState) {}
++SurfaceNULL::SurfaceNULL(const egl::SurfaceState &surfaceState) : SurfaceNULL(surfaceState, nullptr)
++{}
+ 
+-SurfaceNULL::~SurfaceNULL() {}
++SurfaceNULL::SurfaceNULL(const egl::SurfaceState &surfaceState,
++                         EGLNativeWindowType nativeWindow)
++    : SurfaceImpl(surfaceState),
++      mNativeWindow(nativeWindow),
++      mWidth(surfaceState.attributes.getAsInt(EGL_WIDTH, 100)),
++      mHeight(surfaceState.attributes.getAsInt(EGL_HEIGHT, 100)),
++      mSwapInterval(surfaceState.swapInterval),
++      mRefreshRateHz(GetRefreshRateHz()),
++      mSwapCount(0),
++      mNextSwapDeadline()
++{
++#if defined(ANGLE_PLATFORM_ANDROID)
++    if (mNativeWindow != nullptr)
++    {
++        ANativeWindow_acquire(mNativeWindow);
++    }
++#endif
++}
++
++SurfaceNULL::~SurfaceNULL()
++{
++    releaseNativeWindow();
++}
+ 
+ egl::Error SurfaceNULL::initialize(const egl::Display *display)
+ {
++#if defined(ANGLE_PLATFORM_ANDROID)
++    if (mNativeWindow != nullptr)
++    {
++        mWidth  = ANativeWindow_getWidth(mNativeWindow);
++        mHeight = ANativeWindow_getHeight(mNativeWindow);
++        if (mWidth <= 0 || mHeight <= 0)
++        {
++            return egl::Error(EGL_BAD_NATIVE_WINDOW, "NULL backend received an invalid window size.");
++        }
++        return postInitialBlackFrame();
++    }
++#endif
+     return egl::NoError();
+ }
+ 
++void SurfaceNULL::destroy(const egl::Display *display)
++{
++    releaseNativeWindow();
++}
++
++void SurfaceNULL::releaseNativeWindow()
++{
++#if defined(ANGLE_PLATFORM_ANDROID)
++    if (mNativeWindow != nullptr)
++    {
++        ANativeWindow_release(mNativeWindow);
++        mNativeWindow = nullptr;
++    }
++#endif
++}
++
++egl::Error SurfaceNULL::postInitialBlackFrame()
++{
++#if defined(ANGLE_PLATFORM_ANDROID)
++    if (ANativeWindow_setBuffersGeometry(mNativeWindow, mWidth, mHeight,
++                                         WINDOW_FORMAT_RGBA_8888) != 0)
++    {
++        return egl::Error(EGL_BAD_NATIVE_WINDOW,
++                          "NULL backend failed to configure the Android window buffer.");
++    }
++
++    ANativeWindow_Buffer buffer = {};
++    ARect dirtyRect             = {0, 0, mWidth, mHeight};
++    if (ANativeWindow_lock(mNativeWindow, &buffer, &dirtyRect) != 0)
++    {
++        return egl::Error(EGL_BAD_NATIVE_WINDOW,
++                          "NULL backend failed to lock the Android window buffer.");
++    }
++
++    constexpr size_t kBytesPerPixel = 4;
++    ANGLE_UNSAFE_TODO(std::memset(
++        buffer.bits, 0,
++        static_cast<size_t>(buffer.height) * static_cast<size_t>(buffer.stride) * kBytesPerPixel));
++
++    if (ANativeWindow_unlockAndPost(mNativeWindow) != 0)
++    {
++        return egl::Error(EGL_BAD_NATIVE_WINDOW,
++                          "NULL backend failed to post the Android window buffer.");
++    }
++#endif
++    return egl::NoError();
++}
++
++void SurfaceNULL::paceSwap()
++{
++    if (mSwapInterval <= 0 || mRefreshRateHz <= 0)
++    {
++        return;
++    }
++
++    const auto period = std::chrono::nanoseconds(
++        1000000000LL * static_cast<int64_t>(mSwapInterval) / mRefreshRateHz);
++    const auto now = std::chrono::steady_clock::now();
++    if (mNextSwapDeadline.time_since_epoch().count() == 0 || now > mNextSwapDeadline + period * 4)
++    {
++        mNextSwapDeadline = now + period;
++    }
++    else
++    {
++        mNextSwapDeadline += period;
++    }
++    std::this_thread::sleep_until(mNextSwapDeadline);
++}
++
+ egl::Error SurfaceNULL::swap(const gl::Context *context, SurfaceSwapFeedback *feedback)
+ {
++    paceSwap();
++    ++mSwapCount;
+     return egl::NoError();
+ }
+ 
+@@ -59,22 +202,41 @@ egl::Error SurfaceNULL::releaseTexImage(const gl::Context *context, EGLint buffer)
+ 
+ egl::Error SurfaceNULL::getSyncValues(EGLuint64KHR *ust, EGLuint64KHR *msc, EGLuint64KHR *sbc)
+ {
+-    UNIMPLEMENTED();
+-    return egl::Error(EGL_BAD_ACCESS);
++    const auto now = std::chrono::steady_clock::now().time_since_epoch();
++    *ust           = static_cast<EGLuint64KHR>(
++        std::chrono::duration_cast<std::chrono::microseconds>(now).count());
++    *msc = mSwapCount;
++    *sbc = mSwapCount;
++    return egl::NoError();
+ }
+ 
+ egl::Error SurfaceNULL::getMscRate(EGLint *numerator, EGLint *denominator)
+ {
+-    UNIMPLEMENTED();
+-    return egl::Error(EGL_BAD_ACCESS);
++    *numerator   = mRefreshRateHz;
++    *denominator = 1;
++    return egl::NoError();
+ }
+ 
+-void SurfaceNULL::setSwapInterval(const egl::Display *display, EGLint interval) {}
++void SurfaceNULL::setSwapInterval(const egl::Display *display, EGLint interval)
++{
++    mSwapInterval = std::max<EGLint>(0, interval);
++    mNextSwapDeadline = {};
++}
+ 
+ gl::Extents SurfaceNULL::getSize() const
+ {
+-    // TODO(geofflang): Read from an actual window?
+-    return gl::Extents(100, 100, 1);
++#if defined(ANGLE_PLATFORM_ANDROID)
++    if (mNativeWindow != nullptr)
++    {
++        const EGLint width  = ANativeWindow_getWidth(mNativeWindow);
++        const EGLint height = ANativeWindow_getHeight(mNativeWindow);
++        if (width > 0 && height > 0)
++        {
++            return gl::Extents(width, height, 1);
++        }
++    }
++#endif
++    return gl::Extents(mWidth, mHeight, 1);
+ }
+ 
+ EGLint SurfaceNULL::isPostSubBufferSupported() const
+-- 
+2.47.0

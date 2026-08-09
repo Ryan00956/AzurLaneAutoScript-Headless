@@ -1,0 +1,61 @@
+From 173f9c67323539a07d874c8e458ac12ba8f40dd2 Mon Sep 17 00:00:00 2001
+From: ALAS Headless Research <local@alas-headless.invalid>
+Date: Sat, 8 Aug 2026 19:50:00 +0800
+Subject: [PATCH] null: resolve allowlisted IL2CPP symbols from PT_DYNAMIC
+
+---
+ src/libANGLE/renderer/null/DisplayNULL.cpp     | 7 ++++++-
+ src/libANGLE/renderer/null/null_backend.gni    | 2 ++
+ 2 files changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/src/libANGLE/renderer/null/DisplayNULL.cpp b/src/libANGLE/renderer/null/DisplayNULL.cpp
+index d03884d8a..2e3aff1fa 100644
+--- a/src/libANGLE/renderer/null/DisplayNULL.cpp
++++ b/src/libANGLE/renderer/null/DisplayNULL.cpp
+@@ -24,6 +24,7 @@
+ #include "libANGLE/renderer/null/ContextNULL.h"
+ #include "libANGLE/renderer/null/DeviceNULL.h"
+ #include "libANGLE/renderer/null/ImageNULL.h"
++#include "libANGLE/renderer/null/Il2CppNamespaceProbe.h"
+ #include "libANGLE/renderer/null/SurfaceNULL.h"
+ 
+ #if defined(ANGLE_PLATFORM_ANDROID)
+@@ -83,6 +84,8 @@ void ProbeIl2CppNamespace()
+     const std::string mappedPath = FindMappedIl2CppPath();
+     PhdrProbe phdrProbe;
+     dl_iterate_phdr(FindIl2CppPhdr, &phdrProbe);
++    const rx::alas::Il2CppDynamicProbe dynamicProbe =
++        rx::alas::ProbeIl2CppDynamicSymbols();
+     void *defaultDomain         = dlsym(RTLD_DEFAULT, "il2cpp_domain_get");
+     void *sonameHandle          = dlopen("libil2cpp.so", RTLD_NOW | RTLD_NOLOAD);
+     void *pathHandle            = nullptr;
+@@ -113,11 +116,13 @@ void ProbeIl2CppNamespace()
+         ANDROID_LOG_INFO, "ALAS_G3",
+         "ALAS_G3_NAMESPACE {\"maps\":%s,\"mapped_path\":\"%s\","
+         "\"rtld_default_domain_get\":%s,\"soname_noload\":%s,\"path_noload\":%s,"
+-        "\"iterate_phdr\":%s,\"allowlisted_symbols\":%zu,\"allowlisted_total\":6}",
++        "\"iterate_phdr\":%s,\"dynamic_parsed\":%s,\"manual_symbols\":%zu,"
++        "\"allowlisted_symbols\":%zu,\"allowlisted_total\":6}",
+         !mappedPath.empty() ? "true" : "false", mappedPath.c_str(),
+         defaultDomain != nullptr ? "true" : "false",
+         sonameHandle != nullptr ? "true" : "false", pathHandle != nullptr ? "true" : "false",
+         phdrProbe.found ? "true" : "false",
++        dynamicProbe.dynamicParsed ? "true" : "false", dynamicProbe.symbolCount,
+         visibleSymbols);
+ 
+     if (sonameHandle != nullptr)
+diff --git a/src/libANGLE/renderer/null/null_backend.gni b/src/libANGLE/renderer/null/null_backend.gni
+index c4abec2a2..8a531326f 100644
+--- a/src/libANGLE/renderer/null/null_backend.gni
++++ b/src/libANGLE/renderer/null/null_backend.gni
+@@ -21,6 +21,8 @@ null_backend_sources = [
+   "FramebufferNULL.h",
+   "ImageNULL.cpp",
+   "ImageNULL.h",
++  "Il2CppNamespaceProbe.cpp",
++  "Il2CppNamespaceProbe.h",
+   "ProgramExecutableNULL.cpp",
+   "ProgramExecutableNULL.h",
+   "ProgramNULL.cpp",
+-- 
+2.34.1

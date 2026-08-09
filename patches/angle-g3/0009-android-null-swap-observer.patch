@@ -1,0 +1,36 @@
+From 102210d2c90b8d86e5d9729a00d1f8517adf973b Mon Sep 17 00:00:00 2001
+From: ALAS Headless Research <local@alas-headless.invalid>
+Date: Sat, 8 Aug 2026 20:23:00 +0800
+Subject: [PATCH] null: sample IL2CPP from the real surface swap path
+
+---
+ src/libANGLE/renderer/null/SurfaceNULL.cpp | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/libANGLE/renderer/null/SurfaceNULL.cpp b/src/libANGLE/renderer/null/SurfaceNULL.cpp
+index 3a754e81c..8420a248c 100644
+--- a/src/libANGLE/renderer/null/SurfaceNULL.cpp
++++ b/src/libANGLE/renderer/null/SurfaceNULL.cpp
+@@ -25,6 +25,7 @@
+ 
+ #include "libANGLE/Surface.h"
+ #include "libANGLE/renderer/null/FramebufferNULL.h"
++#include "libANGLE/renderer/null/Il2CppNamespaceProbe.h"
+ 
+ namespace rx
+ {
+@@ -170,6 +171,12 @@ egl::Error SurfaceNULL::swap(const gl::Context *context, SurfaceSwapFeedback *fee
+ {
+     paceSwap();
+     ++mSwapCount;
++#if defined(ANGLE_PLATFORM_ANDROID)
++    if (mSwapCount <= 120 || mSwapCount % 300 == 0)
++    {
++        alas::ObserverFrameTick(mSwapCount, mWidth, mHeight);
++    }
++#endif
+     return egl::NoError();
+ }
+ 
+-- 
+2.34.1

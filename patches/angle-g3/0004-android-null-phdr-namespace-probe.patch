@@ -1,0 +1,76 @@
+From 0974fcd8bdf1d021f64d50ba15f25504367fcaa8 Mon Sep 17 00:00:00 2001
+From: ALAS Headless Research <local@alas-headless.invalid>
+Date: Sat, 8 Aug 2026 19:42:00 +0800
+Subject: [PATCH] null: test phdr iteration across the app namespace
+
+---
+ src/libANGLE/renderer/null/DisplayNULL.cpp | 30 +++++++++++++++++++++++++++++-
+ 1 file changed, 29 insertions(+), 1 deletion(-)
+
+diff --git a/src/libANGLE/renderer/null/DisplayNULL.cpp b/src/libANGLE/renderer/null/DisplayNULL.cpp
+index 1572a2598..d03884d8a 100644
+--- a/src/libANGLE/renderer/null/DisplayNULL.cpp
++++ b/src/libANGLE/renderer/null/DisplayNULL.cpp
+@@ -12,7 +12,9 @@
+ #if defined(ANGLE_PLATFORM_ANDROID)
+ #    include <android/log.h>
+ #    include <dlfcn.h>
+ #    include <fstream>
++#    include <link.h>
++#    include <string_view>
+ #    include <android/native_window.h>
+ #endif
+ 
+@@ -26,6 +28,29 @@
+ #if defined(ANGLE_PLATFORM_ANDROID)
+ namespace
+ {
++struct PhdrProbe
++{
++    bool found = false;
++    std::string path;
++};
++
++int FindIl2CppPhdr(dl_phdr_info *info, size_t, void *opaque)
++{
++    auto *probe = static_cast<PhdrProbe *>(opaque);
++    if (info == nullptr || info->dlpi_name == nullptr)
++    {
++        return 0;
++    }
++    const std::string_view name(info->dlpi_name);
++    if (name.find("libil2cpp.so") == std::string_view::npos)
++    {
++        return 0;
++    }
++    probe->found = true;
++    probe->path  = name;
++    return 1;
++}
++
+ std::string FindMappedIl2CppPath()
+ {
+     std::ifstream maps("/proc/self/maps");
+@@ -55,6 +80,8 @@ void ProbeIl2CppNamespace()
+     probed = true;
+ 
+     const std::string mappedPath = FindMappedIl2CppPath();
++    PhdrProbe phdrProbe;
++    dl_iterate_phdr(FindIl2CppPhdr, &phdrProbe);
+     void *defaultDomain         = dlsym(RTLD_DEFAULT, "il2cpp_domain_get");
+     void *sonameHandle          = dlopen("libil2cpp.so", RTLD_NOW | RTLD_NOLOAD);
+     void *pathHandle            = nullptr;
+@@ -86,9 +113,10 @@ void ProbeIl2CppNamespace()
+         "ALAS_G3_NAMESPACE {\"maps\":%s,\"mapped_path\":\"%s\","
+         "\"rtld_default_domain_get\":%s,\"soname_noload\":%s,\"path_noload\":%s,"
+-        "\"allowlisted_symbols\":%zu,\"allowlisted_total\":6}",
++        "\"iterate_phdr\":%s,\"allowlisted_symbols\":%zu,\"allowlisted_total\":6}",
+         !mappedPath.empty() ? "true" : "false", mappedPath.c_str(),
+         defaultDomain != nullptr ? "true" : "false",
+         sonameHandle != nullptr ? "true" : "false", pathHandle != nullptr ? "true" : "false",
++        phdrProbe.found ? "true" : "false",
+         visibleSymbols);
+ 
+     if (sonameHandle != nullptr)
+-- 
+2.34.1

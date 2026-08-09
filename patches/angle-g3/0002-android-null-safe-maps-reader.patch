@@ -1,0 +1,66 @@
+From ebd14bc78f5e5b1b0820150a9cc71c1e1c6ddf83 Mon Sep 17 00:00:00 2001
+From: ALAS Headless Research <local@alas-headless.invalid>
+Date: Sat, 8 Aug 2026 19:32:00 +0800
+Subject: [PATCH] null: avoid unsafe C buffer APIs in namespace probe
+
+---
+ src/libANGLE/renderer/null/DisplayNULL.cpp | 29 +++++++++--------------------
+ 1 file changed, 9 insertions(+), 20 deletions(-)
+
+diff --git a/src/libANGLE/renderer/null/DisplayNULL.cpp b/src/libANGLE/renderer/null/DisplayNULL.cpp
+index ae1d2f350..c78544421 100644
+--- a/src/libANGLE/renderer/null/DisplayNULL.cpp
++++ b/src/libANGLE/renderer/null/DisplayNULL.cpp
+@@ -11,8 +11,7 @@
+ 
+ #if defined(ANGLE_PLATFORM_ANDROID)
+ #    include <dlfcn.h>
+-#    include <stdio.h>
+-#    include <string.h>
++#    include <fstream>
+ #    include <android/native_window.h>
+ #endif
+ 
+@@ -27,32 +26,22 @@
+ namespace
+ {
+ std::string FindMappedIl2CppPath()
+ {
+-    FILE *maps = fopen("/proc/self/maps", "r");
+-    if (maps == nullptr)
+-    {
+-        return std::string();
+-    }
+-
+-    char line[2048];
+-    std::string result;
+-    while (fgets(line, sizeof(line), maps) != nullptr)
++    std::ifstream maps("/proc/self/maps");
++    std::string line;
++    while (std::getline(maps, line))
+     {
+-        if (strstr(line, "libil2cpp.so") == nullptr)
++        if (line.find("libil2cpp.so") == std::string::npos)
+         {
+             continue;
+         }
+-        char *path = strrchr(line, ' ');
+-        if (path != nullptr)
++        const size_t path = line.find('/');
++        if (path != std::string::npos)
+         {
+-            ++path;
+-            path[strcspn(path, "\r\n")] = '\0';
+-            result.assign(path);
++            return line.substr(path);
+         }
+-        break;
+     }
+-    fclose(maps);
+-    return result;
++    return std::string();
+ }
+ 
+ void ProbeIl2CppNamespace()
+-- 
+2.34.1

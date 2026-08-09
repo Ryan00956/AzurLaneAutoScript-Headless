@@ -1,0 +1,35 @@
+From 26ae849a7872f5be44b8203e43ddb75906a803d8 Mon Sep 17 00:00:00 2001
+From: ALAS Headless Research <local@alas-headless.invalid>
+Date: Sat, 8 Aug 2026 19:55:00 +0800
+Subject: [PATCH] null: log dynamic resolver diagnostics
+
+---
+ src/libANGLE/renderer/null/DisplayNULL.cpp | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/src/libANGLE/renderer/null/DisplayNULL.cpp b/src/libANGLE/renderer/null/DisplayNULL.cpp
+index 2e3aff1fa..6ec12200b 100644
+--- a/src/libANGLE/renderer/null/DisplayNULL.cpp
++++ b/src/libANGLE/renderer/null/DisplayNULL.cpp
+@@ -118,12 +118,18 @@ void ProbeIl2CppNamespace()
+         "ALAS_G3_NAMESPACE {\"maps\":%s,\"mapped_path\":\"%s\","
+         "\"rtld_default_domain_get\":%s,\"soname_noload\":%s,\"path_noload\":%s,"
+         "\"iterate_phdr\":%s,\"dynamic_parsed\":%s,\"manual_symbols\":%zu,"
+-        "\"allowlisted_symbols\":%zu,\"allowlisted_total\":6}",
++        "\"dynamic_stage\":%u,\"dynamic_found\":%s,\"symtab\":%s,\"strtab\":%s,"
++        "\"hash\":%s,\"raw_symbols\":%zu,\"allowlisted_symbols\":%zu,"
++        "\"allowlisted_total\":6}",
+         !mappedPath.empty() ? "true" : "false", mappedPath.c_str(),
+         defaultDomain != nullptr ? "true" : "false",
+         sonameHandle != nullptr ? "true" : "false", pathHandle != nullptr ? "true" : "false",
+         phdrProbe.found ? "true" : "false",
+         dynamicProbe.dynamicParsed ? "true" : "false", dynamicProbe.symbolCount,
++        dynamicProbe.diagnosticStage, dynamicProbe.dynamicFound ? "true" : "false",
++        dynamicProbe.symbolTableFound ? "true" : "false",
++        dynamicProbe.stringTableFound ? "true" : "false", dynamicProbe.hashFound ? "true" : "false",
++        dynamicProbe.rawSymbolCount,
+         visibleSymbols);
+ 
+     if (sonameHandle != nullptr)
+-- 
+2.34.1

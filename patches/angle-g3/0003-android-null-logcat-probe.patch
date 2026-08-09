@@ -1,0 +1,45 @@
+From 633c2b29cfce0fe9ba9e17b21ac56b5ff7dba448 Mon Sep 17 00:00:00 2001
+From: ALAS Headless Research <local@alas-headless.invalid>
+Date: Sat, 8 Aug 2026 19:36:00 +0800
+Subject: [PATCH] null: emit namespace probe through Android log
+
+---
+ src/libANGLE/renderer/null/DisplayNULL.cpp | 16 ++++++++++------
+ 1 file changed, 10 insertions(+), 6 deletions(-)
+
+diff --git a/src/libANGLE/renderer/null/DisplayNULL.cpp b/src/libANGLE/renderer/null/DisplayNULL.cpp
+index c78544421..1572a2598 100644
+--- a/src/libANGLE/renderer/null/DisplayNULL.cpp
++++ b/src/libANGLE/renderer/null/DisplayNULL.cpp
+@@ -10,6 +10,7 @@
+ #include "libANGLE/renderer/null/DisplayNULL.h"
+ 
+ #if defined(ANGLE_PLATFORM_ANDROID)
++#    include <android/log.h>
+ #    include <dlfcn.h>
+ #    include <fstream>
+ #    include <android/native_window.h>
+@@ -81,12 +82,15 @@ void ProbeIl2CppNamespace()
+         }
+     }
+ 
+-    INFO() << "ALAS_G3_NAMESPACE {\"maps\":" << (!mappedPath.empty() ? "true" : "false")
+-           << ",\"mapped_path\":\"" << mappedPath << "\""
+-           << ",\"rtld_default_domain_get\":" << (defaultDomain != nullptr ? "true" : "false")
+-           << ",\"soname_noload\":" << (sonameHandle != nullptr ? "true" : "false")
+-           << ",\"path_noload\":" << (pathHandle != nullptr ? "true" : "false")
+-           << ",\"allowlisted_symbols\":" << visibleSymbols << ",\"allowlisted_total\":6}";
++    __android_log_print(
++        ANDROID_LOG_INFO, "ALAS_G3",
++        "ALAS_G3_NAMESPACE {\"maps\":%s,\"mapped_path\":\"%s\","
++        "\"rtld_default_domain_get\":%s,\"soname_noload\":%s,\"path_noload\":%s,"
++        "\"allowlisted_symbols\":%zu,\"allowlisted_total\":6}",
++        !mappedPath.empty() ? "true" : "false", mappedPath.c_str(),
++        defaultDomain != nullptr ? "true" : "false",
++        sonameHandle != nullptr ? "true" : "false", pathHandle != nullptr ? "true" : "false",
++        visibleSymbols);
+ 
+     if (sonameHandle != nullptr)
+     {
+-- 
+2.34.1

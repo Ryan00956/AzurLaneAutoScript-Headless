@@ -1,0 +1,46 @@
+# Editors and operating-system metadata
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Desktop.ini
+Thumbs.db
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Android and Gradle build state
+.gradle/
+.cxx/
+.externalNativeBuild/
+**/build/
+local.properties
+key.properties
+*.jks
+*.keystore
+
+# Unity-generated state
+**/Library/
+**/Logs/
+**/Temp/
+**/Obj/
+**/Build/
+**/Builds/
+**/UserSettings/
+**/MemoryCaptures/
+**/Recordings/
+
+# Local research outputs; durable conclusions belong in docs/
+artifacts/
+evidence/
+*.apk
+*.aab
+*.apks
+*.log

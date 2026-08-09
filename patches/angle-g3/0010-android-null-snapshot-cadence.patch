@@ -1,0 +1,24 @@
+From 06e7c308e3a829fbbfb3c5134374fa8a1cbeb4ef Mon Sep 17 00:00:00 2001
+From: ALAS Headless Research <local@alas-headless.invalid>
+Date: Sat, 8 Aug 2026 20:43:00 +0800
+Subject: [PATCH] null: sample observer state at a bounded cadence
+
+---
+ src/libANGLE/renderer/null/SurfaceNULL.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/libANGLE/renderer/null/SurfaceNULL.cpp b/src/libANGLE/renderer/null/SurfaceNULL.cpp
+index 8420a248c..3d71c879a 100644
+--- a/src/libANGLE/renderer/null/SurfaceNULL.cpp
++++ b/src/libANGLE/renderer/null/SurfaceNULL.cpp
+@@ -172,7 +172,7 @@ egl::Error SurfaceNULL::swap(const gl::Context *context, SurfaceSwapFeedback *fee
+     paceSwap();
+     ++mSwapCount;
+ #if defined(ANGLE_PLATFORM_ANDROID)
+-    if (mSwapCount <= 120 || mSwapCount % 300 == 0)
++    if (mSwapCount == 1 || mSwapCount % 60 == 0)
+     {
+         alas::ObserverFrameTick(mSwapCount, mWidth, mHeight);
+     }
+-- 
+2.34.1

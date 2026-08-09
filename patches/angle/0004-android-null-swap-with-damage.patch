@@ -1,0 +1,46 @@
+From f855283dc8a34e04b2ac5bfa387bf64f283765b5 Mon Sep 17 00:00:00 2001
+From: ALAS Headless Research <local@alas-headless.invalid>
+Date: Sat, 8 Aug 2026 15:00:00 +0800
+Subject: [PATCH] Pace Android swap-with-damage in NULL
+
+Android HWUI uses eglSwapBuffersWithDamageKHR for the activity window.  The
+base SurfaceImpl implementation is deliberately unreachable and terminates a
+debug ANGLE build.  Treat damaged swaps exactly like ordinary NULL swaps so
+they retain the same synthetic frame counter and pacing contract.
+---
+ src/libANGLE/renderer/null/SurfaceNULL.cpp | 8 ++++++++
+ src/libANGLE/renderer/null/SurfaceNULL.h   | 4 ++++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/src/libANGLE/renderer/null/SurfaceNULL.h b/src/libANGLE/renderer/null/SurfaceNULL.h
+--- a/src/libANGLE/renderer/null/SurfaceNULL.h
++++ b/src/libANGLE/renderer/null/SurfaceNULL.h
+@@ -27,4 +27,8 @@ class SurfaceNULL : public SurfaceImpl
+     egl::Error initialize(const egl::Display *display) override;
+     void destroy(const egl::Display *display) override;
+     egl::Error swap(const gl::Context *context, SurfaceSwapFeedback *feedback) override;
++    egl::Error swapWithDamage(const gl::Context *context,
++                              const EGLint *rects,
++                              EGLint n_rects,
++                              SurfaceSwapFeedback *feedback) override;
+     egl::Error postSubBuffer(const gl::Context *context,
+diff --git a/src/libANGLE/renderer/null/SurfaceNULL.cpp b/src/libANGLE/renderer/null/SurfaceNULL.cpp
+--- a/src/libANGLE/renderer/null/SurfaceNULL.cpp
++++ b/src/libANGLE/renderer/null/SurfaceNULL.cpp
+@@ -170,6 +170,14 @@ egl::Error SurfaceNULL::swap(const gl::Context *context, SurfaceSwapFeedback *feedback)
+     return egl::NoError();
+ }
+ 
++egl::Error SurfaceNULL::swapWithDamage(const gl::Context *context,
++                                       const EGLint *rects,
++                                       EGLint n_rects,
++                                       SurfaceSwapFeedback *feedback)
++{
++    return swap(context, feedback);
++}
++
+ egl::Error SurfaceNULL::postSubBuffer(const gl::Context *context,
+                                       EGLint x,
+                                       EGLint y,
+-- 
+2.47.0

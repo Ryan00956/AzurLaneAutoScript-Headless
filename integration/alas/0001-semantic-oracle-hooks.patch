@@ -1,0 +1,115 @@
+diff --git a/module/base/base.py b/module/base/base.py
+--- a/module/base/base.py
++++ b/module/base/base.py
+@@ -247,10 +247,13 @@ class ModuleBase:
+             if not self.interval_timer[button.name].reached():
+                 return False
+ 
+-        if isinstance(button, HierarchyButton):
++        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
++        if semantic_adapter is not None:
++            appear = semantic_adapter.appear(button)
++        elif isinstance(button, HierarchyButton):
+             appear = bool(button)
+         elif offset:
+             if isinstance(offset, bool):
+                 offset = self.config.BUTTON_OFFSET
+             appear = button.match(self.device.image, offset=offset, similarity=similarity)
+         else:
+diff --git a/module/device/control.py b/module/device/control.py
+--- a/module/device/control.py
++++ b/module/device/control.py
+@@ -17,6 +17,14 @@ class Control(Hermit, Minitouch, Scrcpy, MaaTouch, NemuIpc):
+ 
+     @cached_property
+     def click_methods(self):
++        semantic_adapter = getattr(self, 'semantic_adapter', None)
++        if semantic_adapter is not None:
++            def reject_semantic_raw_click(*args, **kwargs):
++                semantic_adapter.reject_raw_input('low-level click')
++            return {
++                name: reject_semantic_raw_click for name in
++                ('ADB', 'uiautomator2', 'minitouch', 'Hermit', 'MaaTouch', 'nemu_ipc')
++            }
+         return {
+             'ADB': self.click_adb,
+             'uiautomator2': self.click_uiautomator2,
+@@ -35,6 +43,11 @@ class Control(Hermit, Minitouch, Scrcpy, MaaTouch, NemuIpc):
+         """
+         if control_check:
+             self.handle_control_check(button)
++        semantic_adapter = getattr(self, 'semantic_adapter', None)
++        if semantic_adapter is not None:
++            receipt = semantic_adapter.click(button)
++            logger.info(f'Semantic click {receipt.semantic_id} @ {receipt.path}')
++            return receipt
+         x, y = random_rectangle_point(button.button)
+         x, y = ensure_int(x, y)
+         logger.info(
+@@ -47,6 +60,9 @@ class Control(Hermit, Minitouch, Scrcpy, MaaTouch, NemuIpc):
+         method(x, y)
+ 
+     def multi_click(self, button, n, interval=(0.1, 0.2)):
++        semantic_adapter = getattr(self, 'semantic_adapter', None)
++        if semantic_adapter is not None:
++            semantic_adapter.reject_raw_input('multi_click')
+         self.handle_control_check(button)
+         click_timer = Timer(0.1)
+         for _ in range(n):
+@@ -64,6 +80,9 @@ class Control(Hermit, Minitouch, Scrcpy, MaaTouch, NemuIpc):
+             button (button.Button): AzurLane Button instance.
+             duration(int, float, tuple):
+         """
++        semantic_adapter = getattr(self, 'semantic_adapter', None)
++        if semantic_adapter is not None:
++            semantic_adapter.reject_raw_input('long_click')
+         self.handle_control_check(button)
+         x, y = random_rectangle_point(button.button)
+         x, y = ensure_int(x, y)
+@@ -86,6 +105,9 @@ class Control(Hermit, Minitouch, Scrcpy, MaaTouch, NemuIpc):
+             self.swipe_adb((x, y), (x, y), duration)
+ 
+     def swipe(self, p1, p2, duration=(0.1, 0.2), name='SWIPE', distance_check=True):
++        semantic_adapter = getattr(self, 'semantic_adapter', None)
++        if semantic_adapter is not None:
++            semantic_adapter.reject_raw_input('swipe')
+         self.handle_control_check(name)
+         p1, p2 = ensure_int(p1, p2)
+         duration = ensure_time(duration)
+@@ -149,6 +171,9 @@ class Control(Hermit, Minitouch, Scrcpy, MaaTouch, NemuIpc):
+ 
+     def drag(self, p1, p2, segments=1, shake=(0, 15), point_random=(-10, -10, 10, 10), shake_random=(-5, -5, 5, 5),
+              swipe_duration=0.25, shake_duration=0.1, name='DRAG'):
++        semantic_adapter = getattr(self, 'semantic_adapter', None)
++        if semantic_adapter is not None:
++            semantic_adapter.reject_raw_input('drag')
+         self.handle_control_check(name)
+         p1, p2 = ensure_int(p1, p2)
+         logger.info(
+diff --git a/module/device/device.py b/module/device/device.py
+--- a/module/device/device.py
++++ b/module/device/device.py
+@@ -1,4 +1,5 @@
+ import collections
++import os
+ from datetime import datetime
+ 
+ from lxml import etree
+@@ -88,6 +89,17 @@ class Device(Screenshot, Control, AppControl):
+                     )
+                     raise RequestHumanTakeover
+ 
++        self.semantic_adapter = None
++        if os.environ.get('ALAS_SEMANTIC_MODE') == '1':
++            from alas_headless import AlasSemanticSession
++            self.semantic_adapter = AlasSemanticSession.from_environment(
++                serial=self.config.Emulator_Serial
++            )
++            self.__dict__.pop('click_methods', None)
++            logger.warning(
++                'ALAS semantic mode enabled; unmapped detection and raw input fail closed'
++            )
++
+         # Auto-fill emulator info
+         if IS_WINDOWS and self.config.EmulatorInfo_Emulator == 'auto':
+             _ = self.emulator_instance
