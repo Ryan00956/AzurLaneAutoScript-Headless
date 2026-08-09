@@ -141,8 +141,11 @@ inventory `-1` plus food `+value` per budget unit. Construction admits only one
 order and cross-checks typed cube/coin costs before the final confirmation.
 ALAS's original side and bottom `Navbar` objects consume exact Toggle state;
 the queue-empty input additionally requires the selected queue tab, capacity
-`2`, and both exact timer fields. A pre-existing nonempty queue is refused
-before the bounded submit instead of being accelerated or collected.
+`2`, and either the exact two-entry empty layout or exact three-entry nonempty
+layout. A pre-existing nonempty queue is refused before the bounded submit
+instead of being accelerated or collected. The ALAS `GACHA_PREP` warning alias
+and `GACHA_ORDER` final-confirm alias are disjoint and reject each other's
+dialog.
 
 Tactical assignment, a single research start/reward chain, corrected dorm
 food-card input, and final one-order construction submit have live passes.
@@ -155,7 +158,10 @@ finished card) followed by one exact `G-412` start. Qualified maxima are
 therefore tactical assignment `1`, research reward `6`, research start `1`,
 dorm collect `1`, dorm feed `1`, and construction submit `1`; larger values
 remain unqualified. Stage selection, map movement, and battle input remain
-unauthorized.
+unauthorized. Complete patched commands return success for Tactical, Research,
+and Dorm. A full Gacha attempt submitted one exact Light order but returned
+false after exposing the now-fixed warning/order phase alias; its corrected
+full replay remains gated by the resulting natural nonempty queue.
 
 To stage this against a compatible ALAS checkout:
 

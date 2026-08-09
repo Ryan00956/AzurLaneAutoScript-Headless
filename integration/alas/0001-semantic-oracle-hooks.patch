@@ -980,7 +980,7 @@ diff --git a/module/research/research.py b/module/research/research.py
 index 43c9b27..214d1c4 100644
 --- a/module/research/research.py
 +++ b/module/research/research.py
-@@ -200,7 +200,13 @@ class Research(ResearchSelector, ResearchQueue, ResearchStorage, ResearchPreset):
+@@ -200,7 +200,12 @@ class Research(ResearchSelector, ResearchQueue, ResearchStorage, ResearchPreset):
              else:
                  self.device.screenshot()
  
@@ -988,8 +988,7 @@ index 43c9b27..214d1c4 100644
 +            from alas_headless import current_semantic_session
 +            semantic_session = current_semantic_session()
 +            if semantic_session is not None:
-+                detail = semantic_session.research_detail_state()
-+                max_rgb = 255 if detail.can_start else 0
++                max_rgb = 255 if semantic_session.research_detail_available() else 0
 +            else:
 +                max_rgb = np.max(rgb2gray(self.image_crop(RESEARCH_UNAVAILABLE, copy=False)))
  
@@ -1037,7 +1036,7 @@ index 303aa30..73b3a18 100644
 +        from alas_headless import current_semantic_session
 +        semantic_session = current_semantic_session()
 +        if semantic_session is not None:
-+            return semantic_session.research_detail_state().can_queue
++            return semantic_session.research_detail_can_queue()
 +
          # RESEARCH_QUEUE_ADD.area is the letter `Queue`
          # RESEARCH_QUEUE_ADD.button is the entire clickable area of button
@@ -1049,7 +1048,7 @@ index 303aa30..73b3a18 100644
 +        from alas_headless import current_semantic_session
 +        semantic_session = current_semantic_session()
 +        if semantic_session is not None:
-+            return semantic_session.research_queue_empty_slots()
++            return semantic_session.research_queue_fill_slots()
 +
          status = [self._queue_status_detect(button) for button in self.queue_status_grids.buttons]
          logger.info(f'Research queue: {status}')

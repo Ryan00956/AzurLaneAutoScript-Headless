@@ -45,6 +45,7 @@ class FakeOracle:
         self.toggle_selected_values = {}
         self.mail_empty = False
         self.research_project_values = []
+        self.research_projects_visible_value = True
         self.research_detail_value = SimpleNamespace(
             code="G-412",
             resource_id="gold",
@@ -52,6 +53,13 @@ class FakeOracle:
             can_start=True,
             can_queue=True,
             is_running=False,
+        )
+        self.research_queue_visible_value = True
+        self.research_queue_value = SimpleNamespace(
+            entries=(),
+            reward_claimable=False,
+            empty_slots=5,
+            first_remaining_seconds=0,
         )
         self.research_prompt_cost = ("gold", 1500)
         self.tactical_slot_values = []
@@ -93,7 +101,9 @@ class FakeOracle:
         )
         self.build_queue_empty_value = True
         self.build_queue_timer_values = ("99:99:99", "99:99:99")
+        self.build_queue_visible_value = False
         self.main_gold_value = 10000
+        self.build_gold_value = 10000
         self.dorm_state_value = SimpleNamespace(
             occupied_slots=2,
             total_slots=6,
@@ -111,6 +121,7 @@ class FakeOracle:
                 for index in range(6)
             ),
         )
+        self.dorm_empty_food_cancel_value = False
         self.campaign_menu_value = False
         self.campaign_page_value = False
         self.campaign_state_value = SimpleNamespace(
@@ -181,6 +192,8 @@ class FakeOracle:
         return self.mail_empty
 
     def research_projects(self):
+        if not self.research_projects_visible_value:
+            raise SemanticGateClosed("research page identity is not proven")
         return tuple(self.research_project_values)
 
     def click_research_project(self, slot):
@@ -190,8 +203,19 @@ class FakeOracle:
     def research_detail_state(self):
         return self.research_detail_value
 
+    def research_queue_state(self):
+        if not self.research_queue_visible_value:
+            raise SemanticGateClosed("research queue identity is not proven")
+        return self.research_queue_value
+
     def research_start_prompt_cost(self):
         return self.research_prompt_cost
+
+    def research_queue_add_available(self):
+        return self.enabled_values.get("research/detail/queue", True)
+
+    def click_research_queue_add(self):
+        return self.click("research/detail/queue")
 
     def build_selected_pool(self):
         return self.build_pool_value
@@ -202,10 +226,15 @@ class FakeOracle:
     def build_submit_state(self):
         return self.build_submit_value
 
+    def build_coins_owned(self):
+        return self.build_gold_value
+
     def build_queue_empty(self):
         return self.build_queue_empty_value
 
     def build_queue_timers(self):
+        if not self.build_queue_visible_value:
+            raise SemanticGateClosed("construction queue is not visible")
         return self.build_queue_timer_values
 
     def main_gold(self):
@@ -216,6 +245,9 @@ class FakeOracle:
 
     def dorm_feed_state(self):
         return self.dorm_feed_state_value
+
+    def dorm_empty_food_cancel_available(self):
+        return self.dorm_empty_food_cancel_value
 
     def click_dorm_food(self, item_id):
         before = self.dorm_feed_state_value
@@ -470,8 +502,78 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertEqual(
             adapter.semantic_id_for("DORM_INFO"), "dorm/statistics/confirm"
         )
+        self.assertEqual(
+            adapter.semantic_id_for("DORM_FEED_CANCEL"),
+            "dorm/empty-food/cancel",
+        )
         with self.assertRaises(AlasSemanticUnmapped):
             adapter.click(NamedButton("BUILD_CHECK"))
+
+    def test_dorm_page_check_yields_to_empty_food_modal(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_dorm()
+        oracle.exists_values["dorm/page/manage"] = True
+        oracle.dorm_empty_food_cancel_value = True
+
+        self.assertFalse(adapter.appear(NamedButton("DORM_CHECK")))
+        self.assertTrue(adapter.appear(NamedButton("DORM_FEED_CANCEL")))
+        receipt = adapter.click(NamedButton("DORM_FEED_CANCEL"))
+
+        self.assertEqual(receipt.semantic_id, "dorm/empty-food/cancel")
+
+    def test_dorm_page_check_yields_to_feed_panel_close(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_dorm()
+        oracle.exists_values["dorm/page/manage"] = True
+        oracle.enabled_values["dorm/feed/close"] = True
+
+        self.assertFalse(adapter.appear(NamedButton("DORM_CHECK")))
+        self.assertTrue(adapter.appear(NamedButton("DORM_FEED_CANCEL")))
+        receipt = adapter.click(NamedButton("DORM_FEED_CANCEL"))
+
+        self.assertEqual(receipt.semantic_id, "dorm/feed/close")
+
+    def test_dorm_feed_entry_suppresses_only_transition_close(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_dorm()
+        oracle.enabled_values["dorm/feed/close"] = False
+
+        entry = adapter.click(NamedButton("DORM_FEED_ENTER"))
+        self.assertGreater(
+            adapter._dorm_context.passive_transition_until,
+            time.monotonic() + 40.0,
+        )
+        oracle.enabled_values["dorm/feed/close"] = True
+        self.assertFalse(adapter.appear(NamedButton("DORM_FEED_CANCEL")))
+        duplicate = adapter.click(NamedButton("DORM_FEED_ENTER"))
+
+        self.assertEqual(duplicate, entry)
+        self.assertEqual(oracle.click_calls, ["dorm/feed"])
+
+        self.assertTrue(adapter.appear(NamedButton("DORM_FEED_CHECK")))
+        close = adapter.click(NamedButton("DORM_FEED_ENTER"))
+        self.assertEqual(close.semantic_id, "dorm/feed/close")
+        self.assertEqual(oracle.click_calls, ["dorm/feed", "dorm/feed/close"])
+
+    def test_dorm_empty_food_cancel_allows_a_fresh_entry(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_dorm()
+        oracle.enabled_values["dorm/feed/close"] = False
+
+        adapter.click(NamedButton("DORM_FEED_ENTER"))
+        duplicate = adapter.click(NamedButton("DORM_FEED_ENTER"))
+        self.assertEqual(duplicate.semantic_id, "dorm/feed")
+        self.assertEqual(oracle.click_calls, ["dorm/feed"])
+
+        oracle.dorm_empty_food_cancel_value = True
+        adapter.click(NamedButton("DORM_FEED_CANCEL"))
+        oracle.dorm_empty_food_cancel_value = False
+        adapter.click(NamedButton("DORM_FEED_ENTER"))
+
+        self.assertEqual(
+            oracle.click_calls,
+            ["dorm/feed", "dorm/empty-food/cancel", "dorm/feed"],
+        )
 
     def test_build_and_dorm_typed_state_is_exposed_without_mutation(self):
         adapter, oracle, _ = self.make_adapter()
@@ -500,8 +602,9 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         adapter.click(NamedButton("ENTRANCE_1"))
         adapter.click(NamedButton("RESEARCH_START"))
         self.assertEqual(adapter._research_context.start_budget, 1)
+        self.assertTrue(adapter.appear(NamedButton("POPUP_CANCEL")))
         self.assertTrue(adapter.appear(NamedButton("POPUP_CONFIRM")))
-        receipt = adapter.click(NamedButton("POPUP_CONFIRM"))
+        receipt = adapter.click(NamedButton("POPUP_CONFIRM_RESEARCH_START"))
 
         self.assertEqual(receipt.semantic_id, "research/start/confirm")
         self.assertEqual(adapter._research_context.start_budget, 0)
@@ -515,6 +618,49 @@ class AlasSemanticAdapterTests(unittest.TestCase):
                 "research/start/confirm",
             ],
         )
+
+    def test_research_start_budget_can_admit_one_existing_running_queue_add(self):
+        oracle = FakeOracle()
+        oracle.research_project_values = [
+            SimpleNamespace(
+                slot=1,
+                code="G-412",
+                status=ResearchProjectStatus.RUNNING,
+            )
+        ]
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            research_start_budget=1,
+        )
+        adapter.begin_research()
+        adapter.click(NamedButton("ENTRANCE_1"))
+
+        receipt = adapter.click(NamedButton("RESEARCH_QUEUE_ADD"))
+        duplicate = adapter.click(NamedButton("RESEARCH_QUEUE_ADD"))
+
+        self.assertEqual(receipt.semantic_id, "research/detail/queue")
+        self.assertEqual(duplicate, receipt)
+        self.assertEqual(adapter._research_context.start_budget, 1)
+        self.assertTrue(adapter.appear(NamedButton("POPUP_CANCEL")))
+        self.assertTrue(adapter.appear(NamedButton("POPUP_CONFIRM")))
+        confirm = adapter.click(NamedButton("POPUP_CONFIRM_RESEARCH_QUEUE"))
+        self.assertEqual(confirm.semantic_id, "research/queue/confirm")
+        self.assertEqual(adapter._research_context.start_budget, 0)
+        self.assertEqual(
+            oracle.click_calls,
+            [
+                "research/project/1",
+                "research/detail/queue",
+                "research/queue/confirm",
+            ],
+        )
+
+        gated = AlasSemanticAdapter(oracle, lambda: None)
+        gated.begin_research()
+        gated.click(NamedButton("ENTRANCE_1"))
+        with self.assertRaisesRegex(SemanticGateClosed, "budgeted running project"):
+            gated.click(NamedButton("RESEARCH_QUEUE_ADD"))
 
     def test_tactical_assignment_budget_is_spent_only_on_course_confirm(self):
         oracle = FakeOracle()
@@ -556,6 +702,101 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         with self.assertRaises(SemanticGateClosed):
             adapter.dorm_feed_food(0, 1)
 
+    def test_dorm_feed_postcondition_tolerates_transient_card_animation(self):
+        oracle = FakeOracle()
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            dorm_feed_budget=1,
+        )
+        adapter.begin_dorm()
+        original = oracle.dorm_feed_state
+        transient = {"raised": False}
+
+        def flaky_state():
+            if oracle.click_calls and not transient["raised"]:
+                transient["raised"] = True
+                raise SemanticGateClosed("dorm feed item image is absent or ambiguous")
+            return original()
+
+        oracle.dorm_feed_state = flaky_state
+        receipts = adapter.dorm_feed_food(0, 1)
+
+        self.assertTrue(transient["raised"])
+        self.assertEqual(len(receipts), 1)
+        self.assertEqual(oracle.click_calls, ["dorm/feed/item/50001"])
+
+    def test_dorm_feed_precondition_waits_for_stable_panel(self):
+        oracle = FakeOracle()
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            dorm_feed_budget=1,
+        )
+        adapter.begin_dorm()
+        original = oracle.dorm_feed_state
+        transient = {"raised": False}
+
+        def flaky_state():
+            if not transient["raised"]:
+                transient["raised"] = True
+                raise SemanticGateClosed("dorm feed panel identity is not proven")
+            return original()
+
+        oracle.dorm_feed_state = flaky_state
+        receipts = adapter.dorm_feed_food(0, 1)
+
+        self.assertTrue(transient["raised"])
+        self.assertEqual(len(receipts), 1)
+        self.assertEqual(oracle.click_calls, ["dorm/feed/item/50001"])
+
+    def test_dorm_feed_state_waits_for_complete_typed_panel(self):
+        oracle = FakeOracle()
+        adapter = AlasSemanticAdapter(oracle, lambda: None)
+        original = oracle.dorm_feed_state
+        attempts = 0
+
+        def flaky_state():
+            nonlocal attempts
+            attempts += 1
+            if attempts < 3:
+                raise SemanticGateClosed("dorm feed panel identity is not proven")
+            return original()
+
+        oracle.dorm_feed_state = flaky_state
+        state = adapter.dorm_feed_state()
+
+        self.assertEqual(state.food, 0)
+        self.assertEqual(attempts, 3)
+
+    def test_dorm_feed_proof_allows_only_bounded_ship_consumption(self):
+        oracle = FakeOracle()
+        original_click = oracle.click_dorm_food
+
+        def click_with_one_consumption_tick(item_id):
+            receipt = original_click(item_id)
+            state = oracle.dorm_feed_state_value
+            oracle.dorm_feed_state_value = SimpleNamespace(
+                food=state.food - 18,
+                capacity=state.capacity,
+                items=state.items,
+            )
+            return receipt
+
+        oracle.click_dorm_food = click_with_one_consumption_tick
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            dorm_feed_budget=1,
+        )
+        adapter.begin_dorm()
+
+        receipts = adapter.dorm_feed_food(0, 1)
+
+        self.assertEqual(len(receipts), 1)
+        self.assertEqual(oracle.dorm_feed_state_value.food, 982)
+        self.assertEqual(oracle.dorm_feed_state_value.items[0].count, 4)
+
     def test_build_submit_budget_checks_coins_and_is_single_use(self):
         oracle = FakeOracle()
         oracle.enabled_values.update(
@@ -590,6 +831,15 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         with self.assertRaises(SemanticGateClosed):
             insufficient.click(NamedButton("POPUP_CONFIRM_GACHA_ORDER"))
 
+    def test_build_coin_count_falls_back_to_proven_build_resource_panel(self):
+        oracle = FakeOracle()
+        oracle.build_gold_value = 81908
+        adapter = AlasSemanticAdapter(oracle, lambda: None)
+        adapter.begin_build()
+
+        self.assertEqual(adapter.build_coins_owned(), 81908)
+        self.assertEqual(adapter._build_context.coins_owned, 81908)
+
     def test_build_warning_confirmation_is_admitted_once(self):
         oracle = FakeOracle()
         oracle.enabled_values["build/warning/confirm"] = True
@@ -608,8 +858,30 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         with self.assertRaises(SemanticGateClosed):
             adapter.click(NamedButton("POPUP_CONFIRM"))
 
+    def test_build_warning_accepts_only_alas_gacha_prep_alias(self):
+        oracle = FakeOracle()
+        oracle.enabled_values["build/warning/confirm"] = True
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            build_submit_budget=1,
+        )
+        adapter.begin_build()
+
+        receipt = adapter.click(NamedButton("POPUP_CONFIRM_GACHA_PREP"))
+
+        self.assertEqual(receipt.semantic_id, "build/warning/confirm")
+        self.assertEqual(oracle.click_calls, ["build/warning/confirm"])
+
+        oracle.enabled_values["build/warning/confirm"] = False
+        oracle.enabled_values["build/prep/confirm"] = True
+        self.assertFalse(adapter.appear(NamedButton("POPUP_CONFIRM_GACHA_PREP")))
+        with self.assertRaisesRegex(SemanticGateClosed, "exact warning"):
+            adapter.click(NamedButton("POPUP_CONFIRM_GACHA_PREP"))
+
     def test_build_navbars_and_queue_observations_feed_alas_primitives(self):
         oracle = FakeOracle()
+        oracle.build_queue_visible_value = True
         oracle.toggle_selected_values.update(
             {
                 "build/nav/pools": False,
@@ -667,6 +939,44 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         oracle.build_queue_empty_value = False
         with self.assertRaises(SemanticGateClosed):
             adapter.appear(NamedButton("BUILD_QUEUE_EMPTY"))
+
+    def test_build_queue_goto_main_uses_typed_queue_identity(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.build_queue_visible_value = True
+        oracle.enabled_values["build/page/back"] = True
+
+        self.assertTrue(adapter.appear(NamedButton("GOTO_MAIN")))
+        receipt = adapter.click(NamedButton("GOTO_MAIN"))
+
+        self.assertEqual(receipt.semantic_id, "build/page/back")
+        self.assertEqual(oracle.click_calls, ["build/page/back"])
+
+    def test_tactical_navigation_from_build_queue_has_passive_scan_grace(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_tactical()
+        oracle.build_queue_visible_value = True
+        oracle.enabled_values["build/page/back"] = True
+
+        adapter.click(NamedButton("GOTO_MAIN"))
+
+        self.assertFalse(adapter.appear(NamedButton("EXERCISE_CHECK")))
+
+    def test_tactical_back_has_passive_scan_grace(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_tactical()
+        oracle.enabled_values["tactical/dock/back"] = False
+        oracle.enabled_values["tactical/page/back"] = True
+
+        receipt = adapter.click(NamedButton("BACK_ARROW"))
+        oracle.enabled_values.clear()
+        oracle.enabled_values["tactical/dock/back"] = False
+        oracle.enabled_values["tactical/page/back"] = False
+        duplicate = adapter.click(NamedButton("BACK_ARROW"))
+
+        self.assertEqual(receipt.semantic_id, "tactical/page/back")
+        self.assertEqual(duplicate, receipt)
+        self.assertEqual(oracle.click_calls, ["tactical/page/back"])
+        self.assertFalse(adapter.appear(NamedButton("SP_CHECK")))
 
     def test_build_goto_main_uses_exact_reviewed_back(self):
         adapter, oracle, _ = self.make_adapter()
@@ -733,6 +1043,7 @@ class AlasSemanticAdapterTests(unittest.TestCase):
 
     def test_research_ocr_companions_use_typed_project_model(self):
         adapter, oracle, _ = self.make_adapter()
+        adapter.begin_research()
         oracle.research_project_values = [
             SimpleNamespace(
                 slot=1,
@@ -768,6 +1079,17 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertFalse(adapter.cancel_tactical_continue_if_present())
         self.assertEqual(oracle.click_calls, ["tactical/continue/cancel"])
         adapter.end_commission()
+
+    def test_tactical_passive_continue_probe_is_false_without_prompt_or_opt_in(self):
+        oracle = FakeOracle()
+        adapter = AlasSemanticAdapter(oracle, lambda: None)
+        adapter.begin_tactical()
+
+        self.assertFalse(adapter.cancel_tactical_continue_if_present())
+
+        oracle.tactical_prompt_text = "舰船学习完成，是否继续学习该技能？"
+        with self.assertRaises(SemanticGateClosed):
+            adapter.cancel_tactical_continue_if_present()
 
     def test_mail_page_identity_and_manage_use_exact_semantic_targets(self):
         adapter, _, _ = self.make_adapter()
@@ -970,6 +1292,7 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertFalse(adapter.appear(NamedButton("GUILD_POPUP_CANCEL")))
 
         oracle.exists_values.clear()
+        adapter._commission_context.passive_transition_until = time.monotonic() - 1
         with self.assertRaises(AlasSemanticUnmapped):
             adapter.appear(NamedButton("OIL_MAXED"))
         with self.assertRaises(AlasSemanticUnmapped):
@@ -1406,6 +1729,166 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         adapter._mission_context.passive_transition_until = time.monotonic() - 1.0
         with self.assertRaises(AlasSemanticUnmapped):
             adapter.appear(NamedButton("EXERCISE_CHECK"))
+
+    def test_bounded_task_flows_allow_passive_scan_on_proven_surface(self):
+        cases = (
+            ("begin_research", "reward/page/back"),
+            ("begin_dorm", "dorm/page/back"),
+            ("begin_build", "build/page/start"),
+        )
+        for begin_name, semantic_id in cases:
+            with self.subTest(flow=begin_name):
+                adapter, oracle, _ = self.make_adapter()
+                getattr(adapter, begin_name)()
+                oracle.exists_values[semantic_id] = True
+
+                self.assertFalse(adapter.appear(NamedButton("FLEET_CHECK")))
+
+    def test_bounded_task_flows_begin_with_page_discovery_grace(self):
+        for begin_name in (
+            "begin_commission",
+            "begin_tactical",
+            "begin_research",
+            "begin_dorm",
+            "begin_build",
+        ):
+            with self.subTest(flow=begin_name):
+                adapter, _, _ = self.make_adapter()
+                getattr(adapter, begin_name)()
+                self.assertFalse(adapter.appear(NamedButton("FLEET_CHECK")))
+
+    def test_research_navigation_has_bounded_passive_scan_grace(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_research()
+
+        main_entry = adapter.click(NamedButton("MAIN_GOTO_RESHMENU"))
+        main_duplicate = adapter.click(NamedButton("MAIN_GOTO_RESHMENU_WHITE"))
+        research_entry = adapter.click(NamedButton("RESHMENU_GOTO_RESEARCH"))
+        research_duplicate = adapter.click(NamedButton("RESHMENU_GOTO_RESEARCH"))
+        queue_entry = adapter.click(NamedButton("RESEARCH_GOTO_QUEUE"))
+        queue_duplicate = adapter.click(NamedButton("RESEARCH_GOTO_QUEUE"))
+        back = adapter.click(NamedButton("BACK_ARROW"))
+        back_duplicate = adapter.click(NamedButton("BACK_ARROW"))
+
+        self.assertEqual(main_duplicate, main_entry)
+        self.assertEqual(research_duplicate, research_entry)
+        self.assertEqual(queue_duplicate, queue_entry)
+        self.assertEqual(back_duplicate, back)
+        self.assertEqual(
+            oracle.click_calls,
+            [
+                "main/tech",
+                "research-menu/research",
+                "research/queue/enter",
+                "research/page/back",
+            ],
+        )
+        self.assertFalse(adapter.appear(NamedButton("FLEET_CHECK")))
+        adapter._research_context.passive_transition_until = time.monotonic() - 1.0
+        with self.assertRaises(AlasSemanticUnmapped):
+            adapter.appear(NamedButton("FLEET_CHECK"))
+
+    def test_research_goto_main_is_idempotent_during_page_transition(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_research()
+        oracle.exists_values["research/page/back"] = True
+        oracle.enabled_values["research/page/back"] = True
+
+        first = adapter.click(NamedButton("GOTO_MAIN"))
+        duplicate = adapter.click(NamedButton("GOTO_MAIN"))
+
+        self.assertEqual(duplicate, first)
+        self.assertEqual(oracle.click_calls, ["research/page/back"])
+
+    def test_dorm_navigation_is_idempotent_during_page_transition(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_dorm()
+
+        main = adapter.click(NamedButton("MAIN_GOTO_DORMMENU"))
+        main_duplicate = adapter.click(NamedButton("MAIN_GOTO_DORMMENU_WHITE"))
+        entry = adapter.click(NamedButton("DORMMENU_GOTO_DORM"))
+        entry_duplicate = adapter.click(NamedButton("DORMMENU_GOTO_DORM"))
+        back = adapter.click(NamedButton("DORM_GOTO_MAIN"))
+        back_duplicate = adapter.click(NamedButton("DORM_GOTO_MAIN"))
+
+        self.assertEqual(main_duplicate, main)
+        self.assertEqual(entry_duplicate, entry)
+        self.assertEqual(back_duplicate, back)
+        self.assertEqual(
+            oracle.click_calls,
+            ["main/live", "dorm-menu/dorm", "dorm/page/back"],
+        )
+
+    def test_cross_flow_virtual_probe_is_false_but_input_stays_forbidden(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_research()
+        oracle.exists_values["reward/page/back"] = True
+
+        self.assertFalse(adapter.appear(NamedButton("DOCK_CHECK")))
+        with self.assertRaises(AlasSemanticUnmapped):
+            adapter.click(NamedButton("DOCK_CHECK"))
+
+    def test_research_queue_snapshot_is_bounded_across_queue_exit(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_research()
+
+        self.assertEqual(adapter.research_queue_empty_slots(), 5)
+        oracle.research_queue_visible_value = False
+
+        self.assertEqual(adapter.research_queue_empty_slots(), 5)
+        adapter._research_context.last_queue_observed_at = time.monotonic() - 31.0
+        with self.assertRaisesRegex(SemanticGateClosed, "identity is not proven"):
+            adapter.research_queue_empty_slots()
+
+    def test_research_fill_slots_are_limited_by_current_run_budget(self):
+        oracle = FakeOracle()
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            research_start_budget=1,
+        )
+        adapter.begin_research()
+
+        self.assertEqual(adapter.research_queue_fill_slots(), 5)
+        adapter._research_context.start_budget = 0
+        oracle.research_queue_visible_value = False
+        self.assertEqual(adapter.research_queue_fill_slots(), 0)
+
+    def test_research_detail_availability_is_false_before_selection(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_research()
+        oracle.exists_values["research/page/back"] = True
+
+        def absent_detail():
+            raise SemanticGateClosed("research detail identity is not proven")
+
+        oracle.research_detail_state = absent_detail
+
+        self.assertFalse(adapter.research_detail_available())
+
+    def test_research_detail_availability_includes_current_run_budget(self):
+        oracle = FakeOracle()
+        adapter = AlasSemanticAdapter(oracle, lambda: None)
+        adapter.begin_research()
+
+        self.assertFalse(adapter.research_detail_available())
+        self.assertTrue(adapter.appear(NamedButton("RESEARCH_UNAVAILABLE")))
+
+        adapter._research_context.start_budget = 1
+        self.assertTrue(adapter.research_detail_available())
+        self.assertFalse(adapter.appear(NamedButton("RESEARCH_UNAVAILABLE")))
+
+    def test_research_project_snapshot_has_short_render_grace(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_research()
+
+        self.assertEqual(adapter.research_projects(), ())
+        oracle.research_projects_visible_value = False
+
+        self.assertEqual(adapter.research_projects(), ())
+        adapter._research_context.last_projects_observed_at = time.monotonic() - 6.0
+        with self.assertRaisesRegex(SemanticGateClosed, "page identity is not proven"):
+            adapter.research_projects()
 
     def test_mission_entry_alias_cannot_double_click_during_transition(self):
         adapter, oracle, _ = self.make_adapter()

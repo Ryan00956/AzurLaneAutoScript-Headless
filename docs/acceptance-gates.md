@@ -153,7 +153,7 @@ See [G7 typed task and campaign adaptation](g7-task-campaign-adaptation-report.m
 
 See [G8 real ALAS validation](g8-alas-reward-commission-validation-report.md).
 
-## G9 - Five bounded mutation input slices: adapter-qualified
+## G9 - Bounded task inputs: three full command replays passed
 
 - Keep the original ALAS Tactical, Research, Dorm, and Gacha state machines;
   replace only reviewed image/OCR/input ports with typed semantic state.
@@ -167,7 +167,10 @@ See [G8 real ALAS validation](g8-alas-reward-commission-validation-report.md).
   state. Refuse pre-existing nonempty construction queues rather than
   accelerating or collecting them.
 - Adapter-level live passes and clean pinned-patch application are required.
-  Full patched-ALAS task-command replays remain a later gate.
+  Tactical, Research, and Dorm must also complete their original patched ALAS
+  commands. Gacha must keep warning preparation and final-order confirmation
+  disjoint; its corrected full replay remains pending an empty queue after the
+  first live attempt submitted one bounded order at the wrong ALAS phase.
 
 ## Stop or pivot conditions
 

@@ -11,7 +11,7 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, List, Mapping, Optional, Sequence, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
 from .semantic_oracle import (
     ActionReceipt,
@@ -34,6 +34,7 @@ from .semantic_oracle import (
     MissionDisposition,
     Point,
     SemanticGateClosed,
+    SemanticOracleError,
     SemanticOracle,
     OracleFingerprint,
     ResearchProjectState,
@@ -75,6 +76,7 @@ DEFAULT_ALAS_BUTTON_TARGETS: Mapping[str, str] = {
     "DORMMENU_GOTO_PRIVATE_QUARTERS": "dorm-menu/private-quarters",
     "DORM_GOTO_MAIN": "dorm/page/back",
     "DORM_INFO": "dorm/statistics/confirm",
+    "DORM_FEED_CANCEL": "dorm/empty-food/cancel",
     "CAMPAIGN_MENU_GOTO_CAMPAIGN": "campaign-menu/normal",
     "RESHMENU_GOTO_RESEARCH": "research-menu/research",
     "RESHMENU_GOTO_SHIPYARD": "research-menu/shipyard",
@@ -273,6 +275,7 @@ RESEARCH_VIRTUAL_RESOURCES = frozenset(
         "GET_ITEMS_2",
         "GET_ITEMS_3",
         "GET_ITEMS_RESEARCH_SAVE",
+        "POPUP_CANCEL",
         "POPUP_CONFIRM",
         "BACK_ARROW",
     }
@@ -295,6 +298,7 @@ DORM_VIRTUAL_RESOURCES = frozenset(
         "DORM_QUICK_COLLECT",
         "DORM_FEED_CHECK",
         "DORM_FEED_ENTER",
+        "DORM_FEED_CANCEL",
         "POPUP_CANCEL",
     }
 )
@@ -309,6 +313,7 @@ BUILD_VIRTUAL_RESOURCES = frozenset(
         "BUILD_MINUS",
         "BUILD_PLUS",
         "POPUP_CONFIRM",
+        "POPUP_CONFIRM_GACHA_PREP",
         "POPUP_CONFIRM_GACHA_ORDER",
         "POPUP_CANCEL",
     }
@@ -418,6 +423,7 @@ class _CommissionFlowContext:
     passive_transition_until: float = 0.0
     cancelled_tactical_prompts: Set[str] = field(default_factory=set)
     assign_budget: int = 0
+    tactical_back_receipt: Optional[ActionReceipt] = None
 
 
 @dataclass
@@ -426,18 +432,32 @@ class _ResearchFlowContext:
     reward_budget: int = 0
     selected_slot: Optional[int] = None
     selected_code: Optional[str] = None
+    selected_status: Optional[ResearchProjectStatus] = None
     start_receipt: Optional[ActionReceipt] = None
     start_confirm_receipt: Optional[ActionReceipt] = None
     pending_resource_id: Optional[str] = None
     pending_resource_required: Optional[int] = None
     reward_receipts: List[ActionReceipt] = field(default_factory=list)
     popup_close_receipts: List[ActionReceipt] = field(default_factory=list)
+    passive_transition_until: float = 0.0
+    navigation_receipts: Dict[str, ActionReceipt] = field(default_factory=dict)
+    last_queue_state: Optional[ResearchQueueState] = None
+    last_queue_observed_at: float = 0.0
+    last_projects: Optional[Tuple[ResearchProjectState, ...]] = None
+    last_projects_observed_at: float = 0.0
+    queue_add_receipt: Optional[ActionReceipt] = None
+    queue_confirm_receipt: Optional[ActionReceipt] = None
+    queue_add_uses_start_budget: bool = False
 
 
 @dataclass
 class _DormFlowContext:
     collect_budget: int = 0
     feed_budget: int = 0
+    passive_transition_until: float = 0.0
+    navigation_receipts: Dict[str, ActionReceipt] = field(default_factory=dict)
+    feed_entry_receipt: Optional[ActionReceipt] = None
+    feed_panel_observed: bool = False
 
 
 @dataclass
@@ -447,6 +467,7 @@ class _BuildFlowContext:
     warning_confirmed: bool = False
     coins_owned: Optional[int] = None
     submit_receipt: Optional[ActionReceipt] = None
+    passive_transition_until: float = 0.0
 
 
 @dataclass
@@ -538,6 +559,14 @@ class AlasSemanticAdapter:
         name = button if isinstance(button, str) else getattr(button, "name", None)
         if not isinstance(name, str) or not name:
             raise AlasSemanticUnmapped("ALAS resource has no stable name")
+        # InfoHandler temporarily annotates this reviewed shared asset between
+        # its presence probe and click.  Normalize only the proven Research
+        # suffix; broad prefix stripping could admit unrelated popup inputs.
+        if name in (
+            "POPUP_CONFIRM_RESEARCH_START",
+            "POPUP_CONFIRM_RESEARCH_QUEUE",
+        ):
+            return "POPUP_CONFIRM"
         return name
 
     def semantic_id_for(self, button: Any) -> str:
@@ -648,6 +677,7 @@ class AlasSemanticAdapter:
             flow_kind="commission",
             reward_budget=self._commission_reward_budget,
             start_budget=self._commission_start_budget,
+            passive_transition_until=time.monotonic() + 20.0,
         )
 
     def begin_tactical(self) -> None:
@@ -667,6 +697,7 @@ class AlasSemanticAdapter:
             flow_kind="tactical",
             rewards_allowed=self._allow_tactical_rewards,
             assign_budget=self._tactical_assign_budget,
+            passive_transition_until=time.monotonic() + 20.0,
         )
 
     def begin_research(self) -> None:
@@ -686,6 +717,7 @@ class AlasSemanticAdapter:
         self._research_context = _ResearchFlowContext(
             start_budget=self._research_start_budget,
             reward_budget=self._research_reward_budget,
+            passive_transition_until=time.monotonic() + 20.0,
         )
 
     def end_research(self) -> None:
@@ -708,6 +740,7 @@ class AlasSemanticAdapter:
         self._dorm_context = _DormFlowContext(
             collect_budget=self._dorm_collect_budget,
             feed_budget=self._dorm_feed_budget,
+            passive_transition_until=time.monotonic() + 20.0,
         )
 
     def end_dorm(self) -> None:
@@ -728,7 +761,8 @@ class AlasSemanticAdapter:
         ):
             raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
         self._build_context = _BuildFlowContext(
-            submit_budget=self._build_submit_budget
+            submit_budget=self._build_submit_budget,
+            passive_transition_until=time.monotonic() + 20.0,
         )
 
     def end_build(self) -> None:
@@ -783,8 +817,38 @@ class AlasSemanticAdapter:
             "reward/award-info1/close",
             "commission/page/back",
             "commission/detail/back",
+            "build/page/back",
+            "tactical/page/back",
         ):
             commission_context.passive_transition_until = time.monotonic() + 12.0
+        research_context = self._research_context
+        if research_context is not None and receipt.semantic_id in (
+            "reward/page/back",
+            "main/tech",
+            "research-menu/research",
+            "research-menu/page/back",
+            "research/page/back",
+            "research/queue/enter",
+            "research/detail/queue",
+        ):
+            research_context.passive_transition_until = time.monotonic() + 12.0
+        dorm_context = self._dorm_context
+        if dorm_context is not None and receipt.semantic_id in (
+            "reward/page/back",
+            "main/live",
+            "dorm-menu/dorm",
+            "dorm/page/back",
+            "dorm/feed",
+            "dorm/feed/close",
+        ):
+            dorm_context.passive_transition_until = time.monotonic() + 12.0
+        build_context = self._build_context
+        if build_context is not None and receipt.semantic_id in (
+            "reward/page/back",
+            "main/build",
+            "build/page/back",
+        ):
+            build_context.passive_transition_until = time.monotonic() + 12.0
         return receipt
 
     def _known_mail_surface_exists(self) -> bool:
@@ -821,6 +885,99 @@ class AlasSemanticAdapter:
                 "tactical/continue/cancel",
             )
         )
+
+    def _known_research_surface_exists(self) -> bool:
+        return any(
+            self.oracle.exists(semantic_id)
+            for semantic_id in (
+                "reward/page/back",
+                "main/tech",
+                "research-menu/page/back",
+                "research-menu/research",
+                "research/page/back",
+                "research/queue/enter",
+                "research/detail/root",
+            )
+        )
+
+    def _known_dorm_surface_exists(self) -> bool:
+        return any(
+            self.oracle.exists(semantic_id)
+            for semantic_id in (
+                "reward/page/back",
+                "main/live",
+                "dorm-menu/page/root",
+                "dorm-menu/dorm",
+                "dorm/page/back",
+                "dorm/page/manage",
+                "dorm/feed",
+                "dorm/feed/close",
+            )
+        )
+
+    def _known_build_surface_exists(self) -> bool:
+        if any(
+            self.oracle.exists(semantic_id)
+            for semantic_id in (
+                "reward/page/back",
+                "main/build",
+                "build/page/start",
+                "build/page/back",
+                "build/prep/confirm",
+            )
+        ):
+            return True
+        try:
+            self.oracle.build_queue_timers()
+        except SemanticGateClosed:
+            return False
+        return True
+
+    def _active_flow_allows_passive_probe(self) -> bool:
+        now = time.monotonic()
+        if (
+            self._mission_context is not None
+            and (
+                now <= self._mission_context.passive_transition_until
+                or self._known_mission_surface_exists()
+            )
+        ):
+            return True
+        if self._mail_context is not None and self._known_mail_surface_exists():
+            return True
+        if (
+            self._commission_context is not None
+            and (
+                now <= self._commission_context.passive_transition_until
+                or self._known_commission_surface_exists()
+            )
+        ):
+            return True
+        if (
+            self._research_context is not None
+            and (
+                now <= self._research_context.passive_transition_until
+                or self._known_research_surface_exists()
+            )
+        ):
+            return True
+        if (
+            self._dorm_context is not None
+            and (
+                now <= self._dorm_context.passive_transition_until
+                or self._known_dorm_surface_exists()
+            )
+        ):
+            return True
+        if (
+            self._build_context is not None
+            and (
+                now <= self._build_context.passive_transition_until
+                or self._known_build_surface_exists()
+            )
+        ):
+            return True
+        return False
 
     def _stable_mission_state(self) -> Optional[MissionPageState]:
         context = self._require_mission_context()
@@ -873,6 +1030,13 @@ class AlasSemanticAdapter:
             "campaign-menu/page/back"
         ):
             targets.append("campaign-menu/page/back")
+        try:
+            self.oracle.build_queue_timers()
+        except SemanticGateClosed:
+            pass
+        else:
+            if self.oracle.enabled("build/page/back"):
+                targets.append("build/page/back")
         for identity, target in (
             ("task/page/back", "task/page/back"),
             ("build/page/start", "build/page/back"),
@@ -952,6 +1116,9 @@ class AlasSemanticAdapter:
                 self._mission_context is None
                 and self._mail_context is None
                 and self._commission_context is None
+                and self._research_context is None
+                and self._dorm_context is None
+                and self._build_context is None
             ):
                 raise AlasSemanticUnmapped(
                     "ALAS resource is not semantically mapped: {0}".format(name)
@@ -970,6 +1137,24 @@ class AlasSemanticAdapter:
             ):
                 return False
             if (
+                self._research_context is not None
+                and time.monotonic()
+                <= self._research_context.passive_transition_until
+            ):
+                return False
+            if (
+                self._dorm_context is not None
+                and time.monotonic()
+                <= self._dorm_context.passive_transition_until
+            ):
+                return False
+            if (
+                self._build_context is not None
+                and time.monotonic()
+                <= self._build_context.passive_transition_until
+            ):
+                return False
+            if (
                 self._mission_context is not None
                 and self._known_mission_surface_exists()
             ) or (
@@ -978,6 +1163,15 @@ class AlasSemanticAdapter:
             ) or (
                 self._commission_context is not None
                 and self._known_commission_surface_exists()
+            ) or (
+                self._research_context is not None
+                and self._known_research_surface_exists()
+            ) or (
+                self._dorm_context is not None
+                and self._known_dorm_surface_exists()
+            ) or (
+                self._build_context is not None
+                and self._known_build_surface_exists()
             ):
                 # ALAS scans many page/popup assets.  An independently proven
                 # mission surface lets unknown presence checks be safely false;
@@ -996,6 +1190,18 @@ class AlasSemanticAdapter:
             if semantic_id == "main/task" and self._mission_context.entry_clicked:
                 return False
         if name in PAGE_VIRTUAL_RESOURCES:
+            if (
+                name == "DORM_CHECK"
+                and self._dorm_context is not None
+                and (
+                    self.oracle.dorm_empty_food_cancel_available()
+                    or self.oracle.enabled("dorm/feed/close")
+                )
+            ):
+                # Do not report the CourtYard page through its modal empty-food
+                # prompt.  This lets ALAS reach ui_additional() and invoke its
+                # own dedicated DORM_FEED_CANCEL branch.
+                return False
             if name == "RESEARCH_CHECK" and self._research_context is not None:
                 try:
                     return len(self.oracle.research_projects()) == 5
@@ -1013,7 +1219,7 @@ class AlasSemanticAdapter:
         if name in RESEARCH_VIRTUAL_RESOURCES and self._research_context is not None:
             if name == "QUEUE_CHECK":
                 try:
-                    self.oracle.research_queue_state()
+                    self.research_queue_state()
                     return True
                 except SemanticGateClosed:
                     return False
@@ -1035,8 +1241,18 @@ class AlasSemanticAdapter:
                     and self._research_context.start_budget > 0
                     and self._research_context.start_receipt is None
                 )
-            if name == "POPUP_CONFIRM":
+            if name in ("POPUP_CANCEL", "POPUP_CONFIRM"):
                 context = self._research_context
+                if context.queue_add_receipt is not None:
+                    target = (
+                        "research/queue/cancel"
+                        if name == "POPUP_CANCEL"
+                        else "research/queue/confirm"
+                    )
+                    return bool(
+                        context.queue_confirm_receipt is None
+                        and self.oracle.enabled(target)
+                    )
                 cost = self.oracle.research_start_prompt_cost()
                 return bool(
                     context.start_receipt is not None
@@ -1048,28 +1264,19 @@ class AlasSemanticAdapter:
                 )
             if name == "RESEARCH_UNAVAILABLE":
                 try:
-                    detail = self.oracle.research_detail_state()
+                    self.oracle.research_detail_state()
                 except SemanticGateClosed:
                     return False
-                return not detail.can_start
+                return not self.research_detail_available()
             if name == "RESEARCH_STOP":
-                try:
-                    return self.oracle.research_detail_state().is_running
-                except SemanticGateClosed:
-                    return False
+                return self.research_detail_is_running()
             if name == "RESEARCH_QUEUE_ADD":
-                try:
-                    return bool(
-                        self._research_context.start_confirm_receipt is not None
-                        and self.oracle.research_detail_state().can_queue
-                    )
-                except SemanticGateClosed:
-                    return False
+                return self.research_detail_can_queue()
             if name == "RESEARCH_DETAIL_QUIT":
                 return self.oracle.enabled("research/detail/root")
             if name == "QUEUE_CLAIM_REWARD":
                 try:
-                    queue = self.oracle.research_queue_state()
+                    queue = self.research_queue_state()
                 except SemanticGateClosed:
                     return False
                 return queue.reward_claimable and self._research_context.reward_budget > 0
@@ -1103,9 +1310,21 @@ class AlasSemanticAdapter:
             if name == "DORM_FEED_CHECK":
                 try:
                     self.oracle.dorm_feed_state()
+                    self._dorm_context.feed_panel_observed = True
                     return True
                 except SemanticGateClosed:
                     return False
+            if name == "DORM_FEED_CANCEL":
+                if self.oracle.dorm_empty_food_cancel_available():
+                    return True
+                if not self.oracle.enabled("dorm/feed/close"):
+                    return False
+                context = self._dorm_context
+                return not (
+                    context.feed_entry_receipt is not None
+                    and not context.feed_panel_observed
+                    and time.monotonic() <= context.passive_transition_until
+                )
             if name == "POPUP_CANCEL":
                 return self.oracle.enabled("dorm/feed/shop/cancel")
         if name in BUILD_VIRTUAL_RESOURCES and self._build_context is not None:
@@ -1130,9 +1349,11 @@ class AlasSemanticAdapter:
                 return self.oracle.enabled("build/prep/minus")
             if name == "BUILD_PLUS":
                 return self.oracle.enabled("build/prep/add")
-            if name in ("POPUP_CONFIRM", "POPUP_CONFIRM_GACHA_ORDER"):
+            if name in ("POPUP_CONFIRM", "POPUP_CONFIRM_GACHA_PREP"):
                 if self.oracle.enabled("build/warning/confirm"):
                     return not self._build_context.warning_confirmed
+                return False
+            if name == "POPUP_CONFIRM_GACHA_ORDER":
                 return bool(
                     self.oracle.enabled("build/prep/confirm")
                     and self._build_context.submit_receipt is None
@@ -1239,25 +1460,22 @@ class AlasSemanticAdapter:
                 if name == "MAIL_WHITE_EMPTY":
                     return self.oracle.mail_is_empty()
                 return False
+            if (
+                self._mission_context is not None
+                and name in MISSION_VIRTUAL_RESOURCES
+            ):
+                return self._mission_resource_appears(name)
+            if self._active_flow_allows_passive_probe():
+                # ALAS' generic page and popup loops probe resources owned by
+                # unrelated modules.  On an independently proven active-flow
+                # surface, those presence-only probes are safely absent; the
+                # same resources remain forbidden to click().
+                return False
             if name in MAIL_VIRTUAL_RESOURCES and name not in MISSION_VIRTUAL_RESOURCES:
                 raise AlasSemanticUnmapped(
                     "ALAS mail resource used outside mail flow: {0}".format(name)
                 )
-            if self._mission_context is not None:
-                return self._mission_resource_appears(name)
             if name in MISSION_VIRTUAL_RESOURCES:
-                # ALAS' generic popup loop probes a few mission-owned resource
-                # names from reward flows as well.  A proven non-mission surface
-                # makes those passive probes safely absent; the resources are
-                # still not admitted to click() outside the mission context.
-                if (
-                    self._commission_context is not None
-                    and self._known_commission_surface_exists()
-                ) or (
-                    self._mail_context is not None
-                    and self._known_mail_surface_exists()
-                ):
-                    return False
                 raise AlasSemanticUnmapped(
                     "ALAS mission resource used outside mission flow: {0}".format(name)
                 )
@@ -1367,18 +1585,85 @@ class AlasSemanticAdapter:
 
     def research_projects(self) -> Tuple[ResearchProjectState, ...]:
         self._package_gate()
-        return self.oracle.research_projects()
+        if self._research_context is None:
+            raise SemanticGateClosed("research projects used outside ALAS research flow")
+        try:
+            projects = self.oracle.research_projects()
+        except SemanticGateClosed:
+            if (
+                self._research_context.last_projects is None
+                or time.monotonic()
+                - self._research_context.last_projects_observed_at
+                > 5.0
+            ):
+                raise
+            return self._research_context.last_projects
+        self._research_context.last_projects = projects
+        self._research_context.last_projects_observed_at = time.monotonic()
+        return projects
 
     def research_detail_state(self) -> ResearchDetailState:
         self._package_gate()
         return self.oracle.research_detail_state()
 
+    def research_detail_available(self) -> bool:
+        self._package_gate()
+        if self._research_context is None:
+            raise SemanticGateClosed("research detail used outside ALAS research flow")
+        try:
+            detail = self.oracle.research_detail_state()
+            return bool(
+                detail.can_start
+                and self._research_context.start_budget > 0
+                and self._research_context.start_receipt is None
+            )
+        except SemanticGateClosed:
+            if self._active_flow_allows_passive_probe():
+                return False
+            raise
+
+    def research_detail_is_running(self) -> bool:
+        self._package_gate()
+        if self._research_context is None:
+            raise SemanticGateClosed("research detail used outside ALAS research flow")
+        return self.oracle.enabled("research/detail/stop")
+
+    def research_detail_can_queue(self) -> bool:
+        self._package_gate()
+        if self._research_context is None:
+            raise SemanticGateClosed("research detail used outside ALAS research flow")
+        return self.oracle.research_queue_add_available()
+
     def research_queue_state(self) -> ResearchQueueState:
         self._package_gate()
-        return self.oracle.research_queue_state()
+        if self._research_context is None:
+            raise SemanticGateClosed("research queue used outside ALAS research flow")
+        try:
+            state = self.oracle.research_queue_state()
+        except SemanticGateClosed:
+            if (
+                self._research_context.last_queue_state is None
+                or time.monotonic()
+                - self._research_context.last_queue_observed_at
+                > 30.0
+            ):
+                raise
+            return self._research_context.last_queue_state
+        self._research_context.last_queue_state = state
+        self._research_context.last_queue_observed_at = time.monotonic()
+        return state
 
     def research_queue_empty_slots(self) -> int:
         return self.research_queue_state().empty_slots
+
+    def research_queue_fill_slots(self) -> int:
+        """Return the slots ALAS may fill under this run's mutation budget."""
+
+        if self._research_context is None:
+            raise SemanticGateClosed("research queue used outside ALAS research flow")
+        if self._research_context.start_budget <= 0:
+            return 0
+        return self.research_queue_empty_slots()
 
     def research_queue_remaining_seconds(self) -> int:
         return self.research_queue_state().first_remaining_seconds
@@ -1397,10 +1682,27 @@ class AlasSemanticAdapter:
 
     def dorm_feed_state(self) -> DormFeedState:
         self._package_gate()
-        return self.oracle.dorm_feed_state()
+        # BackYardFeedUI rebuilds its typed hierarchy while food counters tick.
+        # ALAS polls this panel repeatedly during one feed pass, so wait for one
+        # complete snapshot while still failing closed if none stabilizes.
+        return self._stable_dorm_feed_state()
 
     def dorm_food_counts(self) -> Tuple[int, ...]:
         return tuple(item.count for item in self.dorm_feed_state().items)
+
+    def _stable_dorm_feed_state(self, timeout_seconds: float = 5.0) -> DormFeedState:
+        deadline = time.monotonic() + timeout_seconds
+        last_error: Optional[SemanticOracleError] = None
+        while True:
+            try:
+                return self.oracle.dorm_feed_state()
+            except SemanticOracleError as exc:
+                last_error = exc
+            if time.monotonic() >= deadline:
+                raise SemanticGateClosed(
+                    "stable dorm feed-state wait timed out"
+                ) from last_error
+            time.sleep(0.25)
 
     def dorm_feed_food(self, item_index: int, count: int) -> Tuple[ActionReceipt, ...]:
         """Apply ALAS' chosen food/count through exact per-item Buttons."""
@@ -1416,24 +1718,43 @@ class AlasSemanticAdapter:
             raise SemanticGateClosed("dorm feed count exceeds the remaining budget")
         receipts = []
         for _ in range(count):
-            before = self.oracle.dorm_feed_state()
+            before = self._stable_dorm_feed_state()
             item = before.items[item_index]
             if item.count <= 0 or before.food + item.value > before.capacity:
                 raise SemanticGateClosed("dorm feed item is unavailable or would overflow")
             receipt = self.oracle.click_dorm_food(item.item_id)
+            clicked_at = time.monotonic()
             context.feed_budget -= 1
             receipts.append(receipt)
             deadline = time.monotonic() + 5.0
+            last_error: Optional[SemanticOracleError] = None
             while True:
-                after = self.oracle.dorm_feed_state()
-                after_item = after.items[item_index]
-                if (
-                    after_item.count == item.count - 1
-                    and after.food == before.food + item.value
-                ):
-                    break
+                try:
+                    after = self.oracle.dorm_feed_state()
+                    after_item = after.items[item_index]
+                    # Up to six ships consume at most 18 food per 15-second
+                    # tick.  A tick can straddle either snapshot boundary, so
+                    # admit only the bounded concurrent decrease while the
+                    # independent inventory counter must still be exactly -1.
+                    elapsed = max(0.0, time.monotonic() - clicked_at)
+                    max_consumption = 18 * (int(elapsed // 15.0) + 2)
+                    minimum_food = before.food + item.value - max_consumption
+                    if (
+                        after_item.count == item.count - 1
+                        and minimum_food <= after.food <= before.food + item.value
+                    ):
+                        break
+                    last_error = None
+                except SemanticOracleError as exc:
+                    # Food-card images briefly leave the hierarchy during the
+                    # consume animation.  The input has already happened, so
+                    # wait for the same postcondition without replaying it.
+                    last_error = exc
                 if time.monotonic() >= deadline:
-                    raise SemanticGateClosed("dorm feed mutation was not proven")
+                    error = SemanticGateClosed("dorm feed mutation was not proven")
+                    if last_error is not None:
+                        raise error from last_error
+                    raise error
                 time.sleep(0.25)
         return tuple(receipts)
 
@@ -1442,10 +1763,15 @@ class AlasSemanticAdapter:
         return self.oracle.build_submit_state()
 
     def build_coins_owned(self) -> int:
-        if self._build_context is None or self._build_context.coins_owned is None:
+        if self._build_context is None:
             raise SemanticGateClosed(
-                "main coin count was not captured before Build entry"
+                "construction coin count used outside ALAS build flow"
             )
+        if self._build_context.coins_owned is None:
+            # A task may legitimately start while ALAS is already on page_build,
+            # so MAIN_GOTO_BUILD is not guaranteed to run.  The proven Build
+            # resource panel supplies the same owned-coin value in that case.
+            self._build_context.coins_owned = self.oracle.build_coins_owned()
         return self._build_context.coins_owned
 
     def campaign_page_state(self) -> CampaignPageState:
@@ -1747,6 +2073,9 @@ class AlasSemanticAdapter:
         self._package_gate()
         if self._commission_context is None:
             raise SemanticGateClosed("tactical popup used outside ALAS tactical flow")
+        prompt = self.oracle.tactical_continue_prompt_text()
+        if prompt is None:
+            return False
         if (
             self._commission_context.flow_kind != "tactical"
             or not self._commission_context.rewards_allowed
@@ -1754,8 +2083,7 @@ class AlasSemanticAdapter:
             raise SemanticGateClosed(
                 "tactical reward requires the separate explicit opt-in"
             )
-        prompt = self.oracle.tactical_continue_prompt_text()
-        if prompt is None or prompt in self._commission_context.cancelled_tactical_prompts:
+        if prompt in self._commission_context.cancelled_tactical_prompts:
             return False
         self.oracle.click("tactical/continue/cancel")
         self._commission_context.cancelled_tactical_prompts.add(prompt)
@@ -1843,9 +2171,20 @@ class AlasSemanticAdapter:
                     for target in ("tactical/dock/back", "tactical/page/back")
                     if self.oracle.enabled(target)
                 )
+                if (
+                    not targets
+                    and context.tactical_back_receipt is not None
+                    and time.monotonic() <= context.passive_transition_until
+                ):
+                    return context.tactical_back_receipt
                 if len(targets) != 1:
                     raise SemanticGateClosed("tactical back target is ambiguous")
-                return self.oracle.click(targets[0])
+                receipt = self._record_mission_transition(
+                    self.oracle.click(targets[0])
+                )
+                if receipt.semantic_id == "tactical/page/back":
+                    context.tactical_back_receipt = receipt
+                return receipt
             if name == "TACTICAL_CLASS_START":
                 if context.assign_budget <= 0:
                     raise SemanticGateClosed(
@@ -1875,7 +2214,16 @@ class AlasSemanticAdapter:
         if self._research_context is not None and name in RESEARCH_CLICK_RESOURCES:
             context = self._research_context
             if name == "RESEARCH_GOTO_QUEUE":
-                return self.oracle.click("research/queue/enter")
+                target = "research/queue/enter"
+                cached = context.navigation_receipts.get(target)
+                if (
+                    cached is not None
+                    and time.monotonic() <= context.passive_transition_until
+                ):
+                    return cached
+                receipt = self._record_mission_transition(self.oracle.click(target))
+                context.navigation_receipts[target] = receipt
+                return receipt
             if name == "RESEARCH_DETAIL_QUIT":
                 return self.oracle.click("research/detail/root")
             if name == "RESEARCH_START":
@@ -1897,6 +2245,23 @@ class AlasSemanticAdapter:
                 context.pending_resource_required = detail.resource_required
                 return receipt
             if name == "POPUP_CONFIRM":
+                if context.queue_add_receipt is not None:
+                    if context.queue_confirm_receipt is not None:
+                        return context.queue_confirm_receipt
+                    if (
+                        context.queue_add_uses_start_budget
+                        and context.start_budget <= 0
+                    ):
+                        raise SemanticGateClosed(
+                            "research queue confirmation requires a positive budget"
+                        )
+                    receipt = self.oracle.click("research/queue/confirm")
+                    if context.queue_add_uses_start_budget:
+                        context.start_budget -= 1
+                    context.queue_confirm_receipt = receipt
+                    context.last_queue_state = None
+                    context.last_projects = None
+                    return receipt
                 expected = (
                     context.pending_resource_id,
                     context.pending_resource_required,
@@ -1913,13 +2278,33 @@ class AlasSemanticAdapter:
                 receipt = self.oracle.click("research/start/confirm")
                 context.start_budget -= 1
                 context.start_confirm_receipt = receipt
+                context.last_queue_state = None
+                context.last_projects = None
                 return receipt
             if name == "RESEARCH_QUEUE_ADD":
-                if context.start_confirm_receipt is None:
+                if (
+                    context.queue_add_receipt is not None
+                    and time.monotonic() <= context.passive_transition_until
+                ):
+                    return context.queue_add_receipt
+                confirmed_start = context.start_confirm_receipt is not None
+                existing_running = (
+                    context.selected_status == ResearchProjectStatus.RUNNING
+                    and context.start_budget > 0
+                    and self.research_detail_is_running()
+                    and self.research_detail_can_queue()
+                )
+                if not confirmed_start and not existing_running:
                     raise SemanticGateClosed(
-                        "research queue add requires a confirmed budgeted start"
+                        "research queue add requires a confirmed start or one budgeted running project"
                     )
-                return self.oracle.click("research/detail/queue")
+                receipt = self.oracle.click_research_queue_add()
+                context.queue_add_receipt = receipt
+                context.queue_confirm_receipt = None
+                context.queue_add_uses_start_budget = existing_running
+                context.last_queue_state = None
+                context.last_projects = None
+                return self._record_mission_transition(receipt)
             if name == "RESEARCH_STOP":
                 raise SemanticGateClosed("semantic research cancellation is not enabled")
             if name == "QUEUE_CLAIM_REWARD":
@@ -1929,6 +2314,8 @@ class AlasSemanticAdapter:
                 receipt = self.oracle.click("research/queue/claim")
                 context.reward_budget -= 1
                 context.reward_receipts.append(receipt)
+                context.last_queue_state = None
+                context.last_projects = None
                 return receipt
             if name in (
                 "GET_ITEMS_1",
@@ -1947,7 +2334,17 @@ class AlasSemanticAdapter:
                 context.popup_close_receipts.append(receipt)
                 return receipt
             if name == "BACK_ARROW":
-                return self.oracle.click("research/page/back")
+                cached = context.navigation_receipts.get("research/page/back")
+                if (
+                    cached is not None
+                    and time.monotonic() <= context.passive_transition_until
+                ):
+                    return cached
+                receipt = self._record_mission_transition(
+                    self.oracle.click("research/page/back")
+                )
+                context.navigation_receipts["research/page/back"] = receipt
+                return receipt
 
         if self._dorm_context is not None and name in DORM_VIRTUAL_RESOURCES:
             context = self._dorm_context
@@ -1958,9 +2355,40 @@ class AlasSemanticAdapter:
                 context.collect_budget -= 1
                 return receipt
             if name == "DORM_FEED_ENTER":
+                if (
+                    context.feed_entry_receipt is not None
+                    and not context.feed_panel_observed
+                    and time.monotonic() <= context.passive_transition_until
+                ):
+                    return context.feed_entry_receipt
                 if self.oracle.enabled("dorm/feed/close"):
-                    return self.oracle.click("dorm/feed/close")
-                return self.oracle.click("dorm/feed")
+                    receipt = self._record_mission_transition(
+                        self.oracle.click("dorm/feed/close")
+                    )
+                    context.feed_panel_observed = False
+                    return receipt
+                receipt = self._record_mission_transition(
+                    self.oracle.click("dorm/feed")
+                )
+                context.feed_entry_receipt = receipt
+                context.feed_panel_observed = False
+                # CourtYardUI can take more than twenty seconds to materialize
+                # either BackYardFeedUI or CourtYardEmptyFoodUI on a contended
+                # emulator.  Suppress only duplicate entry clicks while ALAS
+                # keeps polling; either exact destination still ends the wait.
+                context.passive_transition_until = time.monotonic() + 45.0
+                return receipt
+            if name == "DORM_FEED_CANCEL":
+                if self.oracle.dorm_empty_food_cancel_available():
+                    receipt = self.oracle.click("dorm/empty-food/cancel")
+                    context.feed_entry_receipt = None
+                    context.feed_panel_observed = False
+                    return receipt
+                receipt = self._record_mission_transition(
+                    self.oracle.click("dorm/feed/close")
+                )
+                context.feed_panel_observed = False
+                return receipt
             if name == "POPUP_CANCEL":
                 return self.oracle.click("dorm/feed/shop/cancel")
             raise AlasSemanticUnmapped(
@@ -1994,14 +2422,21 @@ class AlasSemanticAdapter:
                     else "build/prep/cancel"
                 )
                 return self.oracle.click(target)
-            if name in ("POPUP_CONFIRM", "POPUP_CONFIRM_GACHA_ORDER"):
+            if name in ("POPUP_CONFIRM", "POPUP_CONFIRM_GACHA_PREP"):
+                if (
+                    not self.oracle.enabled("build/warning/confirm")
+                    or context.warning_confirmed
+                ):
+                    raise SemanticGateClosed(
+                        "construction preparation alias requires the exact warning"
+                    )
+                context.warning_confirmed = True
+                return self.oracle.click("build/warning/confirm")
+            if name == "POPUP_CONFIRM_GACHA_ORDER":
                 if self.oracle.enabled("build/warning/confirm"):
-                    if context.warning_confirmed:
-                        raise SemanticGateClosed(
-                            "construction warning was already confirmed once"
-                        )
-                    context.warning_confirmed = True
-                    return self.oracle.click("build/warning/confirm")
+                    raise SemanticGateClosed(
+                        "construction order alias cannot confirm a warning"
+                    )
                 submit = self.oracle.build_submit_state()
                 if (
                     context.submit_budget <= 0
@@ -2022,12 +2457,37 @@ class AlasSemanticAdapter:
             target = self._goto_main_target()
             if target is None:
                 raise SemanticGateClosed("GOTO_MAIN has no reviewed page target")
+            if (
+                self._research_context is not None
+                and target in ("research/page/back", "research-menu/page/back")
+            ):
+                context = self._research_context
+                cached = context.navigation_receipts.get(target)
+                if (
+                    cached is not None
+                    and time.monotonic() <= context.passive_transition_until
+                ):
+                    return cached
+                receipt = self._record_mission_transition(self.oracle.click(target))
+                context.navigation_receipts[target] = receipt
+                return receipt
             return self._record_mission_transition(self.oracle.click(target))
         if self._mail_context is not None and name == "MAIL_MANAGE":
             if self.oracle.enabled("mail/manage/back"):
                 return self.oracle.click("mail/manage/back")
             return self.oracle.click("mail/manage")
         if semantic_id is not None:
+            if (
+                self._dorm_context is not None
+                and semantic_id in ("main/live", "dorm-menu/dorm", "dorm/page/back")
+            ):
+                cached = self._dorm_context.navigation_receipts.get(semantic_id)
+                if (
+                    cached is not None
+                    and time.monotonic()
+                    <= self._dorm_context.passive_transition_until
+                ):
+                    return cached
             if self._build_context is not None and semantic_id == "main/build":
                 self._build_context.coins_owned = self.oracle.main_gold()
             if (
@@ -2050,18 +2510,28 @@ class AlasSemanticAdapter:
                     self._research_context.reward_receipts.append(receipt)
                     self._research_context.selected_slot = None
                     self._research_context.selected_code = None
+                    self._research_context.selected_status = None
                     self._research_context.start_receipt = None
                     self._research_context.start_confirm_receipt = None
                     self._research_context.pending_resource_id = None
                     self._research_context.pending_resource_required = None
+                    self._research_context.last_queue_state = None
+                    self._research_context.last_projects = None
+                    self._research_context.queue_add_receipt = None
+                    self._research_context.queue_confirm_receipt = None
+                    self._research_context.queue_add_uses_start_budget = False
                     return receipt
                 receipt = self.oracle.click_research_project(slot)
                 self._research_context.selected_slot = slot
                 self._research_context.selected_code = project.code
+                self._research_context.selected_status = project.status
                 self._research_context.start_receipt = None
                 self._research_context.start_confirm_receipt = None
                 self._research_context.pending_resource_id = None
                 self._research_context.pending_resource_required = None
+                self._research_context.queue_add_receipt = None
+                self._research_context.queue_confirm_receipt = None
+                self._research_context.queue_add_uses_start_budget = False
                 return receipt
             if self._mission_context is not None:
                 if (
@@ -2102,6 +2572,22 @@ class AlasSemanticAdapter:
                     raise SemanticGateClosed(
                         "tactical reward requires the separate explicit opt-in"
                     )
+            if (
+                self._research_context is not None
+                and semantic_id in (
+                    "main/tech",
+                    "research-menu/research",
+                    "research-menu/page/back",
+                    "research/page/back",
+                )
+            ):
+                cached = self._research_context.navigation_receipts.get(semantic_id)
+                if (
+                    cached is not None
+                    and time.monotonic()
+                    <= self._research_context.passive_transition_until
+                ):
+                    return cached
             receipt = self.oracle.click(semantic_id)
             if semantic_id == "main/task" and self._mission_context is not None:
                 self._mission_context.entry_clicked = True
@@ -2111,7 +2597,23 @@ class AlasSemanticAdapter:
                 self._mission_context.summary_entry_receipt = receipt
             if semantic_id == "main/mail" and self._mail_context is not None:
                 self._mail_context.entry_clicked = True
-            return self._record_mission_transition(receipt)
+            receipt = self._record_mission_transition(receipt)
+            if (
+                self._research_context is not None
+                and semantic_id in (
+                    "main/tech",
+                    "research-menu/research",
+                    "research-menu/page/back",
+                    "research/page/back",
+                )
+            ):
+                self._research_context.navigation_receipts[semantic_id] = receipt
+            if (
+                self._dorm_context is not None
+                and semantic_id in ("main/live", "dorm-menu/dorm", "dorm/page/back")
+            ):
+                self._dorm_context.navigation_receipts[semantic_id] = receipt
+            return receipt
 
         if (
             self._commission_context is not None
@@ -2787,11 +3289,23 @@ class AlasSemanticSession:
     def research_detail_state(self) -> ResearchDetailState:
         return self.open().research_detail_state()
 
+    def research_detail_available(self) -> bool:
+        return self.open().research_detail_available()
+
+    def research_detail_is_running(self) -> bool:
+        return self.open().research_detail_is_running()
+
+    def research_detail_can_queue(self) -> bool:
+        return self.open().research_detail_can_queue()
+
     def research_queue_state(self) -> ResearchQueueState:
         return self.open().research_queue_state()
 
     def research_queue_empty_slots(self) -> int:
         return self.open().research_queue_empty_slots()
+
+    def research_queue_fill_slots(self) -> int:
+        return self.open().research_queue_fill_slots()
 
     def research_queue_remaining_seconds(self) -> int:
         return self.open().research_queue_remaining_seconds()

@@ -471,13 +471,17 @@ class SemanticOracleTests(unittest.TestCase):
         )
         toggles = [
             make_toggle(
-                base + "toggle_bg/bg/toggles/" + name + "/frame",
+                base + "toggle_bg/bg/toggles/" + name + "(Clone)/frame",
                 checked=name == "heavy",
             )
             for name in ("light", "heavy", "special")
         ]
         backend.ui = make_ui(
             [
+                make_text(
+                    "81908",
+                    "root/Overlay/UIMain/ResPanel(Clone)/frame/gold/gold_value",
+                ),
                 make_text("3661", base + "res_items/item/Text"),
                 make_text("2", base + "item_bg/item/Text"),
                 make_text("1500", base + "item_bg/gold/Text"),
@@ -491,6 +495,7 @@ class SemanticOracleTests(unittest.TestCase):
         self.assertEqual(costs.cubes_owned, 3661)
         self.assertEqual(costs.cubes_per_build, 2)
         self.assertEqual(costs.coins_per_build, 1500)
+        self.assertEqual(oracle.build_coins_owned(), 81908)
 
     def test_build_pool_requires_exactly_one_selected_toggle(self):
         base = (
@@ -502,7 +507,7 @@ class SemanticOracleTests(unittest.TestCase):
             [],
             toggles=[
                 make_toggle(
-                    base + "toggle_bg/bg/toggles/" + name + "/frame",
+                    base + "toggle_bg/bg/toggles/" + name + "(Clone)/frame",
                     checked=False,
                 )
                 for name in ("light", "heavy", "special")
@@ -511,6 +516,44 @@ class SemanticOracleTests(unittest.TestCase):
 
         with self.assertRaises(SemanticGateClosed):
             make_oracle(backend).build_selected_pool()
+
+    def test_build_pool_click_accepts_only_reviewed_delegated_raycast(self):
+        base = (
+            "root/UICamera/Canvas/UIMain/BuildShipUI(Clone)/"
+            "BuildShipPoolsPageUI(Clone)/gallery/"
+        )
+        backend = FakeBackend(
+            [make_button("start_btn", base + "start_btn", 1127, 636)]
+        )
+        bounds = {"left": 342, "top": 615, "right": 545, "bottom": 667}
+        toggles = [
+            make_toggle(
+                base + "toggle_bg/bg/toggles/" + name + "(Clone)/frame",
+                checked=name == "heavy",
+                raycast_top=None,
+                x=443 if name == "light" else 650,
+                y=641,
+                bounds=bounds if name == "light" else None,
+            )
+            for name in ("light", "heavy", "special")
+        ]
+        image = make_image(
+            base + "toggle_bg/bg/toggles/light(Clone)/frame",
+            "light_unsel",
+            bounds=bounds,
+        )
+        image["raycast_target"] = True
+        backend.ui = make_ui([], toggles=toggles, images=[image])
+        oracle = make_oracle(backend)
+
+        receipt = oracle.click_toggle("build/pool/light")
+        self.assertEqual(receipt.semantic_id, "build/pool/light")
+        self.assertEqual(backend.taps, [(443, 641)])
+
+        backend.ui["images"][0]["sprite"] = "unexpected"
+        with self.assertRaisesRegex(SemanticGateClosed, "not actionable"):
+            oracle.click_toggle("build/pool/light")
+        self.assertEqual(backend.taps, [(443, 641)])
 
     def test_build_queue_uses_selected_tab_capacity_and_exact_two_slot_timers(self):
         page = "root/Overlay/UIMain/blur_panel/"
@@ -553,6 +596,59 @@ class SemanticOracleTests(unittest.TestCase):
 
         backend.ui["texts"][2]["text"] = "not-a-timer"
         with self.assertRaises(SemanticGateClosed):
+            oracle.build_queue_timers()
+
+    def test_build_queue_accepts_exact_nonempty_multiline_layout(self):
+        page = "root/Overlay/UIMain/blur_panel/"
+        queue = (
+            "root/UICamera/Canvas/UIMain/BuildShipUI(Clone)/"
+            "BuildShipDetailUI1(Clone)/"
+        )
+        backend = FakeBackend(
+            [make_button("back_btn", page + "adapt/top/back_btn", 58, 53)]
+        )
+        backend.ui = make_ui(
+            [
+                make_text("2", queue + "title/value"),
+                *[
+                    make_text(
+                        value,
+                        queue
+                        + "list_mult_line/content/project_"
+                        + str(index)
+                        + "/frame/buiding/timer/Text",
+                    )
+                    for index, value in (
+                        (1, "99:99:99"),
+                        (2, "99:99:99"),
+                        (3, "00:29:38"),
+                    )
+                ],
+            ],
+            toggles=[
+                make_toggle(
+                    page + "adapt/left_length/frame/tagRoot/queue_btn",
+                    checked=True,
+                )
+            ],
+        )
+        oracle = make_oracle(backend)
+
+        self.assertEqual(
+            oracle.build_queue_timers(),
+            ("99:99:99", "99:99:99", "00:29:38"),
+        )
+        self.assertFalse(oracle.build_queue_empty())
+
+        backend.ui["texts"].append(
+            make_text(
+                "99:99:99",
+                queue
+                + "list_single_line/content/project_1/frame/buiding/timer/Text",
+            )
+        )
+        backend.ui["text_count"] += 1
+        with self.assertRaisesRegex(SemanticGateClosed, "timers are incomplete"):
             oracle.build_queue_timers()
 
     def test_campaign_menu_and_chapter_page_are_distinct_typed_states(self):
@@ -785,7 +881,7 @@ class SemanticOracleTests(unittest.TestCase):
             ],
             toggles=[
                 make_toggle(
-                    base + "toggle_bg/bg/toggles/" + name + "/frame",
+                    base + "toggle_bg/bg/toggles/" + name + "(Clone)/frame",
                     checked=name == "heavy",
                 )
                 for name in ("light", "heavy", "special")
@@ -833,6 +929,58 @@ class SemanticOracleTests(unittest.TestCase):
         self.assertIsNone(oracle.research_start_prompt_cost())
         with self.assertRaises(SemanticGateClosed):
             oracle.click("research/start/confirm")
+
+    def test_research_queue_confirm_requires_exact_irreversible_prompt(self):
+        popup = "root/Overlay/UIMain/Msgbox(Clone)/window/"
+        backend = FakeBackend(
+            [
+                make_button(
+                    "custom_button_2(Clone)",
+                    popup + "button_container/custom_button_2(Clone)",
+                ),
+                make_button(
+                    "custom_button_1(Clone)",
+                    popup + "button_container/custom_button_1(Clone)",
+                ),
+            ]
+        )
+        backend.ui = make_ui(
+            [
+                make_text(
+                    "确定将该科研项目加入研究队列吗，"
+                    "加入队列的研究项目将顺序完成，不可取消",
+                    popup + "msg_panel/content",
+                ),
+                make_text("取消", popup + "button_container/custom_button_2(Clone)/pic"),
+                make_text("确定", popup + "button_container/custom_button_1(Clone)/pic"),
+            ]
+        )
+        oracle = make_oracle(backend)
+
+        self.assertTrue(oracle.enabled("research/queue/cancel"))
+        self.assertTrue(oracle.enabled("research/queue/confirm"))
+        receipt = oracle.click("research/queue/confirm")
+        self.assertEqual(receipt.semantic_id, "research/queue/confirm")
+
+        backend.ui["texts"][0]["text"] = "是否取消当前科研项目？"
+        self.assertFalse(oracle.enabled("research/queue/confirm"))
+        with self.assertRaises(SemanticGateClosed):
+            oracle.click("research/queue/confirm")
+
+    def test_research_page_target_does_not_alias_select_technology_menu(self):
+        backend = FakeBackend(
+            [
+                make_button(
+                    "back",
+                    "root/Overlay/UIMain/SelectTechnologyUI(Clone)/"
+                    "blur_panel/adapt/top/back",
+                )
+            ]
+        )
+        oracle = make_oracle(backend)
+
+        self.assertTrue(oracle.exists("research-menu/page/back"))
+        self.assertFalse(oracle.exists("research/page/back"))
 
     def test_research_projects_follow_visual_slots_and_typed_status(self):
         page = "root/UICamera/Canvas/UIMain/TechnologyUI(Clone)"
@@ -893,7 +1041,7 @@ class SemanticOracleTests(unittest.TestCase):
             [
                 make_button("selecte_panel", selected.rstrip("/")),
                 make_button("start_btn", card + "btns/start_btn"),
-                make_button("queue_btn", card + "btns/queue_btn"),
+                make_button("join_btn", card + "btns/join_btn"),
             ]
         )
         backend.ui = make_ui(
@@ -969,6 +1117,227 @@ class SemanticOracleTests(unittest.TestCase):
             queue_state.entries[0].status,
             ResearchProjectStatus.FINISHED,
         )
+
+    def test_finished_research_cannot_close_through_detail_root(self):
+        selected = (
+            "root/UICamera/Canvas/UIMain/TechnologyUI(Clone)/"
+            "main/base_page/selecte_panel/"
+        )
+        card = selected + "technology_card/frame/"
+        backend = FakeBackend(
+            [
+                make_button("selecte_panel", selected.rstrip("/")),
+                make_button("finish_btn", card + "btns/finish_btn"),
+            ]
+        )
+        oracle = make_oracle(backend)
+
+        with self.assertRaisesRegex(
+            SemanticGateClosed,
+            "cannot close through the root",
+        ):
+            oracle.click("research/detail/root")
+
+        self.assertEqual(backend.taps, [])
+
+    def test_research_queue_add_accepts_only_reviewed_delegated_raycast(self):
+        selected = (
+            "root/UICamera/Canvas/UIMain/TechnologyUI(Clone)/"
+            "main/base_page/selecte_panel/"
+        )
+        card = selected + "technology_card/frame/"
+        join_path = card + "btns/join_btn"
+        join_bounds = {"left": 514, "top": 559, "right": 681, "bottom": 608}
+        backend = FakeBackend(
+            [
+                make_button("selecte_panel", selected.rstrip("/")),
+                make_button("stop_btn", card + "btns/stop_btn", x=407, y=583),
+                make_button(
+                    "join_btn",
+                    join_path,
+                    x=597,
+                    y=583,
+                    bounds=join_bounds,
+                    raycast_top=None,
+                ),
+            ]
+        )
+        join_image = make_image(join_path, "join_btn", bounds=join_bounds)
+        join_image["raycast_target"] = True
+        backend.ui = make_ui([], images=[join_image])
+        oracle = make_oracle(backend)
+
+        self.assertFalse(oracle.enabled("research/detail/queue"))
+        self.assertTrue(oracle.research_queue_add_available())
+        receipt = oracle.click_research_queue_add()
+        self.assertEqual(receipt.semantic_id, "research/detail/queue")
+        self.assertEqual(backend.taps, [(597, 583)])
+
+        backend.buttons = make_buttons(
+            backend.buttons["buttons"]
+            + [
+                make_button(
+                    "custom_button_1(Clone)",
+                    "root/Overlay/UIMain/Msgbox(Clone)/window/button_container/"
+                    "custom_button_1(Clone)",
+                )
+            ]
+        )
+        self.assertFalse(oracle.research_queue_add_available())
+
+    def test_dorm_back_accepts_only_reviewed_delegated_raycast(self):
+        path = (
+            "root/UICamera/Canvas/UIMain/CourtYardUI(Clone)/main/"
+            "topPanel/btns/topleft/return"
+        )
+        bounds = {"left": 15, "top": 10, "right": 85, "bottom": 79}
+        backend = FakeBackend(
+            [
+                make_button(
+                    "return",
+                    path,
+                    x=50,
+                    y=44,
+                    bounds=bounds,
+                    raycast_top=False,
+                )
+            ]
+        )
+        images = [
+            make_image(path, "back_btn_bg", bounds=bounds),
+            make_image(
+                path + "/Image",
+                "return",
+                bounds={"left": 40, "top": 29, "right": 60, "bottom": 59},
+            ),
+            make_image(
+                path + "/s",
+                "back_btn_s1",
+                bounds={"left": 10, "top": 10, "right": 90, "bottom": 87},
+            ),
+        ]
+        for image in images:
+            image["raycast_target"] = True
+        backend.ui = make_ui([], images=images)
+        oracle = make_oracle(backend)
+
+        receipt = oracle.click("dorm/page/back")
+        self.assertEqual(receipt.semantic_id, "dorm/page/back")
+        self.assertEqual(backend.taps, [(50, 44)])
+
+        backend.ui["images"][2]["sprite"] = "unexpected"
+        with self.assertRaisesRegex(SemanticGateClosed, "not actionable"):
+            oracle.click("dorm/page/back")
+        self.assertEqual(backend.taps, [(50, 44)])
+
+    def test_dorm_empty_food_cancel_requires_reviewed_popup_structure(self):
+        root = "root/OverlayCamera/Overlay/UIMain/CourtYardEmptyFoodUI(Clone)"
+        path = root + "/frame/cancel_btn"
+        bounds = {"left": 418, "top": 489, "right": 622, "bottom": 555}
+        backend = FakeBackend(
+            [
+                make_button(
+                    "cancel_btn",
+                    path,
+                    x=520,
+                    y=522,
+                    bounds=bounds,
+                    raycast_top=None,
+                )
+            ]
+        )
+        images = [
+            make_image(path, "btn_yellow", bounds=bounds),
+            make_image(
+                root + "/frame/Image",
+                "hungry",
+                bounds={"left": 356, "top": 177, "right": 924, "bottom": 465},
+            ),
+            make_image(
+                root + "/frame",
+                "msg_bg",
+                bounds={"left": 304, "top": 117, "right": 976, "bottom": 572},
+            ),
+        ]
+        for image in images:
+            image["raycast_target"] = True
+        backend.ui = make_ui([], images=images)
+        oracle = make_oracle(backend)
+
+        self.assertTrue(oracle.enabled("dorm/empty-food/cancel"))
+        receipt = oracle.click("dorm/empty-food/cancel")
+        self.assertEqual(receipt.semantic_id, "dorm/empty-food/cancel")
+        self.assertEqual(backend.taps, [(520, 522)])
+
+        backend.ui["images"][1]["sprite"] = "unexpected"
+        self.assertFalse(oracle.enabled("dorm/empty-food/cancel"))
+        with self.assertRaisesRegex(SemanticGateClosed, "not actionable"):
+            oracle.click("dorm/empty-food/cancel")
+        self.assertEqual(backend.taps, [(520, 522)])
+
+    def test_dorm_page_controls_require_reviewed_typed_structure(self):
+        page = "root/UICamera/Canvas/UIMain/CourtYardUI(Clone)/main"
+        feed = page + "/bottomPanel/bottomleft/feed_btn"
+        collect = page + "/rightPanel/onekey"
+        backend = FakeBackend(
+            [
+                make_button(
+                    "return",
+                    page + "/topPanel/btns/topleft/return",
+                    raycast_top=False,
+                ),
+                make_button(
+                    "decorate_btn",
+                    page + "/bottomPanel/bottomright/decorate_btn",
+                    raycast_top=False,
+                ),
+                make_button(
+                    "feed_btn",
+                    feed,
+                    x=304,
+                    y=631,
+                    bounds={"left": 212, "top": 564, "right": 396, "bottom": 698},
+                    raycast_top=False,
+                ),
+                make_button("onekey", collect, x=1210, y=509, raycast_top=False),
+            ]
+        )
+        one_key = make_image(
+            collect,
+            "onekey",
+            bounds={"left": 1152, "top": 453, "right": 1267, "bottom": 565},
+        )
+        one_key["raycast_target"] = True
+        backend.ui = make_ui(
+            [
+                make_text("食量", feed + "/label"),
+                make_text("0/40000", feed + "/Text"),
+            ],
+            images=[
+                make_image(
+                    feed + "/icon",
+                    "btn_feed",
+                    bounds={"left": 221, "top": 548, "right": 317, "bottom": 658},
+                ),
+                make_image(
+                    feed + "/bg",
+                    "btn_72",
+                    bounds={"left": 213, "top": 651, "right": 394, "bottom": 699},
+                ),
+                one_key,
+            ],
+        )
+        oracle = make_oracle(backend)
+
+        self.assertTrue(oracle.enabled("dorm/feed"))
+        self.assertTrue(oracle.enabled("dorm/collect"))
+        oracle.click("dorm/feed")
+        oracle.click("dorm/collect")
+        self.assertEqual(backend.taps, [(269, 603), (1210, 509)])
+
+        backend.ui["texts"][0]["text"] = "unexpected"
+        self.assertFalse(oracle.enabled("dorm/feed"))
+        self.assertFalse(oracle.enabled("dorm/collect"))
 
     def test_tactical_slots_use_typed_progress_and_countdown(self):
         page = "root/UICamera/Canvas/UIMain/NewNavalTacticsUI(Clone)/adpter/"

@@ -4,7 +4,7 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-09
 
-### G9 five bounded mutation inputs: adapter-qualified; full ALAS replay pending
+### G9 bounded task inputs: three full ALAS replays passed; Gacha recovery pending
 
 - The pinned patch now brackets the original Tactical, Research, Dorm, and
   Gacha `run()` implementations without replacing their state machines. ALAS
@@ -21,22 +21,32 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 - Dorm quick collect used its exact control. Feed input targets the food-card
   `icon_bg`, not the adjacent purchase `+`, and proved inventory
   `17783 -> 17782` plus food `0 -> 1000`.
-- Construction selected the heavy pool, cross-checked `3662` cubes and `84908`
-  coins against the exact one-order `2`-cube/`1500`-coin prompt, and reached a
-  typed queue countdown. A later read-only ALAS primitive check identified the
-  selected queue tab and timers `99:99:99` / `01:19:31`; a fresh bounded
-  context rejected that pre-existing nonempty queue as designed.
+- Complete patched commands now return `TACTICAL_RESULT=True`,
+  `RESEARCH_RESULT=True`, and `DORM_RESULT=True`, preserving ALAS navigation,
+  filtering, retry loops, and scheduling. Dorm's full replay also tolerated
+  slow CourtYard hierarchy rebuilds and a network-reconnect prompt without
+  replaying a food-card input.
+- Construction previously selected the heavy pool, cross-checked `3662` cubes
+  and `84908` coins against the exact one-order `2`-cube/`1500`-coin prompt,
+  and reached a typed queue countdown. The current full Gacha replay selected
+  Light and submitted one exact `1`-cube/`600`-coin order, but returned
+  `GACHA_RESULT=False` because the ALAS warning alias was initially allowed to
+  confirm the order one state too early. Preparation and order aliases are now
+  disjoint. The resulting natural countdown remains fail-closed to a fresh
+  task context and is neither accelerated nor collected.
 - Observer APK SHA-256 is
   `bfd782b307de51621dfd8f796962e25ffbc7bbba12b60e8204631c6ba15729fc`.
   The final G4 package/observer evidence is
   `evidence/g4-game-init-20260809T114938Z-emulator-5580`. The controller suite
-  passes `162/162`; Python compilation, diff whitespace, native observer build,
+  passes `197/197`; Python compilation, diff whitespace, native observer build,
   installation, package fingerprint, and clean application plus compilation
   of the pinned ALAS patch pass.
-- Complete patched-ALAS command replays for these four task modules remain the
-  next gate. Event/wishing-well construction, multi-order submission,
+- A corrected full Gacha command replay requires the queue to be empty again.
+  Event/wishing-well construction, multi-order submission,
   accelerating or collecting an existing queue, stage selection, map/battle
   input, and Lua state remain closed.
+
+See [G9 patched-ALAS task replay validation](g9-alas-task-replay-validation-report.md).
 
 ### G8 real ALAS reward and commission slice: clean bounded pass
 

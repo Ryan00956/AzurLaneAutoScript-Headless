@@ -619,6 +619,11 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
         "BackYardFeedUI(Clone)/BackYardFeedShopPanel(Clone)/frame/cancel_btn",
     ),
     SemanticTarget(
+        "dorm/empty-food/cancel",
+        "cancel_btn",
+        "CourtYardEmptyFoodUI(Clone)/frame/cancel_btn",
+    ),
+    SemanticTarget(
         "dorm/statistics/confirm",
         "confirm_btn",
         "BackYardStatisticsUI(Clone)/painting/confirm_btn",
@@ -686,62 +691,62 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
     SemanticTarget(
         "research-menu/page/back",
         "back",
-        "SelectTechnologyUI(Clone)/blur_panel/adapt/top/back",
+        "/SelectTechnologyUI(Clone)/blur_panel/adapt/top/back",
     ),
     SemanticTarget(
         "research-menu/research",
         "technology_btn",
-        "SelectTechnologyUI(Clone)/frame/bg/technology_btn",
+        "/SelectTechnologyUI(Clone)/frame/bg/technology_btn",
     ),
     SemanticTarget(
         "research-menu/shipyard",
         "blueprint_btn",
-        "SelectTechnologyUI(Clone)/frame/bg/blueprint_btn",
+        "/SelectTechnologyUI(Clone)/frame/bg/blueprint_btn",
     ),
     SemanticTarget(
         "research-menu/meta",
         "meta_btn",
-        "SelectTechnologyUI(Clone)/frame/bg/meta_btn",
+        "/SelectTechnologyUI(Clone)/frame/bg/meta_btn",
     ),
     SemanticTarget(
         "research/page/back",
         "back",
-        "TechnologyUI(Clone)/blur_panel/adapt/top/back",
+        "/TechnologyUI(Clone)/blur_panel/adapt/top/back",
     ),
     SemanticTarget(
         "research/queue/enter",
         "btn_queue",
-        "TechnologyUI(Clone)/blur_panel/adapt/left/btn_queue",
+        "/TechnologyUI(Clone)/blur_panel/adapt/left/btn_queue",
     ),
     SemanticTarget(
         "research/queue/claim",
         "btn_award",
-        "TechnologyUI(Clone)/blur_panel/adapt/right/btn_award",
+        "/TechnologyUI(Clone)/blur_panel/adapt/right/btn_award",
     ),
     SemanticTarget(
         "research/detail/root",
         "selecte_panel",
-        "TechnologyUI(Clone)/main/base_page/selecte_panel",
+        "/TechnologyUI(Clone)/main/base_page/selecte_panel",
     ),
     SemanticTarget(
         "research/detail/start",
         "start_btn",
-        "TechnologyUI(Clone)/main/base_page/selecte_panel/technology_card/frame/btns/start_btn",
+        "/TechnologyUI(Clone)/main/base_page/selecte_panel/technology_card/frame/btns/start_btn",
     ),
     SemanticTarget(
         "research/detail/stop",
         "stop_btn",
-        "TechnologyUI(Clone)/main/base_page/selecte_panel/technology_card/frame/btns/stop_btn",
+        "/TechnologyUI(Clone)/main/base_page/selecte_panel/technology_card/frame/btns/stop_btn",
     ),
     SemanticTarget(
         "research/detail/finish",
         "finish_btn",
-        "TechnologyUI(Clone)/main/base_page/selecte_panel/technology_card/frame/btns/finish_btn",
+        "/TechnologyUI(Clone)/main/base_page/selecte_panel/technology_card/frame/btns/finish_btn",
     ),
     SemanticTarget(
         "research/detail/queue",
-        "queue_btn",
-        "TechnologyUI(Clone)/main/base_page/selecte_panel/technology_card/frame/btns/queue_btn",
+        "join_btn",
+        "/TechnologyUI(Clone)/main/base_page/selecte_panel/technology_card/frame/btns/join_btn",
     ),
     SemanticTarget(
         "tactical/page/back",
@@ -800,6 +805,16 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
     ),
     SemanticTarget(
         "research/start/confirm",
+        "custom_button_1(Clone)",
+        "Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
+    ),
+    SemanticTarget(
+        "research/queue/cancel",
+        "custom_button_2(Clone)",
+        "Msgbox(Clone)/window/button_container/custom_button_2(Clone)",
+    ),
+    SemanticTarget(
+        "research/queue/confirm",
         "custom_button_1(Clone)",
         "Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
     ),
@@ -1019,19 +1034,19 @@ DEFAULT_TOGGLE_TARGETS: Tuple[SemanticToggleTarget, ...] = (
         "build/pool/light",
         "frame",
         "BuildShipUI(Clone)/BuildShipPoolsPageUI(Clone)/gallery/toggle_bg/bg/"
-        "toggles/light/frame",
+        "toggles/light(Clone)/frame",
     ),
     SemanticToggleTarget(
         "build/pool/heavy",
         "frame",
         "BuildShipUI(Clone)/BuildShipPoolsPageUI(Clone)/gallery/toggle_bg/bg/"
-        "toggles/heavy/frame",
+        "toggles/heavy(Clone)/frame",
     ),
     SemanticToggleTarget(
         "build/pool/special",
         "frame",
         "BuildShipUI(Clone)/BuildShipPoolsPageUI(Clone)/gallery/toggle_bg/bg/"
-        "toggles/special/frame",
+        "toggles/special(Clone)/frame",
     ),
     SemanticToggleTarget(
         "mail/manage/all",
@@ -1253,8 +1268,13 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
             "dorm/feed/item/50005",
             "dorm/feed/item/50006",
             "dorm/feed/shop/cancel",
-            "dorm/feed/shop/cancel",
+            "dorm/empty-food/cancel",
         ),
+    ),
+    BlockerRule(
+        "dorm-empty-food",
+        "/CourtYardEmptyFoodUI(Clone)/",
+        ("dorm/empty-food/cancel",),
     ),
     BlockerRule(
         "dorm-feed-shop",
@@ -1305,6 +1325,8 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
             "reward/award-info1/close",
             "research/start/cancel",
             "research/start/confirm",
+            "research/queue/cancel",
+            "research/queue/confirm",
         ),
     ),
     BlockerRule(
@@ -1316,6 +1338,8 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
             "tactical/course/confirm",
             "research/start/cancel",
             "research/start/confirm",
+            "research/queue/cancel",
+            "research/queue/confirm",
             "overlay/network-reconnect/cancel",
             "overlay/network-reconnect/confirm",
             "build/warning/cancel",
@@ -3385,6 +3409,28 @@ class SemanticOracle:
             coins_per_build=values["coins"],
         )
 
+    def build_coins_owned(self) -> int:
+        """Read the exact global coin counter while the pool page is proven."""
+
+        self.build_selected_pool()
+        state = self.read_ui_state()
+        suffix = "Overlay/UIMain/ResPanel(Clone)/frame/gold/gold_value"
+        matches = tuple(
+            item
+            for item in state.texts
+            if item.path.endswith(suffix)
+            and item.active_in_hierarchy
+            and item.active_and_enabled
+            and not item.truncated
+            and item.bounds is not None
+            and re.fullmatch(r"[0-9]+", item.text.strip()) is not None
+        )
+        if len(matches) != 1:
+            raise SemanticGateClosed(
+                "construction coin counter is absent or ambiguous"
+            )
+        return int(matches[0].text.strip())
+
     def build_submit_state(self) -> BuildSubmitState:
         """Read and cross-check the open construction confirmation dialog."""
 
@@ -3479,22 +3525,42 @@ class SemanticOracle:
         )
         if len(capacity) != 1 or capacity[0].text.strip() != "2":
             raise SemanticGateClosed("construction queue capacity is unexpected")
-        timer_pattern = re.compile(
-            r"BuildShipDetailUI1\(Clone\)/list_single_line/content/"
-            r"project_([12])/frame/buiding/timer/Text$"
-        )
-        timers: Dict[int, str] = {}
+        timer_patterns = {
+            "single": re.compile(
+                r"BuildShipDetailUI1\(Clone\)/list_single_line/content/"
+                r"project_([12])/frame/buiding/timer/Text$"
+            ),
+            "multi": re.compile(
+                r"BuildShipDetailUI1\(Clone\)/list_mult_line/content/"
+                r"project_([123])/frame/buiding/timer/Text$"
+            ),
+        }
+        timers_by_layout: Dict[str, Dict[int, str]] = {
+            "single": {},
+            "multi": {},
+        }
         for item in ui_state.texts:
-            match = timer_pattern.search(item.path)
+            layout_match = next(
+                (
+                    (layout, pattern.search(item.path))
+                    for layout, pattern in timer_patterns.items()
+                    if pattern.search(item.path) is not None
+                ),
+                None,
+            )
+            if layout_match is None:
+                continue
+            layout, match = layout_match
+            assert match is not None
             if (
-                match is None
-                or not item.active_in_hierarchy
+                not item.active_in_hierarchy
                 or not item.active_and_enabled
                 or item.truncated
                 or item.bounds is None
             ):
                 continue
             index = int(match.group(1))
+            timers = timers_by_layout[layout]
             if index in timers:
                 raise SemanticGateClosed("construction queue timer is ambiguous")
             value = item.text.strip()
@@ -3503,9 +3569,18 @@ class SemanticOracle:
             ) is None:
                 raise SemanticGateClosed("construction queue timer is malformed")
             timers[index] = value
-        if tuple(sorted(timers)) != (1, 2):
+        observed = tuple(
+            (layout, timers)
+            for layout, timers in timers_by_layout.items()
+            if timers
+        )
+        if len(observed) != 1:
             raise SemanticGateClosed("construction queue timers are incomplete")
-        return tuple(timers[index] for index in (1, 2))
+        layout, timers = observed[0]
+        expected = (1, 2) if layout == "single" else (1, 2, 3)
+        if tuple(sorted(timers)) != expected:
+            raise SemanticGateClosed("construction queue timers are incomplete")
+        return tuple(timers[index] for index in expected)
 
     def build_queue_empty(self) -> bool:
         return all(value == "99:99:99" for value in self.build_queue_timers())
@@ -3805,7 +3880,11 @@ class SemanticOracle:
 
         if item_id not in range(50001, 50007):
             raise ValueError("dorm food item id must be 50001 through 50006")
-        feed = self.dorm_feed_state()
+        feed = self._retry_transition_read(
+            self.dorm_feed_state,
+            attempts=20,
+            interval_seconds=0.25,
+        )
         matches = tuple(item for item in feed.items if item.item_id == item_id)
         if len(matches) != 1:
             raise SemanticGateClosed("dorm feed item identity is ambiguous")
@@ -4475,7 +4554,12 @@ class SemanticOracle:
             matches = self._matches(button_state, semantic_id)
             if len(matches) > 1:
                 raise SemanticGateClosed("research detail action is ambiguous: " + key)
-            actions[key] = bool(matches and matches[0].actionable)
+            if key == "queue":
+                actions[key] = self._research_queue_add_proven(
+                    button_state, ui_state=ui_state
+                )
+            else:
+                actions[key] = bool(matches and matches[0].actionable)
         return ResearchDetailState(
             code=code,
             subtitle=subtitle,
@@ -4493,6 +4577,316 @@ class SemanticOracle:
             is_running=actions["stop"],
             is_finished=actions["finish"],
         )
+
+    def _research_queue_add_proven(
+        self, state: OracleState, ui_state: Optional[UIState] = None
+    ) -> bool:
+        matches = self._matches(state, "research/detail/queue")
+        if len(matches) > 1:
+            raise SemanticGateClosed("research queue-add target is ambiguous")
+        if not matches:
+            return False
+        target = matches[0]
+        if self._blocking_rules(state, "research/detail/queue"):
+            return False
+        if target.actionable:
+            return True
+        if (
+            target.raycast_top is not None
+            or not target.active_in_hierarchy
+            or not target.active_and_enabled
+            or not target.interactable
+            or target.point is None
+            or target.bounds is None
+            or not target.bounds.contains(target.point)
+        ):
+            return False
+
+        # The live 9.7.10 join_btn delegates raycasts to its same-path Image,
+        # so the observer cannot assign a top-raycast result to the parent
+        # Button.  Admit only this reviewed structure while a concurrently
+        # actionable stop button proves that the selected project is running.
+        stop = self._matches(state, "research/detail/stop")
+        root = self._matches(state, "research/detail/root")
+        if (
+            len(stop) != 1
+            or not stop[0].actionable
+            or len(root) != 1
+            or not root[0].actionable
+        ):
+            return False
+        if ui_state is None:
+            ui_state = self.read_ui_state()
+        if (
+            ui_state.image_truncated
+            or ui_state.generation < state.generation
+            or ui_state.generation > state.generation + 2
+        ):
+            raise SemanticGateClosed("research queue-add snapshots are incomplete")
+        images = tuple(
+            image
+            for image in ui_state.images
+            if image.path == target.path
+            and image.sprite == "join_btn"
+            and image.active_in_hierarchy
+            and image.active_and_enabled
+            and image.raycast_target
+            and not image.truncated
+            and image.bounds is not None
+            and image.bounds.contains(target.point)
+        )
+        if len(images) > 1:
+            raise SemanticGateClosed("research queue-add image is ambiguous")
+        return len(images) == 1
+
+    def research_queue_add_available(self) -> bool:
+        state = self.read_state()
+        return self._research_queue_add_proven(state)
+
+    def click_research_queue_add(self) -> ActionReceipt:
+        state = self.read_state()
+        target = self._unique(state, "research/detail/queue")
+        if not self._research_queue_add_proven(state):
+            raise SemanticGateClosed("research queue-add input is not proven")
+        assert target.point is not None
+        assert target.bounds is not None
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("foreground changed before research queue-add")
+        self._tap(int(round(target.point.x)), int(round(target.point.y)))
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("foreground changed after research queue-add")
+        return ActionReceipt(
+            semantic_id="research/detail/queue",
+            generation=state.generation,
+            point=target.point,
+            bounds=target.bounds,
+            path=target.path,
+        )
+
+    def _dorm_back_delegated_raycast_proven(
+        self, state: OracleState, ui_state: Optional[UiState] = None
+    ) -> bool:
+        matches = self._matches(state, "dorm/page/back")
+        if len(matches) > 1:
+            raise SemanticGateClosed("dorm back target is ambiguous")
+        if not matches:
+            return False
+        target = matches[0]
+        if self._blocking_rules(state, "dorm/page/back"):
+            return False
+        if target.actionable:
+            return True
+        if (
+            target.raycast_top is not False
+            or not target.active_in_hierarchy
+            or not target.active_and_enabled
+            or not target.interactable
+            or target.point is None
+            or target.bounds is None
+            or not target.bounds.contains(target.point)
+        ):
+            return False
+
+        # CourtYardUI's reviewed return control delegates raycasts to the
+        # decorative Images on the Button and its children.  Keep this escape
+        # hatch local to the exact path and exact 9.7.10 sprite composition.
+        if ui_state is None:
+            ui_state = self.read_ui_state()
+        if (
+            ui_state.image_truncated
+            or ui_state.generation < state.generation
+            or ui_state.generation > state.generation + 2
+        ):
+            raise SemanticGateClosed("dorm back snapshots are incomplete")
+        expected = {
+            target.path: "back_btn_bg",
+            target.path + "/Image": "return",
+            target.path + "/s": "back_btn_s1",
+        }
+        proven = set()
+        for image in ui_state.images:
+            sprite = expected.get(image.path)
+            if sprite is None or image.sprite != sprite:
+                continue
+            if (
+                not image.active_in_hierarchy
+                or not image.active_and_enabled
+                or not image.raycast_target
+                or image.truncated
+                or image.bounds is None
+                or not image.bounds.contains(target.point)
+            ):
+                return False
+            if image.path in proven:
+                raise SemanticGateClosed("dorm back image is ambiguous")
+            proven.add(image.path)
+        return proven == set(expected)
+
+    def _dorm_empty_food_cancel_proven(
+        self, state: OracleState, ui_state: Optional[UiState] = None
+    ) -> bool:
+        matches = self._matches(state, "dorm/empty-food/cancel")
+        if len(matches) > 1:
+            raise SemanticGateClosed("dorm empty-food cancel target is ambiguous")
+        if not matches:
+            return False
+        target = matches[0]
+        if self._blocking_rules(state, "dorm/empty-food/cancel"):
+            return False
+        if (
+            target.raycast_top is not None
+            or not target.active_in_hierarchy
+            or not target.active_and_enabled
+            or not target.interactable
+            or target.point is None
+            or target.bounds is None
+            or not target.bounds.contains(target.point)
+        ):
+            return False
+        if ui_state is None:
+            ui_state = self.read_ui_state()
+        if (
+            ui_state.image_truncated
+            or ui_state.generation < state.generation
+            or ui_state.generation > state.generation + 2
+        ):
+            raise SemanticGateClosed("dorm empty-food snapshots are incomplete")
+        root = target.path.rsplit("/frame/cancel_btn", 1)[0]
+        expected = {
+            target.path: "btn_yellow",
+            root + "/frame/Image": "hungry",
+            root + "/frame": "msg_bg",
+        }
+        proven = set()
+        for image in ui_state.images:
+            sprite = expected.get(image.path)
+            if sprite is None or image.sprite != sprite:
+                continue
+            if (
+                not image.active_in_hierarchy
+                or not image.active_and_enabled
+                or not image.raycast_target
+                or image.truncated
+                or image.bounds is None
+            ):
+                return False
+            if image.path == target.path and not image.bounds.contains(target.point):
+                return False
+            if image.path in proven:
+                raise SemanticGateClosed("dorm empty-food image is ambiguous")
+            proven.add(image.path)
+        return proven == set(expected)
+
+    def dorm_empty_food_cancel_available(self) -> bool:
+        state = self.read_state()
+        return self._dorm_empty_food_cancel_proven(state)
+
+    def _dorm_page_control_proven(
+        self,
+        state: OracleState,
+        semantic_id: str,
+        ui_state: Optional[UiState] = None,
+    ) -> bool:
+        if semantic_id not in ("dorm/feed", "dorm/collect"):
+            raise ValueError("unsupported delegated dorm page control")
+        matches = self._matches(state, semantic_id)
+        if len(matches) > 1:
+            raise SemanticGateClosed("dorm page control is ambiguous")
+        if not matches:
+            return False
+        target = matches[0]
+        if self._blocking_rules(state, semantic_id):
+            return False
+        if target.actionable:
+            return True
+        if (
+            target.raycast_top is not False
+            or not target.active_in_hierarchy
+            or not target.active_and_enabled
+            or not target.interactable
+            or target.point is None
+            or target.bounds is None
+            or not target.bounds.contains(target.point)
+        ):
+            return False
+        page_back = self._matches(state, "dorm/page/back")
+        manage = self._matches(state, "dorm/page/manage")
+        if (
+            len(page_back) != 1
+            or not page_back[0].active_in_hierarchy
+            or len(manage) != 1
+            or not manage[0].active_in_hierarchy
+        ):
+            return False
+        if ui_state is None:
+            ui_state = self.read_ui_state()
+        if (
+            ui_state.image_truncated
+            or ui_state.snapshot.get("text_truncated") is not False
+            or ui_state.generation < state.generation
+            or ui_state.generation > state.generation + 2
+        ):
+            raise SemanticGateClosed("dorm page-control snapshots are incomplete")
+
+        feed_root = target.path if semantic_id == "dorm/feed" else target.path.rsplit(
+            "/rightPanel/onekey", 1
+        )[0] + "/bottomPanel/bottomleft/feed_btn"
+        labels = tuple(
+            value
+            for value in ui_state.texts
+            if value.path in (feed_root + "/label", feed_root + "/Text")
+            and value.active_in_hierarchy
+            and value.active_and_enabled
+            and not value.truncated
+        )
+        if len(labels) != 2:
+            return False
+        by_path = {value.path: value.text for value in labels}
+        if by_path.get(feed_root + "/label") != "食量" or re.fullmatch(
+            r"[0-9]+/[1-9][0-9]*", by_path.get(feed_root + "/Text", "")
+        ) is None:
+            return False
+
+        if semantic_id == "dorm/feed":
+            expected_images = {
+                target.path + "/icon": "btn_feed",
+                target.path + "/bg": "btn_72",
+            }
+            images = tuple(
+                image
+                for image in ui_state.images
+                if image.path in expected_images
+                and image.sprite == expected_images[image.path]
+                and image.active_in_hierarchy
+                and image.active_and_enabled
+                and not image.truncated
+                and image.bounds is not None
+                and target.bounds.contains(
+                    Point(
+                        (image.bounds.left + image.bounds.right) / 2.0,
+                        (image.bounds.top + image.bounds.bottom) / 2.0,
+                    )
+                )
+            )
+            return len(images) == len(expected_images) and len(
+                {image.path for image in images}
+            ) == len(expected_images)
+
+        images = tuple(
+            image
+            for image in ui_state.images
+            if image.path == target.path
+            and image.sprite == "onekey"
+            and image.active_in_hierarchy
+            and image.active_and_enabled
+            and image.raycast_target
+            and not image.truncated
+            and image.bounds is not None
+            and image.bounds.contains(target.point)
+        )
+        if len(images) > 1:
+            raise SemanticGateClosed("dorm collect image is ambiguous")
+        return len(images) == 1
 
     def research_queue_state(self) -> ResearchQueueState:
         """Read all non-empty queue slots and the reviewed claim control."""
@@ -4789,6 +5183,74 @@ class SemanticOracle:
     def toggle_selected(self, semantic_id: str) -> bool:
         return self.toggle_state(semantic_id).checked
 
+    def _build_pool_delegated_raycast_proven(
+        self,
+        button_state: OracleState,
+        ui_state: UiState,
+        semantic_id: str,
+    ) -> bool:
+        expected_sprites = {
+            "build/pool/light": "light_unsel",
+            "build/pool/heavy": "heavy_unsel",
+            "build/pool/special": "spec_unsel",
+        }
+        expected_sprite = expected_sprites.get(semantic_id)
+        if expected_sprite is None:
+            return False
+        matches = self._toggle_matches(ui_state, semantic_id)
+        if len(matches) > 1:
+            raise SemanticGateClosed("construction pool Toggle is ambiguous")
+        if not matches:
+            return False
+        toggle = matches[0]
+        if (
+            toggle.checked
+            or toggle.raycast_top is not None
+            or not toggle.active_in_hierarchy
+            or not toggle.active_and_enabled
+            or not toggle.interactable
+            or toggle.point is None
+            or toggle.bounds is None
+            or not toggle.bounds.contains(toggle.point)
+            or self._blocking_rules(button_state, semantic_id)
+        ):
+            return False
+
+        # The live 9.7.10 construction-pool Toggle delegates its raycast to
+        # the same-path Image.  The observer consequently reports no top
+        # result on either component.  Admit only an unchecked, exact pool
+        # Toggle with its exact unselected sprite while the pool start Button
+        # proves the surrounding page.
+        page_markers = tuple(
+            button
+            for button in button_state.buttons
+            if button.name == "start_btn"
+            and button.path.endswith(
+                "BuildShipUI(Clone)/BuildShipPoolsPageUI(Clone)/gallery/start_btn"
+            )
+            and button.active_in_hierarchy
+            and button.active_and_enabled
+        )
+        if len(page_markers) != 1:
+            return False
+        images = tuple(
+            image
+            for image in ui_state.images
+            if image.path == toggle.path
+            and image.name == "frame"
+            and image.sprite == expected_sprite
+            and image.active_in_hierarchy
+            and image.active_and_enabled
+            and image.raycast_target
+            and image.raycast_top is None
+            and not image.truncated
+            and image.bounds is not None
+            and image.bounds.contains(toggle.point)
+        )
+        if len(images) > 1:
+            raise SemanticGateClosed("construction pool Image is ambiguous")
+        return len(images) == 1
+
     def click_toggle(self, semantic_id: str) -> ActionReceipt:
         button_state = self.read_state()
         ui_state = self.read_ui_state()
@@ -4800,7 +5262,12 @@ class SemanticOracle:
         ):
             raise SemanticGateClosed("button and toggle snapshots are not coherent")
         matches = self._toggle_matches(ui_state, semantic_id)
-        if len(matches) != 1 or not matches[0].actionable:
+        delegated_build_pool = self._build_pool_delegated_raycast_proven(
+            button_state, ui_state, semantic_id
+        )
+        if len(matches) != 1 or (
+            not matches[0].actionable and not delegated_build_pool
+        ):
             raise SemanticGateClosed("semantic toggle target is not actionable")
         toggle = matches[0]
         if self._blocking_rules(button_state, semantic_id):
@@ -5084,6 +5551,18 @@ class SemanticOracle:
         resource_id = {"物资": "gold", "心智魔方": "20001"}[match.group(1)]
         return resource_id, int(match.group(2))
 
+    def _research_queue_prompt_matches(self, state: OracleState) -> bool:
+        parts = self._msgbox_prompt_parts(state)
+        if parts is None:
+            return False
+        plain, cancel, confirm = parts
+        return bool(
+            plain
+            == "确定将该科研项目加入研究队列吗，加入队列的研究项目将顺序完成，不可取消"
+            and cancel == "取消"
+            and confirm == "确定"
+        )
+
     def research_start_prompt_cost(self) -> Optional[Tuple[str, int]]:
         state = self.read_state()
         target = self._matches(state, "research/start/confirm")
@@ -5128,6 +5607,8 @@ class SemanticOracle:
             return bool(matches and self._tactical_course_prompt_matches(state))
         if semantic_id in ("research/start/cancel", "research/start/confirm"):
             return bool(matches and self._research_start_prompt_cost(state) is not None)
+        if semantic_id in ("research/queue/cancel", "research/queue/confirm"):
+            return bool(matches and self._research_queue_prompt_matches(state))
         return bool(matches)
 
     def enabled(self, semantic_id: str) -> bool:
@@ -5138,6 +5619,10 @@ class SemanticOracle:
         matches = self._matches(state, semantic_id)
         if len(matches) > 1:
             raise SemanticGateClosed("semantic target mapping is ambiguous")
+        if semantic_id == "dorm/empty-food/cancel":
+            return self._dorm_empty_food_cancel_proven(state)
+        if semantic_id in ("dorm/feed", "dorm/collect"):
+            return self._dorm_page_control_proven(state, semantic_id)
         if (
             semantic_id == "tactical/continue/cancel"
             and not self._tactical_continue_prompt_matches(state)
@@ -5164,6 +5649,11 @@ class SemanticOracle:
         if (
             semantic_id in ("research/start/cancel", "research/start/confirm")
             and self._research_start_prompt_cost(state) is None
+        ):
+            return False
+        if (
+            semantic_id in ("research/queue/cancel", "research/queue/confirm")
+            and not self._research_queue_prompt_matches(state)
         ):
             return False
         return bool(
@@ -5319,6 +5809,18 @@ class SemanticOracle:
     def click(self, semantic_id: str) -> ActionReceipt:
         state = self.read_state()
         target = self._unique(state, semantic_id)
+        dorm_back_delegated = (
+            semantic_id == "dorm/page/back"
+            and self._dorm_back_delegated_raycast_proven(state)
+        )
+        dorm_empty_food_cancel = (
+            semantic_id == "dorm/empty-food/cancel"
+            and self._dorm_empty_food_cancel_proven(state)
+        )
+        dorm_page_control = (
+            semantic_id in ("dorm/feed", "dorm/collect")
+            and self._dorm_page_control_proven(state, semantic_id)
+        )
         if (
             semantic_id == "tactical/continue/cancel"
             and not self._tactical_continue_prompt_matches(state)
@@ -5347,9 +5849,55 @@ class SemanticOracle:
             and self._research_start_prompt_cost(state) is None
         ):
             raise SemanticGateClosed("research start prompt identity is not proven")
-        if not target.actionable or target.point is None or target.bounds is None:
+        if (
+            semantic_id in ("research/queue/cancel", "research/queue/confirm")
+            and not self._research_queue_prompt_matches(state)
+        ):
+            raise SemanticGateClosed("research queue prompt identity is not proven")
+        if semantic_id == "research/detail/root" and any(
+            candidate.actionable
+            for candidate in self._matches(state, "research/detail/finish")
+        ):
+            raise SemanticGateClosed(
+                "research detail cannot close through the root while finish is actionable"
+            )
+        if (
+            not target.actionable
+            and not dorm_back_delegated
+            and not dorm_empty_food_cancel
+            and not dorm_page_control
+        ) or target.point is None or target.bounds is None:
             raise SemanticGateClosed("semantic target is not actionable")
         point = target.point
+        if dorm_page_control:
+            ui_state = self.read_ui_state()
+            if not self._dorm_page_control_proven(
+                state, semantic_id, ui_state=ui_state
+            ):
+                raise SemanticGateClosed("dorm page control changed before input")
+            image_path = (
+                target.path + "/icon"
+                if semantic_id == "dorm/feed"
+                else target.path
+            )
+            image_sprite = "btn_feed" if semantic_id == "dorm/feed" else "onekey"
+            click_images = tuple(
+                image
+                for image in ui_state.images
+                if image.path == image_path
+                and image.sprite == image_sprite
+                and image.bounds is not None
+            )
+            if len(click_images) != 1:
+                raise SemanticGateClosed("dorm page-control click image is ambiguous")
+            click_bounds = click_images[0].bounds
+            assert click_bounds is not None
+            point = Point(
+                (click_bounds.left + click_bounds.right) / 2.0,
+                (click_bounds.top + click_bounds.bottom) / 2.0,
+            )
+            if not target.bounds.contains(point):
+                raise SemanticGateClosed("dorm page-control click point is invalid")
         if (
             semantic_id == "research/queue/claim"
             and math.isclose(point.x, float(self.fingerprint.width), abs_tol=0.01)

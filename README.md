@@ -51,7 +51,10 @@ enabling generic gestures. Tactical course assignment and bounded research
 reward/start now have live passes while preserving the original ALAS state
 machines. Dorm collect and corrected food-card input have live passes, as does
 one bounded heavy-pool construction submit with a typed queue countdown. All
-of these mutations remain default-closed and single-invocation qualified. The
+of these mutations remain default-closed and single-invocation qualified.
+Complete patched commands now pass for Tactical, Research, and Dorm. Gacha's
+warning/order phases are separately typed after a first full replay exposed a
+phase-alias bug; its corrected full replay still requires an empty queue. The
 visible campaign chapter remains typed/read-only.
 Lua/game-state coverage, stage selection, sortie, battle state, weekly-only
 end-to-end coverage, and full unattended ALAS task coverage remain open.
