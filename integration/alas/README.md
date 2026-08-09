@@ -9,6 +9,8 @@ ALAS behavior:
 - `ModuleBase.match_template_color()` and `image_color_count()` route the
   remaining reward-state observations to the same adapter.
 - `Control.click()` routes mapped clicks to the observer-derived ADB point.
+- `Ocr.ocr()` resolves reviewed OCR rectangles from typed Unity text while a
+  semantic session is active; it never silently uses pixels in semantic mode.
 - Raw multi-click, long-click, swipe, drag, and low-level click dispatch are
   rejected while semantic mode is active.
 - `Reward.reward_mission()` only brackets one adapter context. The original
@@ -51,12 +53,13 @@ loop while `GET_ITEMS_1`/`GET_ITEMS_2` are translated to exactly one reviewed
 observe the claimable state but the first claim action fails closed before ADB
 input.
 
-The typed observer does not yet expose the mission red-dot Image. In semantic
-mode, an explicitly scheduled daily run uses the proven main task object as
-permission to inspect the default task page. The default sidebar state
-is accepted only after that exact entry click and a proven `TaskScene` page.
-Weekly-only runs, weekly-tab input, numeric-row claiming, ship-reward popups,
-and empty-page inference remain closed.
+The typed observer exposes the six mission sidebar Images with exact selected
+and unselected sprite pairs. ALAS's existing Navbar remains the state-machine
+owner; reads and clicks are translated to those reviewed Images. A live adapter
+loop selected weekly, proved the selected sprite, returned to all, and exited
+the task page. Positive mission red-dot behavior is not yet proven. Weekly-only
+full reward runs, numeric-row claiming, ship-reward popups, and empty-page
+inference remain closed.
 
 To stage this against a compatible ALAS checkout:
 
@@ -72,6 +75,6 @@ Do not enable unattended ALAS operation yet. The earlier default-page probe
 proved the semantic no-claim and one controlled claim-all primitives. The new
 ALAS-owned state-machine wiring has unit, syntax, lifecycle, and pinned-patch
 application coverage, but still needs a fresh live no-claim/claim revalidation.
-Numeric-row claiming, weekly-tab traversal, campaign maps, battle state, other
-reward popups, scroll/drag semantics, and all other task flows remain
-fail-closed.
+The mission sidebar and typed text have their narrower live adapter evidence;
+numeric-row claiming, campaign maps, battle state, other reward popups,
+scroll/drag semantics, and all other task flows remain fail-closed.

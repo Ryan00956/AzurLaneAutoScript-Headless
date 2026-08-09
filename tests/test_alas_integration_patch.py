@@ -37,6 +37,17 @@ class AlasIntegrationPatchTests(unittest.TestCase):
         ):
             self.assertIn(operation, self.patch_text)
 
+    def test_ocr_layer_uses_context_bound_typed_text(self):
+        self.assertIn("diff --git a/module/ocr/ocr.py", self.patch_text)
+        self.assertIn("bind_semantic_session", self.patch_text)
+        self.assertIn("current_semantic_session", self.patch_text)
+        self.assertIn("semantic_session.ocr_text(", self.patch_text)
+        self.assertIn("direct OCR without screen areas", self.patch_text)
+        self.assertNotIn(
+            "-        result_list = self.cnocr.atomic_ocr_for_single_lines",
+            self.patch_text,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

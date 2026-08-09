@@ -20,6 +20,7 @@ from typing import Any, Callable, Dict, Iterable, Mapping, Optional, Sequence, T
 
 OBSERVER_SCHEMA = "alas-headless.observer/v1"
 BUTTON_SCHEMA = "alas-headless.buttons/v1"
+UI_SCHEMA = "alas-headless.ui/v1"
 
 
 class SemanticOracleError(RuntimeError):
@@ -64,6 +65,14 @@ class SemanticTarget:
     semantic_id: str
     name: str
     path_suffix: str
+
+
+@dataclass(frozen=True)
+class SemanticImageTarget:
+    semantic_id: str
+    path_parent_suffix: str
+    selected_sprite: str
+    inactive_sprite: str
 
 
 @dataclass(frozen=True)
@@ -116,6 +125,60 @@ class ButtonState:
             and self.bounds is not None
             and self.bounds.contains(self.point)
         )
+
+
+@dataclass(frozen=True)
+class ToggleState:
+    name: str
+    path: str
+    active_in_hierarchy: bool
+    active_and_enabled: bool
+    interactable: bool
+    checked: bool
+    point: Optional[Point]
+    bounds: Optional[Bounds]
+    raw: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class TextState:
+    kind: str
+    name: str
+    path: str
+    text: str
+    active_in_hierarchy: bool
+    active_and_enabled: bool
+    truncated: bool
+    bounds: Optional[Bounds]
+    raw: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class ImageState:
+    name: str
+    path: str
+    sprite: str
+    active_in_hierarchy: bool
+    active_and_enabled: bool
+    raycast_target: bool
+    raycast_top: Optional[bool]
+    color: Tuple[float, float, float, float]
+    fill_amount: float
+    truncated: bool
+    bounds: Optional[Bounds]
+    raw: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class UiState:
+    generation: int
+    method_mask: int
+    skipped_count: int
+    image_truncated: bool
+    snapshot: Mapping[str, Any]
+    toggles: Tuple[ToggleState, ...]
+    texts: Tuple[TextState, ...]
+    images: Tuple[ImageState, ...]
 
 
 @dataclass(frozen=True)
@@ -216,6 +279,24 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
 )
 
 
+DEFAULT_IMAGE_TARGETS: Tuple[SemanticImageTarget, ...] = tuple(
+    SemanticImageTarget(
+        "task/nav/" + semantic_name,
+        "TaskScene(Clone)/blur_panel/adapt/left_length/frame/tagRoot/" + unity_name,
+        selected_sprite,
+        inactive_sprite,
+    )
+    for semantic_name, unity_name, selected_sprite, inactive_sprite in (
+        ("all", "all", "icon_all_sel", "icon_all_unsel"),
+        ("main", "scenario", "icon_main_sel", "icon_main_unsel"),
+        ("side", "branch", "icon_brach_sel", "icon_brach_unsel"),
+        ("daily", "routine", "icon_daily_sel", "icon_daily_unsel"),
+        ("weekly", "weekly", "icon_week_sel", "icon_week_unsel"),
+        ("event", "activity", "icon_activity_sel", "icon_activity_unsel"),
+    )
+)
+
+
 DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
     BlockerRule("loading", "/UIOverlay/Loading(Clone)"),
     BlockerRule(
@@ -257,7 +338,11 @@ class TcpObserverTransport:
         self._maximum_response_bytes = maximum_response_bytes
 
     def request(self, request_line: str) -> Mapping[str, Any]:
-        if request_line not in ("GET /v1/snapshot\n", "GET /v1/buttons\n"):
+        if request_line not in (
+            "GET /v1/snapshot\n",
+            "GET /v1/buttons\n",
+            "GET /v1/ui\n",
+        ):
             raise ObserverTransportError("client refused an unsupported observer request")
         try:
             with socket.create_connection(
@@ -477,6 +562,7 @@ class SemanticOracle:
         tap: Callable[[int, int], None],
         fingerprint: OracleFingerprint,
         targets: Iterable[SemanticTarget] = DEFAULT_TARGETS,
+        image_targets: Iterable[SemanticImageTarget] = DEFAULT_IMAGE_TARGETS,
         blockers: Iterable[BlockerRule] = DEFAULT_BLOCKERS,
         monotonic: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
@@ -486,6 +572,7 @@ class SemanticOracle:
         self._tap = tap
         self.fingerprint = fingerprint
         self._targets = self._index_targets(targets)
+        self._image_targets = self._index_image_targets(image_targets)
         self._blockers = tuple(blockers)
         self._monotonic = monotonic
         self._sleep = sleep
@@ -505,6 +592,27 @@ class SemanticOracle:
         return indexed
 
     @staticmethod
+    def _index_image_targets(
+        targets: Iterable[SemanticImageTarget],
+    ) -> Dict[str, SemanticImageTarget]:
+        indexed: Dict[str, SemanticImageTarget] = {}
+        for target in targets:
+            if target.semantic_id in indexed:
+                raise ValueError(
+                    "duplicate semantic image target id: {0}".format(
+                        target.semantic_id
+                    )
+                )
+            if (
+                not target.path_parent_suffix
+                or not target.selected_sprite
+                or not target.inactive_sprite
+            ):
+                raise ValueError("semantic image target mappings must be non-empty")
+            indexed[target.semantic_id] = target
+        return indexed
+
+    @staticmethod
     def _integer(value: Any, field: str) -> int:
         if isinstance(value, bool) or not isinstance(value, int):
             raise SemanticGateClosed("invalid integer field: {0}".format(field))
@@ -519,11 +627,15 @@ class SemanticOracle:
             raise SemanticGateClosed("non-finite numeric field: {0}".format(field))
         return result
 
-    def _validate_identity(self, value: Mapping[str, Any], semantic: bool) -> None:
+    def _validate_identity(
+        self,
+        value: Mapping[str, Any],
+        semantic_schema: Optional[str] = None,
+    ) -> None:
         if value.get("protocol_schema") != OBSERVER_SCHEMA:
             raise SemanticGateClosed("observer protocol schema mismatch")
-        if semantic and value.get("semantic_schema") != BUTTON_SCHEMA:
-            raise SemanticGateClosed("button schema mismatch")
+        if semantic_schema is not None and value.get("semantic_schema") != semantic_schema:
+            raise SemanticGateClosed("semantic schema mismatch")
         if value.get("status") != "ok":
             raise SemanticGateClosed("observer status is not ok")
         if value.get("package") != self.fingerprint.package:
@@ -589,6 +701,122 @@ class SemanticOracle:
             raw=raw,
         )
 
+    def _parse_toggle(self, raw: Any) -> ToggleState:
+        button = self._parse_button(raw)
+        checked = raw.get("checked") if isinstance(raw, dict) else None
+        if not isinstance(checked, bool):
+            raise SemanticGateClosed("toggle state is malformed")
+        return ToggleState(
+            name=button.name,
+            path=button.path,
+            active_in_hierarchy=button.active_in_hierarchy,
+            active_and_enabled=button.active_and_enabled,
+            interactable=button.interactable,
+            checked=checked,
+            point=button.point,
+            bounds=button.bounds,
+            raw=raw,
+        )
+
+    def _parse_text(self, raw: Any) -> TextState:
+        if not isinstance(raw, dict):
+            raise SemanticGateClosed("text record is not an object")
+        kind = raw.get("kind")
+        name = raw.get("name")
+        path = raw.get("path")
+        value = raw.get("text")
+        if kind not in ("ugui-text", "tmp-text"):
+            raise SemanticGateClosed("text kind is not supported")
+        if (
+            not isinstance(name, str)
+            or not isinstance(path, str)
+            or not isinstance(value, str)
+            or not name
+            or not path
+        ):
+            raise SemanticGateClosed("text identity is incomplete")
+        flags = self._integer(raw.get("flags"), "text flags")
+        bounds_value = raw.get("adb_bounds")
+        bounds = None
+        if bounds_value is not None:
+            if not isinstance(bounds_value, dict):
+                raise SemanticGateClosed("text bounds are malformed")
+            candidate = Bounds(
+                self._finite_number(bounds_value.get("left"), "text bounds.left"),
+                self._finite_number(bounds_value.get("top"), "text bounds.top"),
+                self._finite_number(bounds_value.get("right"), "text bounds.right"),
+                self._finite_number(bounds_value.get("bottom"), "text bounds.bottom"),
+            )
+            if candidate.left < candidate.right and candidate.top < candidate.bottom:
+                bounds = candidate
+        return TextState(
+            kind=kind,
+            name=name,
+            path=path,
+            text=value,
+            active_in_hierarchy=raw.get("active_in_hierarchy") is True,
+            active_and_enabled=raw.get("active_and_enabled") is True,
+            truncated=bool(flags & 0x10),
+            bounds=bounds,
+            raw=raw,
+        )
+
+    def _parse_image(self, raw: Any) -> ImageState:
+        if not isinstance(raw, dict) or raw.get("kind") != "image":
+            raise SemanticGateClosed("image record is not supported")
+        name = raw.get("name")
+        path = raw.get("path")
+        sprite = raw.get("sprite")
+        if (
+            not isinstance(name, str)
+            or not isinstance(path, str)
+            or not isinstance(sprite, str)
+            or not name
+            or not path
+        ):
+            raise SemanticGateClosed("image identity is incomplete")
+        raycast_target = raw.get("raycast_target")
+        raycast_top = raw.get("raycast_top")
+        color_value = raw.get("color")
+        if (
+            not isinstance(raycast_target, bool)
+            or (raycast_top is not None and not isinstance(raycast_top, bool))
+            or not isinstance(color_value, dict)
+        ):
+            raise SemanticGateClosed("image state is malformed")
+        color = tuple(
+            self._finite_number(color_value.get(channel), "image color." + channel)
+            for channel in ("red", "green", "blue", "alpha")
+        )
+        bounds_value = raw.get("adb_bounds")
+        bounds = None
+        if bounds_value is not None:
+            if not isinstance(bounds_value, dict):
+                raise SemanticGateClosed("image bounds are malformed")
+            candidate = Bounds(
+                self._finite_number(bounds_value.get("left"), "image bounds.left"),
+                self._finite_number(bounds_value.get("top"), "image bounds.top"),
+                self._finite_number(bounds_value.get("right"), "image bounds.right"),
+                self._finite_number(bounds_value.get("bottom"), "image bounds.bottom"),
+            )
+            if candidate.left < candidate.right and candidate.top < candidate.bottom:
+                bounds = candidate
+        flags = self._integer(raw.get("flags"), "image flags")
+        return ImageState(
+            name=name,
+            path=path,
+            sprite=sprite,
+            active_in_hierarchy=raw.get("active_in_hierarchy") is True,
+            active_and_enabled=raw.get("active_and_enabled") is True,
+            raycast_target=raycast_target,
+            raycast_top=raycast_top,
+            color=color,
+            fill_amount=self._finite_number(raw.get("fill_amount"), "fill_amount"),
+            truncated=bool(flags & 0x10),
+            bounds=bounds,
+            raw=raw,
+        )
+
     def read_state(self) -> OracleState:
         if self._foreground_component() != self.fingerprint.component:
             raise SemanticGateClosed("game activity is not top-resumed")
@@ -596,8 +824,8 @@ class SemanticOracle:
         buttons_snapshot = self._request("GET /v1/buttons\n")
         if not isinstance(snapshot, dict) or not isinstance(buttons_snapshot, dict):
             raise ObserverTransportError("observer response is not a mapping")
-        self._validate_identity(snapshot, semantic=False)
-        self._validate_identity(buttons_snapshot, semantic=True)
+        self._validate_identity(snapshot)
+        self._validate_identity(buttons_snapshot, BUTTON_SCHEMA)
 
         if snapshot.get("snapshot_schema") != 1 or buttons_snapshot.get("schema") != 1:
             raise SemanticGateClosed("observer snapshot schema mismatch")
@@ -646,6 +874,128 @@ class SemanticOracle:
             buttons=buttons,
         )
 
+    def read_ui_state(self) -> UiState:
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("game activity is not top-resumed")
+        ui_snapshot = self._request("GET /v1/ui\n")
+        if not isinstance(ui_snapshot, dict):
+            raise ObserverTransportError("UI observer response is not a mapping")
+        self._validate_identity(ui_snapshot, UI_SCHEMA)
+        if ui_snapshot.get("schema") != 1:
+            raise SemanticGateClosed("UI snapshot schema mismatch")
+        if ui_snapshot.get("toggle_truncated") is not False:
+            raise SemanticGateClosed("toggle snapshot is truncated")
+        if ui_snapshot.get("text_truncated") is not False:
+            raise SemanticGateClosed("text snapshot is truncated")
+        if self._integer(ui_snapshot.get("error_count"), "UI error_count") != 0:
+            raise SemanticGateClosed("UI snapshot contains extraction errors")
+
+        image_truncated = ui_snapshot.get("image_truncated")
+        if not isinstance(image_truncated, bool):
+            raise SemanticGateClosed("image truncation state is malformed")
+        raw_toggles = ui_snapshot.get("toggles")
+        raw_texts = ui_snapshot.get("texts")
+        raw_images = ui_snapshot.get("images")
+        if (
+            not isinstance(raw_toggles, list)
+            or not isinstance(raw_texts, list)
+            or not isinstance(raw_images, list)
+        ):
+            raise SemanticGateClosed("UI record lists are malformed")
+        if self._integer(ui_snapshot.get("toggle_count"), "toggle_count") != len(
+            raw_toggles
+        ):
+            raise SemanticGateClosed("toggle count does not match the record list")
+        if self._integer(ui_snapshot.get("text_count"), "text_count") != len(raw_texts):
+            raise SemanticGateClosed("text count does not match the record list")
+        if self._integer(ui_snapshot.get("image_count"), "image_count") != len(
+            raw_images
+        ):
+            raise SemanticGateClosed("image count does not match the record list")
+        method_mask = self._integer(ui_snapshot.get("method_mask"), "UI method_mask")
+        skipped_count = self._integer(
+            ui_snapshot.get("skipped_count"), "UI skipped_count"
+        )
+        if skipped_count < 0:
+            raise SemanticGateClosed("UI skipped_count is negative")
+        if method_mask & 0x6 == 0:
+            raise SemanticGateClosed("no typed Unity text accessor is available")
+        generation = self._integer(ui_snapshot.get("generation"), "UI generation")
+        if self._last_generation is not None and generation < self._last_generation:
+            raise SemanticGateClosed("observer generation moved backwards")
+        self._last_generation = generation
+        return UiState(
+            generation=generation,
+            method_mask=method_mask,
+            skipped_count=skipped_count,
+            image_truncated=image_truncated,
+            snapshot=ui_snapshot,
+            toggles=tuple(self._parse_toggle(raw) for raw in raw_toggles),
+            texts=tuple(self._parse_text(raw) for raw in raw_texts),
+            images=tuple(self._parse_image(raw) for raw in raw_images),
+        )
+
+    @staticmethod
+    def _bounds_overlap(left: Bounds, right: Bounds) -> float:
+        width = max(0.0, min(left.right, right.right) - max(left.left, right.left))
+        height = max(0.0, min(left.bottom, right.bottom) - max(left.top, right.top))
+        return width * height
+
+    def texts_in_bounds(
+        self,
+        bounds: Bounds,
+        minimum_overlap_ratio: float = 0.5,
+    ) -> Tuple[TextState, ...]:
+        if not 0.0 < minimum_overlap_ratio <= 1.0:
+            raise ValueError("text overlap ratio must be in (0, 1]")
+        state = self.read_ui_state()
+        return self._texts_in_state_bounds(state, bounds, minimum_overlap_ratio)
+
+    def _texts_in_state_bounds(
+        self,
+        state: UiState,
+        bounds: Bounds,
+        minimum_overlap_ratio: float,
+    ) -> Tuple[TextState, ...]:
+        matches = []
+        for text_state in state.texts:
+            text_bounds = text_state.bounds
+            if (
+                not text_state.active_in_hierarchy
+                or not text_state.active_and_enabled
+                or text_bounds is None
+            ):
+                continue
+            text_area = (text_bounds.right - text_bounds.left) * (
+                text_bounds.bottom - text_bounds.top
+            )
+            if text_area <= 0:
+                continue
+            overlap = self._bounds_overlap(bounds, text_bounds)
+            if overlap / text_area >= minimum_overlap_ratio:
+                matches.append(text_state)
+        matches.sort(
+            key=lambda item: (
+                item.bounds.top if item.bounds is not None else math.inf,
+                item.bounds.left if item.bounds is not None else math.inf,
+                item.path,
+            )
+        )
+        return tuple(matches)
+
+    def text_groups_in_bounds(
+        self,
+        bounds: Iterable[Bounds],
+        minimum_overlap_ratio: float = 0.5,
+    ) -> Tuple[Tuple[TextState, ...], ...]:
+        if not 0.0 < minimum_overlap_ratio <= 1.0:
+            raise ValueError("text overlap ratio must be in (0, 1]")
+        state = self.read_ui_state()
+        return tuple(
+            self._texts_in_state_bounds(state, area, minimum_overlap_ratio)
+            for area in bounds
+        )
+
     def _mapping(self, semantic_id: str) -> SemanticTarget:
         try:
             return self._targets[semantic_id]
@@ -653,6 +1003,109 @@ class SemanticOracle:
             raise SemanticGateClosed(
                 "semantic target is not mapped: {0}".format(semantic_id)
             ) from exc
+
+    def _image_mapping(self, semantic_id: str) -> SemanticImageTarget:
+        try:
+            return self._image_targets[semantic_id]
+        except KeyError as exc:
+            raise SemanticGateClosed(
+                "semantic image target is not mapped: {0}".format(semantic_id)
+            ) from exc
+
+    def _image_matches(
+        self,
+        state: UiState,
+        semantic_id: str,
+    ) -> Tuple[ImageState, ...]:
+        target = self._image_mapping(semantic_id)
+        direct_suffix = target.path_parent_suffix + "/Image"
+        selected_suffix = target.path_parent_suffix + "/selected/Image"
+        allowed_sprites = (target.selected_sprite, target.inactive_sprite)
+        return tuple(
+            image
+            for image in state.images
+            if image.name == "Image"
+            and (
+                image.path.endswith(direct_suffix)
+                or image.path.endswith(selected_suffix)
+            )
+            and image.sprite in allowed_sprites
+        )
+
+    def image_state(self, semantic_id: str) -> ImageState:
+        state = self.read_ui_state()
+        if state.image_truncated or state.method_mask & 0x8 == 0:
+            raise SemanticGateClosed("typed Unity Image snapshot is incomplete")
+        matches = self._image_matches(state, semantic_id)
+        if len(matches) != 1:
+            raise SemanticGateClosed(
+                "semantic image target is absent or ambiguous: {0}".format(
+                    semantic_id
+                )
+            )
+        if matches[0].truncated:
+            raise SemanticGateClosed("semantic image target identity is truncated")
+        return matches[0]
+
+    def image_selected(self, semantic_id: str) -> bool:
+        target = self._image_mapping(semantic_id)
+        image = self.image_state(semantic_id)
+        if image.sprite == target.selected_sprite:
+            return True
+        if image.sprite == target.inactive_sprite:
+            return False
+        raise SemanticGateClosed("semantic image target sprite is unexpected")
+
+    def click_image(self, semantic_id: str) -> ActionReceipt:
+        button_state = self.read_state()
+        ui_state = self.read_ui_state()
+        if ui_state.image_truncated or ui_state.method_mask & 0x8 == 0:
+            raise SemanticGateClosed("typed Unity Image snapshot is incomplete")
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("button and image snapshots are not coherent")
+        matches = self._image_matches(ui_state, semantic_id)
+        if len(matches) != 1:
+            raise SemanticGateClosed("semantic image target is absent or ambiguous")
+        image = matches[0]
+        if (
+            image.truncated
+            or not image.active_in_hierarchy
+            or not image.active_and_enabled
+            or not image.raycast_target
+            or image.raycast_top is not True
+            or image.bounds is None
+        ):
+            raise SemanticGateClosed("semantic image target is not actionable")
+        page_back = self._unique(button_state, "task/page/back")
+        if (
+            not page_back.actionable
+            or self._blocking_rules(button_state, semantic_id)
+        ):
+            raise SemanticGateClosed("mission page image action is blocked")
+        point = Point(
+            (image.bounds.left + image.bounds.right) / 2.0,
+            (image.bounds.top + image.bounds.bottom) / 2.0,
+        )
+        if not image.bounds.contains(point) or not (
+            0 <= point.x < self.fingerprint.width
+            and 0 <= point.y < self.fingerprint.height
+        ):
+            raise SemanticGateClosed("semantic image target center is invalid")
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("game activity changed before image input")
+        self._tap(int(round(point.x)), int(round(point.y)))
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("game activity changed after image input")
+        return ActionReceipt(
+            semantic_id=semantic_id,
+            generation=ui_state.generation,
+            point=point,
+            bounds=image.bounds,
+            path=image.path,
+        )
 
     def _matches(self, state: OracleState, semantic_id: str) -> Tuple[ButtonState, ...]:
         target = self._mapping(semantic_id)

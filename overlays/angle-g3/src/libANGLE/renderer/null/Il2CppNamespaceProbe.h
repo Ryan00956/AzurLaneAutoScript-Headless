@@ -13,8 +13,13 @@ namespace rx::alas {
 
 constexpr size_t kIl2CppAllowlistSize = 32;
 constexpr size_t kMaxObserverButtons = 64;
+constexpr size_t kMaxObserverToggles = 64;
+constexpr size_t kMaxObserverTexts = 192;
+constexpr size_t kMaxObserverImages = 256;
 constexpr size_t kObserverNameBytes = 96;
 constexpr size_t kObserverPathBytes = 384;
+constexpr size_t kObserverTextBytes = 512;
+constexpr size_t kObserverSpriteBytes = 128;
 
 struct Il2CppDynamicProbe {
   bool moduleFound = false;
@@ -95,6 +100,57 @@ struct ObserverSemanticSnapshot {
   std::array<ObserverButtonRecord, kMaxObserverButtons> buttons = {};
 };
 
+struct ObserverToggleRecord {
+  ObserverButtonRecord control = {};
+  uint32_t stateFlags = 0;
+};
+
+struct ObserverTextRecord {
+  std::array<char, kObserverNameBytes> name = {};
+  std::array<char, kObserverPathBytes> path = {};
+  std::array<char, kObserverTextBytes> text = {};
+  uint32_t flags = 0;
+  float adbLeft = 0.0f;
+  float adbTop = 0.0f;
+  float adbRight = 0.0f;
+  float adbBottom = 0.0f;
+};
+
+struct ObserverImageRecord {
+  std::array<char, kObserverNameBytes> name = {};
+  std::array<char, kObserverPathBytes> path = {};
+  std::array<char, kObserverSpriteBytes> spriteName = {};
+  uint32_t flags = 0;
+  float red = 0.0f;
+  float green = 0.0f;
+  float blue = 0.0f;
+  float alpha = 0.0f;
+  float fillAmount = 0.0f;
+  float adbLeft = 0.0f;
+  float adbTop = 0.0f;
+  float adbRight = 0.0f;
+  float adbBottom = 0.0f;
+};
+
+struct ObserverUiSnapshot {
+  uint32_t structSize = sizeof(ObserverUiSnapshot);
+  uint32_t schema = 1;
+  uint64_t requestGeneration = 0;
+  uint64_t monotonicNanos = 0;
+  uint32_t toggleCount = 0;
+  uint32_t textCount = 0;
+  uint32_t imageCount = 0;
+  uint32_t toggleTruncated = 0;
+  uint32_t textTruncated = 0;
+  uint32_t imageTruncated = 0;
+  uint32_t errorCount = 0;
+  uint32_t skippedCount = 0;
+  uint32_t methodMask = 0;
+  std::array<ObserverToggleRecord, kMaxObserverToggles> toggles = {};
+  std::array<ObserverTextRecord, kMaxObserverTexts> texts = {};
+  std::array<ObserverImageRecord, kMaxObserverImages> images = {};
+};
+
 Il2CppDynamicProbe ProbeIl2CppDynamicSymbols();
 
 int32_t ObserverFrameTick(uint64_t frameGeneration, int width, int height);
@@ -104,6 +160,8 @@ void RegisterObserverMainThread();
 bool GetLatestObserverSnapshot(ObserverSnapshot *snapshot);
 
 bool GetLatestObserverSemanticSnapshot(ObserverSemanticSnapshot *snapshot);
+
+bool GetLatestObserverUiSnapshot(ObserverUiSnapshot *snapshot);
 
 } // namespace rx::alas
 

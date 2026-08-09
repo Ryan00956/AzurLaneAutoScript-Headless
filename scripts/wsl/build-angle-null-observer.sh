@@ -20,6 +20,21 @@ if ! grep -Fq 'raycast_top' \
   echo "EventSystem raycast observer overlay is missing" >&2
   exit 1
 fi
+if ! grep -Fq 'GET /v1/ui' \
+    "${angle_dir}/src/libANGLE/renderer/null/ObserverServer.cpp"; then
+  echo "Typed UI observer endpoint is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'TextMeshProUGUI' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Typed TextMeshPro observer is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'ShouldEvaluateImageTopRaycast' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Typed Image raycast observer is missing" >&2
+  exit 1
+fi
 if ! grep -Fq 'kIl2CppAllowlistSize = 32' \
     "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.h"; then
   echo "32-symbol raycast observer allowlist is missing" >&2

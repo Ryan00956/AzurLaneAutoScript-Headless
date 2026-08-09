@@ -27,7 +27,9 @@ The Unity IL2CPP functional run is documented in the
 The in-process typed observer contract is documented in the
 [G3 validation report](docs/g3-validation-report.md).
 The first task-specific ALAS slice is documented in the
-[G5 mission validation report](docs/g5-mission-validation-report.md).
+[G5 mission validation report](docs/g5-mission-validation-report.md). The
+bounded typed UI layer and mission-sidebar closure are documented in the
+[G6 semantic UI report](docs/g6-semantic-ui-report.md).
 
 G1, G2, G3, and the formal G4 harmless closed loop passed. G4 includes
 EventSystem top-raycast proof for every injected target, not only object state
@@ -36,7 +38,7 @@ branch. G5b then passed one controlled `GetAllButton` claim: three claimable
 rows became zero, the exact `AwardInfoUI` close target was verified, five
 unfinished rows remained stable, and main returned. Automatic mission claiming
 requires a second explicit environment opt-in. Lua/game-state coverage,
-campaign maps, battle state, weekly-tab coverage, and full ALAS task coverage
+campaign maps, battle state, weekly-only end-to-end coverage, and full ALAS task coverage
 remain open.
 
 ## Repository layout
@@ -140,5 +142,8 @@ The staged ALAS integration overlay targets upstream commit
 inputs now feed ALAS's original reward state machine rather than replacing it.
 Claiming remains disabled by default; one `GetAllButton` claim per ALAS
 invocation is available only through the separate controlled-claim opt-in. The
-ownership refactor is unit/pinned-patch validated and still awaits a fresh live
-run.
+observer now also exposes typed Toggle, Text, TextMesh Pro, and Image records
+through `GET /v1/ui`. Exact task-sidebar selected sprites and top-raycast input
+have a live adapter-level pass. The ownership refactor and typed OCR hook are
+unit/pinned-patch validated; the complete ALAS-owned reward invocation still
+awaits a fresh live rerun.

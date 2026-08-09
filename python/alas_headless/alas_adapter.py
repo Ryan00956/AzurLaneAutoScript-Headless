@@ -11,7 +11,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping, Optional, Tuple, Union
+from typing import Any, Callable, List, Mapping, Optional, Sequence, Tuple, Union
 
 from .semantic_oracle import (
     ActionReceipt,
@@ -86,6 +86,14 @@ MISSION_CLICK_RESOURCES = frozenset(
 MISSION_NAVBAR_PATTERN = re.compile(r"^REWARD_SIDE_NAVBAR_0_([0-5])$")
 MISSION_NAVBAR_ACTIVE_COLOR = (247, 255, 173)
 MISSION_NAVBAR_INACTIVE_COLOR = (140, 162, 181)
+MISSION_NAVBAR_TARGETS = (
+    "task/nav/all",
+    "task/nav/main",
+    "task/nav/side",
+    "task/nav/daily",
+    "task/nav/weekly",
+    "task/nav/event",
+)
 
 
 class AlasSemanticUnmapped(SemanticGateClosed):
@@ -359,10 +367,107 @@ class AlasSemanticAdapter:
         self._package_gate()
         return self.oracle.bounds(semantic_id)
 
+    @staticmethod
+    def _ocr_bounds(areas: Sequence[Any]) -> Tuple[Bounds, ...]:
+        result = []
+        for area in areas:
+            if not isinstance(area, (tuple, list)) or len(area) != 4:
+                raise SemanticGateClosed("semantic OCR area is malformed")
+            if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in area):
+                raise SemanticGateClosed("semantic OCR area is not numeric")
+            left, top, right, bottom = (float(value) for value in area)
+            if not (0 <= left < right <= 1280 and 0 <= top < bottom <= 720):
+                raise SemanticGateClosed("semantic OCR area is outside the logical screen")
+            result.append(Bounds(left, top, right, bottom))
+        if not result:
+            raise SemanticGateClosed("semantic OCR requires at least one reviewed area")
+        return tuple(result)
+
+    @staticmethod
+    def _normalize_typed_text(value: str) -> str:
+        # Unity Text/TMP expose source text, which can contain rich-text tags
+        # that an image OCR engine would never see.
+        value = re.sub(r"<[^<>]{1,128}>", "", value)
+        value = value.replace("\u00a0", " ").replace("\u3000", " ")
+        return "".join(value.split())
+
+    def ocr_text(
+        self,
+        areas: Sequence[Any],
+        alphabet: Optional[str] = None,
+    ) -> Union[str, List[str]]:
+        """Return typed Unity text for ALAS OCR rectangles.
+
+        The bridge requires an observed Text/TMP component substantially inside
+        every OCR rectangle.  Missing, overlapping, truncated, or out-of-
+        alphabet records close the gate instead of falling back to pixels.
+        """
+
+        self._package_gate()
+        bounds = self._ocr_bounds(areas)
+        groups = self.oracle.text_groups_in_bounds(bounds)
+        values: List[str] = []
+        for group in groups:
+            observed = []
+            seen = set()
+            for text_state in group:
+                if text_state.bounds is None:
+                    continue
+                if text_state.truncated:
+                    raise SemanticGateClosed(
+                        "semantic OCR target text is truncated"
+                    )
+                value = self._normalize_typed_text(text_state.text)
+                identity = (
+                    value,
+                    round(text_state.bounds.left, 1),
+                    round(text_state.bounds.top, 1),
+                    round(text_state.bounds.right, 1),
+                    round(text_state.bounds.bottom, 1),
+                )
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                observed.append((text_state, value))
+            if not observed:
+                raise SemanticGateClosed("semantic OCR area has no typed text")
+
+            for index, (left_state, _) in enumerate(observed):
+                for right_state, _ in observed[index + 1 :]:
+                    if left_state.bounds is None or right_state.bounds is None:
+                        raise SemanticGateClosed("semantic OCR text has no bounds")
+                    overlap = self.oracle._bounds_overlap(
+                        left_state.bounds, right_state.bounds
+                    )
+                    left_area = (
+                        left_state.bounds.right - left_state.bounds.left
+                    ) * (left_state.bounds.bottom - left_state.bounds.top)
+                    right_area = (
+                        right_state.bounds.right - right_state.bounds.left
+                    ) * (right_state.bounds.bottom - right_state.bounds.top)
+                    if overlap > 0.1 * min(left_area, right_area):
+                        raise SemanticGateClosed(
+                            "semantic OCR area contains overlapping text records"
+                        )
+            value = "".join(item[1] for item in observed)
+            if alphabet is not None and any(
+                character not in alphabet for character in value
+            ):
+                raise SemanticGateClosed(
+                    "typed text violates the ALAS OCR alphabet contract"
+                )
+            values.append(value)
+        return values[0] if len(values) == 1 else values
+
     def click(self, button: Any) -> ActionReceipt:
         name = self._button_name(button)
         semantic_id = self._mappings.get(name)
-        if semantic_id is None and name not in MISSION_CLICK_RESOURCES:
+        navbar_match = MISSION_NAVBAR_PATTERN.fullmatch(name)
+        if (
+            semantic_id is None
+            and name not in MISSION_CLICK_RESOURCES
+            and navbar_match is None
+        ):
             raise AlasSemanticUnmapped(
                 "ALAS resource is not semantically mapped for input: {0}".format(name)
             )
@@ -372,6 +477,14 @@ class AlasSemanticAdapter:
             if semantic_id == "main/task" and self._mission_context is not None:
                 self._mission_context.entry_clicked = True
             return receipt
+
+        if navbar_match is not None:
+            context = self._require_mission_context()
+            if not context.entry_clicked or not self.oracle.enabled("task/page/back"):
+                raise SemanticGateClosed("mission navbar page identity is not proven")
+            return self.oracle.click_image(
+                MISSION_NAVBAR_TARGETS[int(navbar_match.group(1))]
+            )
 
         context = self._require_mission_context()
         if name == "MISSION_MULTI":
@@ -428,11 +541,12 @@ class AlasSemanticAdapter:
         if not context.entry_clicked or not self.oracle.enabled("task/page/back"):
             raise SemanticGateClosed("default mission tab identity is not proven")
         index = int(match.group(1))
+        selected = self.oracle.image_selected(MISSION_NAVBAR_TARGETS[index])
         normalized_color = tuple(color)
         if normalized_color == MISSION_NAVBAR_ACTIVE_COLOR:
-            return index == 0
+            return selected
         if normalized_color == MISSION_NAVBAR_INACTIVE_COLOR:
-            return index != 0
+            return not selected
         raise SemanticGateClosed("unexpected mission navbar color contract")
 
     def _enter_mission_page(
@@ -716,11 +830,19 @@ class AlasSemanticSession:
         self.semantic_id_for(button)
         return self.open().bounds(button)
 
+    def ocr_text(
+        self,
+        areas: Sequence[Any],
+        alphabet: Optional[str] = None,
+    ) -> Union[str, List[str]]:
+        return self.open().ocr_text(areas, alphabet=alphabet)
+
     def click(self, button: Any) -> ActionReceipt:
         name = AlasSemanticAdapter._button_name(button)
         if (
             name not in DEFAULT_ALAS_BUTTON_TARGETS
             and name not in MISSION_CLICK_RESOURCES
+            and MISSION_NAVBAR_PATTERN.fullmatch(name) is None
         ):
             raise AlasSemanticUnmapped(
                 "ALAS resource is not semantically mapped for input: {0}".format(name)

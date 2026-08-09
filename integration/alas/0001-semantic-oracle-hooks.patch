@@ -112,7 +112,7 @@ index 1224c45..8a1cb41 100644
          p1, p2 = ensure_int(p1, p2)
          logger.info(
 diff --git a/module/device/device.py b/module/device/device.py
-index 0d05f34..734f997 100644
+index 0d05f34..586c680 100644
 --- a/module/device/device.py
 +++ b/module/device/device.py
 @@ -1,4 +1,5 @@
@@ -121,15 +121,18 @@ index 0d05f34..734f997 100644
  from datetime import datetime
  
  from lxml import etree
-@@ -88,6 +89,17 @@ class Device(Screenshot, Control, AppControl):
+@@ -88,6 +89,20 @@ class Device(Screenshot, Control, AppControl):
                      )
                      raise RequestHumanTakeover
  
 +        self.semantic_adapter = None
 +        if os.environ.get('ALAS_SEMANTIC_MODE') == '1':
-+            from alas_headless import AlasSemanticSession
++            from alas_headless import AlasSemanticSession, bind_semantic_session
 +            self.semantic_adapter = AlasSemanticSession.from_environment(
 +                serial=self.config.Emulator_Serial
++            )
++            self._semantic_session_token = bind_semantic_session(
++                self.semantic_adapter
 +            )
 +            self.__dict__.pop('click_methods', None)
 +            logger.warning(
@@ -139,6 +142,39 @@ index 0d05f34..734f997 100644
          # Auto-fill emulator info
          if IS_WINDOWS and self.config.EmulatorInfo_Emulator == 'auto':
              _ = self.emulator_instance
+diff --git a/module/ocr/ocr.py b/module/ocr/ocr.py
+index 9dfd4f0..9fca01b 100644
+--- a/module/ocr/ocr.py
++++ b/module/ocr/ocr.py
+@@ -90,6 +90,28 @@ class Ocr:
+         """
+         start_time = time.time()
+ 
++        from alas_headless import current_semantic_session
++        semantic_session = current_semantic_session()
++        if semantic_session is not None:
++            if direct_ocr:
++                semantic_session.reject_raw_input('direct OCR without screen areas')
++            result_list = semantic_session.ocr_text(
++                self.buttons, alphabet=self.alphabet
++            )
++            if not isinstance(result_list, list):
++                result_list = [result_list]
++            result_list = [self.after_process(result) for result in result_list]
++            if len(self.buttons) == 1:
++                result_list = result_list[0]
++            if self.SHOW_LOG:
++                logger.attr(
++                    name='%s semantic %ss' % (
++                        self.name, float2str(time.time() - start_time)
++                    ),
++                    text=str(result_list)
++                )
++            return result_list
++
+         if direct_ocr:
+             image_list = [self.pre_process(i) for i in image]
+         else:
 diff --git a/module/reward/reward.py b/module/reward/reward.py
 index 50a7171..9e8db21 100644
 --- a/module/reward/reward.py

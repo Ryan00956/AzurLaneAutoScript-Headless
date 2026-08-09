@@ -37,6 +37,8 @@ class FakeOracle:
         self.enabled_values = {}
         self.exists_values = {}
         self.enable_main_after_overlay_click = False
+        self.text_groups = ()
+        self.image_selected_values = {"task/nav/all": True}
 
     def enabled(self, semantic_id):
         self.enabled_calls.append(semantic_id)
@@ -49,6 +51,16 @@ class FakeOracle:
         self.bounds_calls.append(semantic_id)
         return Bounds(1, 2, 3, 4)
 
+    def text_groups_in_bounds(self, bounds):
+        self.last_text_bounds = tuple(bounds)
+        return self.text_groups
+
+    @staticmethod
+    def _bounds_overlap(left, right):
+        width = max(0.0, min(left.right, right.right) - max(left.left, right.left))
+        height = max(0.0, min(left.bottom, right.bottom) - max(left.top, right.top))
+        return width * height
+
     def click(self, semantic_id):
         self.click_calls.append(semantic_id)
         if self.enable_main_after_overlay_click and semantic_id.startswith("overlay/"):
@@ -59,6 +71,19 @@ class FakeOracle:
             point=Point(2, 3),
             bounds=Bounds(1, 2, 3, 4),
             path="root/target",
+        )
+
+    def image_selected(self, semantic_id):
+        return self.image_selected_values.get(semantic_id, False)
+
+    def click_image(self, semantic_id):
+        self.click_calls.append(semantic_id)
+        return ActionReceipt(
+            semantic_id=semantic_id,
+            generation=8,
+            point=Point(50, 50),
+            bounds=Bounds(0, 0, 100, 100),
+            path="root/tagRoot/target/Image",
         )
 
     def wait_for(self, semantic_id, timeout_seconds, minimum_generation=None):
@@ -172,6 +197,53 @@ class AlasSemanticAdapterTests(unittest.TestCase):
 
         self.assertEqual(gate_calls, [])
         self.assertEqual(oracle.click_calls, [])
+
+    def test_semantic_ocr_reads_typed_unity_text_and_strips_markup(self):
+        adapter, oracle, gate_calls = self.make_adapter()
+        oracle.text_groups = (
+            (
+                SimpleNamespace(
+                    text="<color=#fff>01:23:45</color>",
+                    bounds=Bounds(100, 100, 200, 130),
+                    truncated=False,
+                ),
+            ),
+        )
+
+        value = adapter.ocr_text([(90, 90, 210, 140)], alphabet="0123456789:")
+
+        self.assertEqual(value, "01:23:45")
+        self.assertEqual(oracle.last_text_bounds, (Bounds(90, 90, 210, 140),))
+        self.assertEqual(len(gate_calls), 1)
+
+    def test_semantic_ocr_rejects_missing_or_overlapping_text(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.text_groups = ((),)
+        with self.assertRaises(SemanticGateClosed):
+            adapter.ocr_text([(90, 90, 210, 140)])
+
+        oracle.text_groups = (
+            (
+                SimpleNamespace(
+                    text="123456", bounds=Bounds(100, 100, 180, 130), truncated=True
+                ),
+            ),
+        )
+        with self.assertRaises(SemanticGateClosed):
+            adapter.ocr_text([(90, 90, 210, 140)])
+
+        oracle.text_groups = (
+            (
+                SimpleNamespace(
+                    text="12", bounds=Bounds(100, 100, 180, 130), truncated=False
+                ),
+                SimpleNamespace(
+                    text="34", bounds=Bounds(110, 100, 190, 130), truncated=False
+                ),
+            ),
+        )
+        with self.assertRaises(SemanticGateClosed):
+            adapter.ocr_text([(90, 90, 210, 140)])
 
     def test_alas_owned_state_machine_consumes_stable_semantic_inputs(self):
         oracle = FakeOracle()
@@ -310,6 +382,17 @@ class AlasSemanticAdapterTests(unittest.TestCase):
                 threshold=180,
                 count=100,
             )
+
+    def test_mission_navbar_reuses_alas_click_with_typed_image_target(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.enabled_values["task/page/back"] = True
+        adapter.begin_mission_reward(daily=True, weekly=True)
+        adapter.click(NamedButton("MAIN_GOTO_MISSION"))
+
+        receipt = adapter.click(NamedButton("REWARD_SIDE_NAVBAR_0_4"))
+
+        self.assertEqual(receipt.semantic_id, "task/nav/weekly")
+        self.assertEqual(oracle.click_calls, ["main/task", "task/nav/weekly"])
 
     def test_unknown_presence_is_false_only_on_proven_mission_surface(self):
         adapter, oracle, gate_calls = self.make_adapter()

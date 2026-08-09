@@ -4,7 +4,26 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-09
 
-### Post-G5 ALAS state-machine reuse: implemented; live revalidation pending
+### G6 typed UI and mission sidebar: passed in reviewed scope
+
+- `GET /v1/ui` now exposes bounded, typed Toggle, UGUI Text, TextMesh Pro, and
+  Image records. The final live capture reported method mask 15, zero observer
+  errors, and no Image truncation.
+- Typed text includes UTF-8 content and exact RectTransform bounds. The ALAS OCR
+  hook resolves only text inside the requested OCR area and rejects missing,
+  overlapping, truncated, malformed, out-of-bounds, and alphabet-invalid
+  matches.
+- Six exact task-sidebar Image paths expose selected/unselected sprite identity.
+  Only those reviewed paths receive native EventSystem top-raycast evaluation.
+- A live task-page loop selected weekly, observed `icon_week_sel`, returned to
+  all, and exited to main. No reward input was injected by this loop.
+- Final observer APK SHA-256:
+  `fbc288dbe20e0264e90d522772922b72a24d799888e0804cd47781727475a571`.
+  The read-only final capture is
+  `evidence/g6-semantic-ui-20260809T030729Z-emulator-5580`; see the
+  [G6 validation report](g6-semantic-ui-report.md).
+
+### Post-G5 ALAS state-machine reuse: implemented; full live rerun pending
 
 - The integration patch no longer calls a replacement mission flow from the
   top of `Reward.reward_mission()`. It brackets an adapter context and leaves
@@ -21,12 +40,14 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 - The separate environment opt-in now creates a one-claim budget per ALAS
   `reward_mission()` invocation. The budget is discarded in `finally`, and a
   missing opt-in refuses the claim before ADB input.
-- Weekly-only execution, weekly-tab selection, numeric-row claiming,
-  ship-reward popups, and empty-page inference remain closed. The current
-  observer has no reviewed mission red-dot or tab-identity record.
+- Weekly-tab state and exact semantic input are now reviewed and live-proven at
+  the adapter boundary. Weekly-only end-to-end execution, positive mission
+  red-dot behavior, numeric-row claiming, ship-reward popups, and empty-page
+  inference remain closed.
 - This refactor has unit coverage and was syntax/lifecycle checked against the
-  clean pinned upstream commit. The G5 live evidence below predates this
-  ownership change, so the ALAS-owned path is not yet a new live pass.
+  clean pinned upstream commit. The historical G5 claim evidence below still
+  predates this ownership change, so the complete ALAS-owned claim path is not
+  yet a new live pass.
 
 ### G5a/G5b - ALAS mission no-claim and controlled claim-all: passed
 

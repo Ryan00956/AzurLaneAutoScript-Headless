@@ -2,6 +2,7 @@ import copy
 import unittest
 
 from alas_headless.semantic_oracle import (
+    Bounds,
     MissionDisposition,
     OracleFingerprint,
     SemanticGateClosed,
@@ -69,10 +70,74 @@ def make_buttons(buttons, generation=10, age_ms=20):
     }
 
 
+def make_text(text, path="root/value", bounds=None, kind="ugui-text"):
+    if bounds is None:
+        bounds = {"left": 100.0, "top": 100.0, "right": 180.0, "bottom": 130.0}
+    return {
+        "kind": kind,
+        "name": path.rsplit("/", 1)[-1],
+        "path": path,
+        "text": text,
+        "flags": 271 if kind == "ugui-text" else 527,
+        "active_in_hierarchy": True,
+        "active_and_enabled": True,
+        "adb_bounds": bounds,
+    }
+
+
+def make_image(path="root/icon", sprite="icon", bounds=None):
+    if bounds is None:
+        bounds = {"left": 200.0, "top": 100.0, "right": 240.0, "bottom": 140.0}
+    return {
+        "kind": "image",
+        "name": path.rsplit("/", 1)[-1],
+        "path": path,
+        "sprite": sprite,
+        "flags": 495,
+        "active_in_hierarchy": True,
+        "active_and_enabled": True,
+        "raycast_target": False,
+        "raycast_top": None,
+        "color": {"red": 1.0, "green": 0.5, "blue": 0.25, "alpha": 1.0},
+        "fill_amount": 1.0,
+        "adb_bounds": bounds,
+    }
+
+
+def make_ui(texts, toggles=None, images=None, generation=10, age_ms=20):
+    toggles = [] if toggles is None else toggles
+    images = [] if images is None else images
+    return {
+        "protocol_schema": "alas-headless.observer/v1",
+        "semantic_schema": "alas-headless.ui/v1",
+        "status": "ok",
+        "package": PACKAGE,
+        "pid": 1234,
+        "peer_uid": 2000,
+        "driver_revision": DRIVER_REVISION,
+        "schema": 1,
+        "generation": generation,
+        "age_ms": age_ms,
+        "method_mask": 15,
+        "toggle_count": len(toggles),
+        "text_count": len(texts),
+        "image_count": len(images),
+        "toggle_truncated": False,
+        "text_truncated": False,
+        "image_truncated": False,
+        "error_count": 0,
+        "skipped_count": 0,
+        "toggles": toggles,
+        "texts": texts,
+        "images": images,
+    }
+
+
 class FakeBackend:
     def __init__(self, buttons):
         self.snapshot = make_snapshot()
         self.buttons = make_buttons(buttons)
+        self.ui = make_ui([])
         self.foreground = COMPONENT
         self.taps = []
         self.on_tap = None
@@ -82,6 +147,8 @@ class FakeBackend:
             return copy.deepcopy(self.snapshot)
         if request_line == "GET /v1/buttons\n":
             return copy.deepcopy(self.buttons)
+        if request_line == "GET /v1/ui\n":
+            return copy.deepcopy(self.ui)
         raise AssertionError("unexpected request")
 
     def foreground_component(self):
@@ -529,6 +596,82 @@ class SemanticOracleTests(unittest.TestCase):
 
         self.assertEqual(state.disposition, MissionDisposition.UNFINISHED)
         self.assertEqual(state.generation, 11)
+
+    def test_typed_text_is_selected_by_ocr_bounds(self):
+        backend = FakeBackend([])
+        backend.ui = make_ui(
+            [
+                make_text("01:23:45", "root/timer"),
+                make_text(
+                    "outside",
+                    "root/outside",
+                    {"left": 500.0, "top": 500.0, "right": 600.0, "bottom": 540.0},
+                    kind="tmp-text",
+                ),
+            ]
+        )
+        oracle = make_oracle(backend)
+
+        matches = oracle.texts_in_bounds(Bounds(90, 90, 200, 150))
+
+        self.assertEqual([item.text for item in matches], ["01:23:45"])
+        self.assertEqual(matches[0].kind, "ugui-text")
+
+    def test_typed_text_snapshot_truncation_fails_closed(self):
+        backend = FakeBackend([])
+        backend.ui = make_ui([make_text("12")])
+        backend.ui["text_truncated"] = True
+
+        with self.assertRaises(SemanticGateClosed):
+            make_oracle(backend).read_ui_state()
+
+    def test_typed_image_exposes_sprite_color_and_bounds(self):
+        backend = FakeBackend([])
+        backend.ui = make_ui([], images=[make_image("root/red_dot", "red_dot")])
+
+        state = make_oracle(backend).read_ui_state()
+
+        self.assertEqual(state.images[0].sprite, "red_dot")
+        self.assertEqual(state.images[0].color, (1.0, 0.5, 0.25, 1.0))
+        self.assertEqual(state.images[0].bounds, Bounds(200, 100, 240, 140))
+
+    def test_typed_mission_nav_image_is_selected_and_actionable(self):
+        backend = FakeBackend(
+            [
+                make_button(
+                    "back_btn",
+                    "root/TaskScene(Clone)/blur_panel/adapt/top/back_btn",
+                    58,
+                    53,
+                )
+            ]
+        )
+        image = make_image(
+            "root/TaskScene(Clone)/blur_panel/adapt/left_length/frame/"
+            "tagRoot/all/selected/Image",
+            "icon_all_sel",
+            {"left": 0.0, "top": 100.0, "right": 100.0, "bottom": 200.0},
+        )
+        image["raycast_target"] = True
+        image["raycast_top"] = True
+        backend.ui = make_ui([], images=[image])
+        oracle = make_oracle(backend)
+
+        self.assertTrue(oracle.image_selected("task/nav/all"))
+        receipt = oracle.click_image("task/nav/all")
+
+        self.assertEqual(receipt.semantic_id, "task/nav/all")
+        self.assertEqual(backend.taps, [(50, 150)])
+
+    def test_typed_text_record_truncation_is_scoped_to_the_record(self):
+        backend = FakeBackend([])
+        text = make_text("12")
+        text["flags"] |= 0x10
+        backend.ui = make_ui([text])
+
+        state = make_oracle(backend).read_ui_state()
+
+        self.assertTrue(state.texts[0].truncated)
 
 
 if __name__ == "__main__":

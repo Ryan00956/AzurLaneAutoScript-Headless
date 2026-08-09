@@ -105,6 +105,12 @@ void AppendJsonString(std::string *output, std::string_view value) {
   output->push_back('"');
 }
 
+template <size_t Size>
+std::string_view BoundedStringView(const std::array<char, Size> &value) {
+  return std::string_view(
+      value.data(), ANGLE_UNSAFE_TODO(strnlen(value.data(), value.size())));
+}
+
 std::string SnapshotResponse(uid_t peerUid, const std::string &package) {
   ObserverSnapshot snapshot;
   if (!GetLatestObserverSnapshot(&snapshot)) {
@@ -291,6 +297,217 @@ std::string SemanticResponse(uid_t peerUid, const std::string &package) {
   return response;
 }
 
+std::string UiResponse(uid_t peerUid, const std::string &package) {
+  ObserverUiSnapshot snapshot;
+  if (!GetLatestObserverUiSnapshot(&snapshot)) {
+    char response[512];
+    const int count = ANGLE_UNSAFE_TODO(std::snprintf(
+        response, sizeof(response),
+        "{\"protocol_schema\":\"%s\",\"semantic_schema\":\"alas-headless.ui/"
+        "v1\",\"status\":\"unavailable\",\"package\":\"%s\",\"pid\":%d,"
+        "\"uid\":%u,\"peer_uid\":%u}\n",
+        kProtocolSchema, package.c_str(), getpid(), getuid(), peerUid));
+    return count > 0 ? std::string(response, static_cast<size_t>(count))
+                     : std::string();
+  }
+
+  const uint64_t now = MonotonicNanos();
+  const uint64_t ageMillis = now >= snapshot.monotonicNanos
+                                 ? (now - snapshot.monotonicNanos) / 1000000u
+                                 : UINT64_MAX;
+  std::string response;
+  response.reserve(4096 + snapshot.toggleCount * 768u +
+                   snapshot.textCount * 1200u + snapshot.imageCount * 1000u);
+  char header[1536];
+  const int headerCount = ANGLE_UNSAFE_TODO(std::snprintf(
+      header, sizeof(header),
+      "{\"protocol_schema\":\"%s\",\"semantic_schema\":\"alas-headless.ui/v1\","
+      "\"status\":\"ok\",\"package\":\"%s\",\"pid\":%d,\"uid\":%u,"
+      "\"peer_uid\":%u,\"driver_revision\":\"%s\",\"schema\":%u,"
+      "\"struct_size\":%u,\"generation\":%" PRIu64
+      ",\"snapshot_monotonic_ns\":%" PRIu64
+      ",\"response_monotonic_ns\":%" PRIu64 ",\"age_ms\":%" PRIu64
+      ",\"method_mask\":%u,\"toggle_count\":%u,\"text_count\":%u,"
+      "\"image_count\":%u,\"toggle_truncated\":%s,\"text_truncated\":%s,"
+      "\"image_truncated\":%s,\"error_count\":%u,"
+      "\"skipped_count\":%u,"
+      "\"toggles\":[",
+      kProtocolSchema, package.c_str(), getpid(), getuid(), peerUid,
+      kDriverRevision, snapshot.schema, snapshot.structSize,
+      snapshot.requestGeneration, snapshot.monotonicNanos, now, ageMillis,
+      snapshot.methodMask, snapshot.toggleCount, snapshot.textCount,
+      snapshot.imageCount, snapshot.toggleTruncated != 0 ? "true" : "false",
+      snapshot.textTruncated != 0 ? "true" : "false",
+      snapshot.imageTruncated != 0 ? "true" : "false", snapshot.errorCount,
+      snapshot.skippedCount));
+  if (headerCount <= 0 || static_cast<size_t>(headerCount) >= sizeof(header)) {
+    return {};
+  }
+  response.append(header, static_cast<size_t>(headerCount));
+
+  const size_t toggleCount = std::min(static_cast<size_t>(snapshot.toggleCount),
+                                      snapshot.toggles.size());
+  for (size_t index = 0; index < toggleCount; ++index) {
+    const ObserverToggleRecord &toggle = snapshot.toggles[index];
+    const ObserverButtonRecord &control = toggle.control;
+    if (index > 0) {
+      response.push_back(',');
+    }
+    response.append("{\"kind\":\"toggle\",\"name\":");
+    AppendJsonString(&response, BoundedStringView(control.name));
+    response.append(",\"path\":");
+    AppendJsonString(&response, BoundedStringView(control.path));
+    char fields[768];
+    const int fieldCount = ANGLE_UNSAFE_TODO(std::snprintf(
+        fields, sizeof(fields),
+        ",\"flags\":%u,\"active_in_hierarchy\":%s,"
+        "\"active_and_enabled\":%s,\"interactable\":%s,\"checked\":%s,"
+        "\"adb_point\":%s,\"adb_bounds\":%s}",
+        control.flags, (control.flags & 0x1u) != 0 ? "true" : "false",
+        (control.flags & 0x2u) != 0 ? "true" : "false",
+        (control.flags & 0x4u) != 0 ? "true" : "false",
+        (toggle.stateFlags & 0x1u) != 0
+            ? ((toggle.stateFlags & 0x2u) != 0 ? "true" : "false")
+            : "null",
+        (control.flags & 0x100u) != 0 ? "{}" : "null",
+        (control.flags & 0x400u) != 0 ? "{}" : "null"));
+    if (fieldCount <= 0 || static_cast<size_t>(fieldCount) >= sizeof(fields)) {
+      return {};
+    }
+    response.append(fields, static_cast<size_t>(fieldCount));
+    if ((control.flags & 0x100u) != 0) {
+      const std::string marker = "\"adb_point\":{}";
+      const size_t position = response.rfind(marker);
+      char value[192];
+      const int count = ANGLE_UNSAFE_TODO(std::snprintf(
+          value, sizeof(value), "\"adb_point\":{\"x\":%.3f,\"y\":%.3f}",
+          control.adbX, control.adbY));
+      if (position == std::string::npos || count <= 0 ||
+          static_cast<size_t>(count) >= sizeof(value)) {
+        return {};
+      }
+      response.replace(position, marker.size(), value,
+                       static_cast<size_t>(count));
+    }
+    if ((control.flags & 0x400u) != 0) {
+      const std::string marker = "\"adb_bounds\":{}";
+      const size_t position = response.rfind(marker);
+      char value[256];
+      const int count = ANGLE_UNSAFE_TODO(std::snprintf(
+          value, sizeof(value),
+          "\"adb_bounds\":{\"left\":%.3f,\"top\":%.3f,\"right\":%.3f,"
+          "\"bottom\":%.3f}",
+          control.adbLeft, control.adbTop, control.adbRight,
+          control.adbBottom));
+      if (position == std::string::npos || count <= 0 ||
+          static_cast<size_t>(count) >= sizeof(value)) {
+        return {};
+      }
+      response.replace(position, marker.size(), value,
+                       static_cast<size_t>(count));
+    }
+  }
+
+  response.append("],\"texts\":[");
+  const size_t textCount =
+      std::min(static_cast<size_t>(snapshot.textCount), snapshot.texts.size());
+  for (size_t index = 0; index < textCount; ++index) {
+    const ObserverTextRecord &record = snapshot.texts[index];
+    if (index > 0) {
+      response.push_back(',');
+    }
+    response.append("{\"kind\":");
+    AppendJsonString(&response,
+                     (record.flags & 0x200u) != 0 ? "tmp-text" : "ugui-text");
+    response.append(",\"name\":");
+    AppendJsonString(&response, BoundedStringView(record.name));
+    response.append(",\"path\":");
+    AppendJsonString(&response, BoundedStringView(record.path));
+    response.append(",\"text\":");
+    AppendJsonString(&response, BoundedStringView(record.text));
+    char fields[512];
+    const int fieldCount = ANGLE_UNSAFE_TODO(std::snprintf(
+        fields, sizeof(fields),
+        ",\"flags\":%u,\"active_in_hierarchy\":%s,"
+        "\"active_and_enabled\":%s,\"adb_bounds\":%s}",
+        record.flags, (record.flags & 0x1u) != 0 ? "true" : "false",
+        (record.flags & 0x2u) != 0 ? "true" : "false",
+        (record.flags & 0x8u) != 0 ? "{}" : "null"));
+    if (fieldCount <= 0 || static_cast<size_t>(fieldCount) >= sizeof(fields)) {
+      return {};
+    }
+    response.append(fields, static_cast<size_t>(fieldCount));
+    if ((record.flags & 0x8u) != 0) {
+      const std::string marker = "\"adb_bounds\":{}";
+      const size_t position = response.rfind(marker);
+      char value[256];
+      const int count = ANGLE_UNSAFE_TODO(std::snprintf(
+          value, sizeof(value),
+          "\"adb_bounds\":{\"left\":%.3f,\"top\":%.3f,\"right\":%.3f,"
+          "\"bottom\":%.3f}",
+          record.adbLeft, record.adbTop, record.adbRight, record.adbBottom));
+      if (position == std::string::npos || count <= 0 ||
+          static_cast<size_t>(count) >= sizeof(value)) {
+        return {};
+      }
+      response.replace(position, marker.size(), value,
+                       static_cast<size_t>(count));
+    }
+  }
+  response.append("],\"images\":[");
+  const size_t imageCount = std::min(static_cast<size_t>(snapshot.imageCount),
+                                     snapshot.images.size());
+  for (size_t index = 0; index < imageCount; ++index) {
+    const ObserverImageRecord &record = snapshot.images[index];
+    if (index > 0) {
+      response.push_back(',');
+    }
+    response.append("{\"kind\":\"image\",\"name\":");
+    AppendJsonString(&response, BoundedStringView(record.name));
+    response.append(",\"path\":");
+    AppendJsonString(&response, BoundedStringView(record.path));
+    response.append(",\"sprite\":");
+    AppendJsonString(&response, BoundedStringView(record.spriteName));
+    char fields[768];
+    const int fieldCount = ANGLE_UNSAFE_TODO(std::snprintf(
+        fields, sizeof(fields),
+        ",\"flags\":%u,\"active_in_hierarchy\":%s,"
+        "\"active_and_enabled\":%s,\"raycast_target\":%s,\"raycast_top\":%s,"
+        "\"color\":{\"red\":%.6f,\"green\":%.6f,\"blue\":%.6f,"
+        "\"alpha\":%.6f},\"fill_amount\":%.6f,\"adb_bounds\":%s}",
+        record.flags, (record.flags & 0x1u) != 0 ? "true" : "false",
+        (record.flags & 0x2u) != 0 ? "true" : "false",
+        (record.flags & 0x40u) != 0 ? "true" : "false",
+        (record.flags & 0x200u) != 0
+            ? ((record.flags & 0x400u) != 0 ? "true" : "false")
+            : "null",
+        record.red, record.green, record.blue, record.alpha, record.fillAmount,
+        (record.flags & 0x4u) != 0 ? "{}" : "null"));
+    if (fieldCount <= 0 || static_cast<size_t>(fieldCount) >= sizeof(fields)) {
+      return {};
+    }
+    response.append(fields, static_cast<size_t>(fieldCount));
+    if ((record.flags & 0x4u) != 0) {
+      const std::string marker = "\"adb_bounds\":{}";
+      const size_t position = response.rfind(marker);
+      char value[256];
+      const int count = ANGLE_UNSAFE_TODO(std::snprintf(
+          value, sizeof(value),
+          "\"adb_bounds\":{\"left\":%.3f,\"top\":%.3f,\"right\":%.3f,"
+          "\"bottom\":%.3f}",
+          record.adbLeft, record.adbTop, record.adbRight, record.adbBottom));
+      if (position == std::string::npos || count <= 0 ||
+          static_cast<size_t>(count) >= sizeof(value)) {
+        return {};
+      }
+      response.replace(position, marker.size(), value,
+                       static_cast<size_t>(count));
+    }
+  }
+  response.append("]}\n");
+  return response;
+}
+
 void ServeObserver() {
   const pid_t processId = getpid();
   const uid_t processUid = getuid();
@@ -362,13 +579,17 @@ void ServeObserver() {
         request == "GET /v1/snapshot\n" || request == "GET /v1/snapshot\r\n";
     const bool semanticRequest =
         request == "GET /v1/buttons\n" || request == "GET /v1/buttons\r\n";
-    if (!snapshotRequest && !semanticRequest) {
+    const bool uiRequest =
+        request == "GET /v1/ui\n" || request == "GET /v1/ui\r\n";
+    if (!snapshotRequest && !semanticRequest && !uiRequest) {
       SendAll(client, "{\"protocol_schema\":\"alas-headless.observer/v1\","
                       "\"status\":\"bad-request\"}\n");
     } else if (snapshotRequest) {
       SendAll(client, SnapshotResponse(credentials.uid, package));
-    } else {
+    } else if (semanticRequest) {
       SendAll(client, SemanticResponse(credentials.uid, package));
+    } else {
+      SendAll(client, UiResponse(credentials.uid, package));
     }
     close(client);
   }

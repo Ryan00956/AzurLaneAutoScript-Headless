@@ -2,12 +2,13 @@
 
 Status terms are deliberately strict. A build passing does not imply a later gate has passed.
 
-Current status: G1-G4, G5a, and controlled G5b passed. G4 includes login/main reachability,
+Current status: G1-G4, G5a, controlled G5b, and scoped G6 passed. G4 includes login/main reachability,
 sustained semantic state, RectTransform bounds, top EventSystem raycast identity
 for each action, and a settings-page return loop. G5a covers only the ALAS
 mission-reward no-claim branch. G5b covers one `GetAllButton` claim on the
-default task page; row-only claiming, weekly-tab traversal, and every other
-ALAS task remain open.
+default task page. G6 adds typed Text/Image observation and a live semantic
+weekly-tab selection/return loop; weekly-only ALAS reward execution, row-only
+claiming, and every other ALAS task remain open.
 
 ## G0 - Reproducible baseline
 
@@ -99,6 +100,21 @@ This pass does not enable numeric-row claiming or tab traversal.
 The live G5a/G5b evidence predates the later ownership refactor that returns
 control to ALAS's original reward state machine. That new wiring must complete
 a separate live revalidation before it inherits the pass.
+
+## G6 - Typed UI and mission sidebar: scoped pass
+
+- `GET /v1/ui` exposes bounded Toggle, UGUI Text, TextMesh Pro, and Image
+  records without a generic managed invocation surface.
+- Typed OCR is fail-closed on missing, ambiguous, truncated, malformed,
+  out-of-bounds, or alphabet-invalid text.
+- The six reviewed task-sidebar Images require exact sprite identity and native
+  EventSystem top-raycast proof before input.
+- A live adapter-level loop selected weekly, proved its selected sprite,
+  returned to all, and exited to main. It did not click a reward control.
+- The complete ALAS-owned reward state machine, positive red-dot state,
+  weekly-only execution, and numeric-row claims remain separate open gates.
+
+See [G6 typed semantic UI validation](g6-semantic-ui-report.md).
 
 ## Stop or pivot conditions
 
