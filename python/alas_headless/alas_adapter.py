@@ -24,6 +24,8 @@ from .semantic_oracle import (
     CommissionDetailState,
     CommissionRewardProof,
     CommissionRowState,
+    CommissionScrollProof,
+    CommissionScrollState,
     CommissionStartProof,
     DormState,
     MissionPageState,
@@ -1003,6 +1005,21 @@ class AlasSemanticAdapter:
         self._require_commission_context()
         return self.oracle.commission_is_empty()
 
+    def commission_scroll_state(self) -> CommissionScrollState:
+        self._package_gate()
+        self._require_commission_context()
+        return self.oracle.commission_scroll_state()
+
+    def commission_scroll_next(self) -> Optional[CommissionScrollProof]:
+        self._package_gate()
+        self._require_commission_context()
+        return self.oracle.commission_scroll_next()
+
+    def commission_scroll_to_top(self) -> Optional[CommissionScrollProof]:
+        self._package_gate()
+        self._require_commission_context()
+        return self.oracle.commission_scroll_to_top()
+
     def commission_reward_pending(self) -> bool:
         """Detect a finished commission only from the typed reward summary."""
 
@@ -1325,6 +1342,21 @@ class AlasSemanticAdapter:
                     )
                 target = self._award_close_target()
                 if target is None:
+                    if context.flow_kind == "commission":
+                        recorded_awards = tuple(
+                            recorded
+                            for recorded in context.reward_close_receipts
+                            if recorded.semantic_id in (
+                                "reward/award-info/close",
+                                "reward/award-info1/close",
+                            )
+                        )
+                        if recorded_awards:
+                            # ALAS can decide a cached popup asset still appears
+                            # immediately after the Unity object has gone away.
+                            # Reuse the last exact receipt instead of turning
+                            # that observation race into another ADB input.
+                            return recorded_awards[-1]
                     raise SemanticGateClosed("reviewed commission reward popup is absent")
                 if context.flow_kind == "commission":
                     for recorded in context.reward_close_receipts:
@@ -1731,6 +1763,7 @@ class AlasSemanticSession:
                     driver_revision=self.driver_revision,
                     expected_pid=self.bridge.pid,
                 ),
+                swipe=self.bridge.swipe,
             )
             self.adapter = AlasSemanticAdapter(
                 oracle,
@@ -1830,6 +1863,15 @@ class AlasSemanticSession:
 
     def commission_is_empty(self) -> bool:
         return self.open().commission_is_empty()
+
+    def commission_scroll_state(self) -> CommissionScrollState:
+        return self.open().commission_scroll_state()
+
+    def commission_scroll_next(self) -> Optional[CommissionScrollProof]:
+        return self.open().commission_scroll_next()
+
+    def commission_scroll_to_top(self) -> Optional[CommissionScrollProof]:
+        return self.open().commission_scroll_to_top()
 
     def commission_reward_pending(self) -> bool:
         return self.open().commission_reward_pending()

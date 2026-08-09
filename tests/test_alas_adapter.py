@@ -59,6 +59,14 @@ class FakeOracle:
             after_duration_seconds=3595,
             after_status_sprite="tag_ongoing",
         )
+        self.commission_scroll_value = SimpleNamespace(
+            position=0.0,
+            page_fraction=0.8,
+            scrollable=True,
+            at_top=True,
+            at_bottom=False,
+        )
+        self.commission_scroll_calls = []
         self.reward_summary_values = []
         self.state_generation = 20
         self.build_pool_value = BuildPool.LIGHT
@@ -174,6 +182,18 @@ class FakeOracle:
 
     def tactical_continue_prompt_text(self):
         return self.tactical_prompt_text
+
+    def commission_scroll_state(self):
+        self.commission_scroll_calls.append("state")
+        return self.commission_scroll_value
+
+    def commission_scroll_next(self):
+        self.commission_scroll_calls.append("next")
+        return SimpleNamespace(direction="next")
+
+    def commission_scroll_to_top(self):
+        self.commission_scroll_calls.append("top")
+        return SimpleNamespace(direction="top")
 
     def wait_for(self, semantic_id, timeout_seconds, minimum_generation=None):
         self.wait_calls.append((semantic_id, timeout_seconds, minimum_generation))
@@ -605,11 +625,14 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         exp_duplicate = adapter.click(NamedButton("EXP_INFO_S_REWARD"))
         award = adapter.click(NamedButton("GET_ITEMS_3"))
         award_duplicate = adapter.click(NamedButton("GET_ITEMS_1"))
+        oracle.enabled_values["reward/award-info/close"] = False
+        award_after_disappear = adapter.click(NamedButton("GET_ITEMS_2"))
         proof = adapter.confirm_commission_reward()
 
         self.assertEqual(claim, duplicate)
         self.assertEqual(exp, exp_duplicate)
         self.assertEqual(award, award_duplicate)
+        self.assertEqual(award, award_after_disappear)
         self.assertEqual(exp.semantic_id, "reward/ship-exp/close")
         self.assertEqual(award.semantic_id, "reward/award-info/close")
         self.assertEqual(proof.before_finished_count, 1)
@@ -690,6 +713,25 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         adapter._commission_context.passive_transition_until = time.monotonic() - 1
         with self.assertRaises(AlasSemanticUnmapped):
             adapter.appear(NamedButton("EXERCISE_CHECK"))
+
+    def test_commission_scroll_delegates_only_inside_commission_context(self):
+        adapter, oracle, _ = self.make_adapter()
+
+        with self.assertRaises(SemanticGateClosed):
+            adapter.commission_scroll_state()
+
+        adapter.begin_commission()
+        state = adapter.commission_scroll_state()
+        next_proof = adapter.commission_scroll_next()
+        top_proof = adapter.commission_scroll_to_top()
+
+        self.assertTrue(state.scrollable)
+        self.assertEqual(next_proof.direction, "next")
+        self.assertEqual(top_proof.direction, "top")
+        self.assertEqual(
+            oracle.commission_scroll_calls,
+            ["state", "next", "top"],
+        )
 
     def test_commission_start_uses_exact_row_and_independent_one_input_budget(self):
         oracle = FakeOracle()
@@ -1351,6 +1393,21 @@ class ScriptedAdbBridge(AdbObserverBridge):
 
 
 class PackageFingerprintTests(unittest.TestCase):
+    def test_swipe_uses_one_exact_adb_input_command(self):
+        command = (
+            "shell",
+            "input",
+            "swipe",
+            "1257",
+            "330",
+            "1257",
+            "390",
+            "500",
+        )
+        bridge = ScriptedAdbBridge({command: ""})
+
+        bridge.swipe(1257, 330, 1257, 390, 500)
+
     def test_reads_independent_version_abi_and_hash_identity(self):
         expected = AndroidPackageFingerprint(
             version_name="9.7.10",

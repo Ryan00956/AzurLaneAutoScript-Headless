@@ -329,6 +329,40 @@ class CommissionRewardProof:
     generation: int
 
 
+@dataclass(frozen=True)
+class CommissionScrollState:
+    generation: int
+    position: float
+    page_fraction: float
+    track_bounds: Bounds
+    handle_bounds: Bounds
+    handle_path: str
+    handle_raycast_top: Optional[bool]
+
+    @property
+    def scrollable(self) -> bool:
+        return self.page_fraction < 0.98
+
+    @property
+    def at_top(self) -> bool:
+        return not self.scrollable or self.position <= 0.05
+
+    @property
+    def at_bottom(self) -> bool:
+        return not self.scrollable or self.position >= 0.95
+
+
+@dataclass(frozen=True)
+class CommissionScrollProof:
+    direction: str
+    before_position: float
+    after_position: float
+    before_generation: int
+    after_generation: int
+    before_row_signatures: Tuple[Tuple[Union[int, str], ...], ...]
+    after_row_signatures: Tuple[Tuple[Union[int, str], ...], ...]
+
+
 class BuildPool(str, Enum):
     LIGHT = "light"
     HEAVY = "heavy"
@@ -879,6 +913,7 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
             "commission/detail/back",
             "commission/detail/recommend",
             "commission/detail/start",
+            "commission/scroll",
         ),
     ),
     BlockerRule(
@@ -1126,6 +1161,27 @@ class AdbObserverBridge:
     def tap(self, x: int, y: int) -> None:
         self._run(("shell", "input", "tap", str(x), str(y)))
 
+    def swipe(
+        self,
+        x1: int,
+        y1: int,
+        x2: int,
+        y2: int,
+        duration_ms: int,
+    ) -> None:
+        self._run(
+            (
+                "shell",
+                "input",
+                "swipe",
+                str(x1),
+                str(y1),
+                str(x2),
+                str(y2),
+                str(duration_ms),
+            )
+        )
+
     @classmethod
     def _device_path(cls, value: str, field: str) -> str:
         path = value.strip()
@@ -1224,6 +1280,7 @@ class SemanticOracle:
         blockers: Iterable[BlockerRule] = DEFAULT_BLOCKERS,
         monotonic: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
+        swipe: Optional[Callable[[int, int, int, int, int], None]] = None,
     ) -> None:
         self._request = request
         self._foreground_component = foreground_component
@@ -1236,6 +1293,7 @@ class SemanticOracle:
         self._blockers = tuple(blockers)
         self._monotonic = monotonic
         self._sleep = sleep
+        self._swipe = swipe
         self._last_generation: Optional[int] = None
 
     def _retry_transition_read(
@@ -2165,7 +2223,249 @@ class SemanticOracle:
                     button=button,
                 )
             )
+        if not rows:
+            raise SemanticGateClosed("commission viewport has no actionable typed rows")
         return tuple(rows)
+
+    def commission_scroll_state(self) -> CommissionScrollState:
+        """Read the exact commission scrollbar geometry from typed Images."""
+
+        return self._retry_transition_read(self._commission_scroll_state_once)
+
+    def _commission_scroll_state_once(self) -> CommissionScrollState:
+        button_state = self.read_state()
+        page_back = self._unique(button_state, "commission/page/back")
+        if not page_back.actionable or self._blocking_rules(
+            button_state, "commission/scroll"
+        ):
+            raise SemanticGateClosed("commission scroll page identity is not proven")
+        ui_state = self.read_ui_state()
+        if ui_state.image_truncated or ui_state.method_mask & 0x8 == 0:
+            raise SemanticGateClosed("typed commission scroll Image snapshot is incomplete")
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("commission scroll snapshots are not coherent")
+
+        track_suffix = "EventUI(Clone)/blur_panel/adapt/scroll_bar"
+        handle_suffix = track_suffix + "/Image"
+        tracks = tuple(
+            image
+            for image in ui_state.images
+            if image.name == "scroll_bar"
+            and image.path.endswith(track_suffix)
+            and image.active_in_hierarchy
+            and image.active_and_enabled
+            and not image.truncated
+            and image.bounds is not None
+        )
+        handles = tuple(
+            image
+            for image in ui_state.images
+            if image.name == "Image"
+            and image.path.endswith(handle_suffix)
+            and image.sprite == "scroll_bar"
+            and image.active_in_hierarchy
+            and image.active_and_enabled
+            and not image.truncated
+            and image.bounds is not None
+        )
+        if not tracks and not handles:
+            # Lists that fit in one viewport do not instantiate this optional
+            # scrollbar at all.  A complete Image snapshot proves that exact
+            # absence; a partial track/handle pair remains invalid below.
+            empty_bounds = Bounds(0.0, 0.0, 0.0, 0.0)
+            return CommissionScrollState(
+                generation=ui_state.generation,
+                position=0.0,
+                page_fraction=1.0,
+                track_bounds=empty_bounds,
+                handle_bounds=empty_bounds,
+                handle_path="",
+                handle_raycast_top=None,
+            )
+        if len(tracks) != 1 or len(handles) != 1:
+            raise SemanticGateClosed(
+                "commission scrollbar track or handle is absent or ambiguous"
+            )
+        track = tracks[0]
+        handle = handles[0]
+        assert track.bounds is not None
+        assert handle.bounds is not None
+        track_height = track.bounds.bottom - track.bounds.top
+        handle_height = handle.bounds.bottom - handle.bounds.top
+        track_center_x = (track.bounds.left + track.bounds.right) / 2.0
+        handle_center_x = (handle.bounds.left + handle.bounds.right) / 2.0
+        if (
+            track_height <= 0
+            or handle_height <= 0
+            or handle_height > track_height + 20.0
+            or abs(track_center_x - handle_center_x) > 20.0
+        ):
+            raise SemanticGateClosed("commission scrollbar geometry is invalid")
+        travel = max(0.0, track_height - handle_height)
+        if travel <= 1.0:
+            position = 0.0
+        else:
+            raw_position = (handle.bounds.top - track.bounds.top) / travel
+            if raw_position < -0.15 or raw_position > 1.15:
+                raise SemanticGateClosed("commission scrollbar position is invalid")
+            position = min(1.0, max(0.0, raw_position))
+        return CommissionScrollState(
+            generation=ui_state.generation,
+            position=position,
+            page_fraction=min(1.0, handle_height / track_height),
+            track_bounds=track.bounds,
+            handle_bounds=handle.bounds,
+            handle_path=handle.path,
+            handle_raycast_top=handle.raycast_top,
+        )
+
+    @staticmethod
+    def _commission_row_signatures(
+        rows: Sequence[CommissionRowState],
+    ) -> Tuple[Tuple[Union[int, str], ...], ...]:
+        # Countdown and lifecycle status can change independently of a
+        # gesture.  Neither is evidence that a different row entered the
+        # actionable viewport.
+        return tuple(
+            (
+                row.index,
+                row.name,
+                row.level,
+                row.type_sprite,
+            )
+            for row in rows
+        )
+
+    def _commission_scroll_to(
+        self,
+        target_position: float,
+        direction: str,
+        timeout_seconds: float = 12.0,
+    ) -> Optional[CommissionScrollProof]:
+        if direction not in ("top", "next"):
+            raise ValueError("commission scroll direction is not supported")
+        if not 0.0 <= target_position <= 1.0:
+            raise ValueError("commission scroll target must be within [0, 1]")
+        if self._swipe is None:
+            raise SemanticGateClosed("semantic commission swipe backend is unavailable")
+        before = self.commission_scroll_state()
+        before_rows = self.commission_rows()
+        before_signatures = self._commission_row_signatures(before_rows)
+        if not before.scrollable:
+            return None
+        if direction == "top" and before.at_top:
+            return None
+        if direction == "next" and before.at_bottom:
+            return None
+        if before.handle_raycast_top is not True:
+            raise SemanticGateClosed("commission scrollbar handle is not top-raycastable")
+
+        handle_height = before.handle_bounds.bottom - before.handle_bounds.top
+        track_height = before.track_bounds.bottom - before.track_bounds.top
+        travel = track_height - handle_height
+        if travel <= 1.0:
+            return None
+        start = Point(
+            (before.handle_bounds.left + before.handle_bounds.right) / 2.0,
+            (before.handle_bounds.top + before.handle_bounds.bottom) / 2.0,
+        )
+        end = Point(
+            start.x,
+            before.track_bounds.top + target_position * travel + handle_height / 2.0,
+        )
+        if not (
+            0 <= start.x < self.fingerprint.width
+            and 0 <= start.y < self.fingerprint.height
+            and 0 <= end.x < self.fingerprint.width
+            and 0 <= end.y < self.fingerprint.height
+        ):
+            raise SemanticGateClosed("commission scrollbar gesture is outside the screen")
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("game activity changed before commission scroll")
+        self._swipe(
+            int(round(start.x)),
+            int(round(start.y)),
+            int(round(end.x)),
+            int(round(end.y)),
+            500,
+        )
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("game activity changed after commission scroll")
+
+        deadline = self._monotonic() + timeout_seconds
+        last_error: Optional[SemanticGateClosed] = None
+        while self._monotonic() < deadline:
+            self._sleep(0.25)
+            try:
+                after = self.commission_scroll_state()
+                after_rows = self.commission_rows()
+                after_signatures = self._commission_row_signatures(after_rows)
+            except SemanticGateClosed as exc:
+                last_error = exc
+                continue
+            moved = (
+                after.position < before.position - 0.03
+                if direction == "top"
+                else after.position > before.position + 0.03
+            )
+            if after.generation > before.generation and moved:
+                return CommissionScrollProof(
+                    direction=direction,
+                    before_position=before.position,
+                    after_position=after.position,
+                    before_generation=before.generation,
+                    after_generation=after.generation,
+                    before_row_signatures=before_signatures,
+                    after_row_signatures=after_signatures,
+                )
+        if last_error is not None:
+            raise last_error
+        raise SemanticGateClosed("commission scrollbar transition was not proven")
+
+    def commission_scroll_next(self) -> Optional[CommissionScrollProof]:
+        state = self.commission_scroll_state()
+        target = min(1.0, state.position + max(0.25, state.page_fraction * 0.8))
+        proof = self._commission_scroll_to(target, "next")
+        if (
+            proof is not None
+            and proof.before_row_signatures == proof.after_row_signatures
+        ):
+            # The exact handle moved, but no new stable row identity entered
+            # the actionable viewport.  For ALAS list scanning this is list
+            # exhaustion, not another page to process.
+            return None
+        return proof
+
+    def commission_scroll_to_top(self) -> Optional[CommissionScrollProof]:
+        before = self.commission_scroll_state()
+        before_signatures = self._commission_row_signatures(self.commission_rows())
+        if not before.scrollable or before.at_top:
+            return None
+
+        after = before
+        after_signatures = before_signatures
+        for _ in range(6):
+            step = self._commission_scroll_to(0.0, "top")
+            if step is None:
+                break
+            after = self.commission_scroll_state()
+            after_signatures = self._commission_row_signatures(
+                self.commission_rows()
+            )
+            if after.at_top:
+                return CommissionScrollProof(
+                    direction="top",
+                    before_position=before.position,
+                    after_position=after.position,
+                    before_generation=before.generation,
+                    after_generation=after.generation,
+                    before_row_signatures=before_signatures,
+                    after_row_signatures=after_signatures,
+                )
+        raise SemanticGateClosed("commission scrollbar did not reach the exact top")
 
     def commission_is_empty(self) -> bool:
         """Return true only for the pinned commission page's explicit empty text."""

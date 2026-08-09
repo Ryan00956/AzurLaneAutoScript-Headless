@@ -32,8 +32,8 @@ bounded typed UI layer and mission-sidebar closure are documented in the
 [G6 semantic UI report](docs/g6-semantic-ui-report.md). The broader typed
 reward/task surfaces and read-only campaign slice are documented in the
 [G7 adaptation report](docs/g7-task-campaign-adaptation-report.md). The real
-ALAS reward double run, bounded commission starts, and recovered one-budget
-commission reward are documented in the
+ALAS reward double run, bounded commission starts, clean one-budget commission
+reward, and typed multipage scan are documented in the
 [G8 validation report](docs/g8-alas-reward-commission-validation-report.md).
 
 G1, G2, G3, and the formal G4 harmless closed loop passed. G4 includes
@@ -43,10 +43,11 @@ branch. G5b then passed one controlled `GetAllButton` claim: three claimable
 rows became zero, the exact `AwardInfoUI` close target was verified, five
 unfinished rows remained stable, and main returned. Automatic mission claiming
 requires a second explicit environment opt-in. Commission now has bounded live
-mutation slices: independent integer budgets admitted two separate zero-oil
-starts and one finished reward. The reward's original command failed closed on
-observer capacity; an enlarged observer then proved counter zero and a complete
-zero-budget replay without duplicate input. Tactical training, research,
+mutation slices: independent integer budgets admitted bounded zero-oil starts
+and one clean same-context finished reward proof. The earlier reward's original
+command remains recovery-qualified after an observer-capacity failure. The
+exact commission scrollbar also passed a five-row ALAS multipage scan without
+enabling generic gestures. Tactical training, research,
 construction, dorm, and the visible campaign chapter remain bounded
 typed/read-only or safe-return slices.
 Lua/game-state coverage, stage selection, sortie, battle state, weekly-only
@@ -159,9 +160,10 @@ have a live adapter-level pass. Reward summary counts, commission rows,
 tactical slots, research cards, construction pool/cost, dorm summary, and
 visible campaign labels use typed state rather than OCR. A real patched ALAS
 checkout also passed reward twice with zero claims, a commission dry run, two
-separately budgeted zero-oil starts, and a zero-budget idempotency pass. One
-commission reward was admitted from an exact `1` counter; after a fail-closed
-64-record observer-capacity fault, the 128-record build proved exact counter
-`0` and completed a zero-budget recovery replay. This remains a recovery-
-qualified claim rather than a clean first-attempt in-context proof. Complete
-unattended ALAS execution awaits task-by-task live qualification.
+separately budgeted zero-oil starts, and zero-budget idempotency passes. The
+first commission reward remains recovery-qualified after a fail-closed
+64-record observer-capacity fault. A later natural completion cleanly produced
+an in-context `1 -> 0` proof with the reviewed popup chain and a second
+dual-budget-zero replay. The five-row daily list also passed exact typed
+scrollbar scanning and stable row-index deduplication. Complete unattended ALAS
+execution awaits task-by-task live qualification.

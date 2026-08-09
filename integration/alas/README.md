@@ -88,6 +88,18 @@ live-qualified. Once that single start is proven and its budget is exhausted,
 the patch returns through the reviewed detail back target and skips ALAS's
 otherwise redundant tab reset.
 
+ALAS also retains ownership of its original multipage commission scan. Only
+the exact typed commission scrollbar handle has a gesture adapter: it requires
+the reviewed track/handle paths, complete Image state, handle top-raycast,
+foreground continuity, newer generation, directional position movement, and a
+stable actionable-row viewport change before another page is scanned.
+Returning to the top instead requires the exact top position, using at most six
+individually proven steps. Countdown and status changes cannot prove a new
+page. The exact absence of both track and handle is a single-page state;
+partial pairs fail closed. Typed rows use `(daily|urgent, row_index)` as their
+merge identity, so overlapping viewports do not duplicate a ticking running
+row. No generic ALAS swipe or drag is enabled.
+
 Commission reward receipt uses its own integer budget and remains closed by
 default:
 
@@ -119,14 +131,14 @@ $env:ALAS_SEMANTIC_DRIVER_REVISION = (Get-Content H:\program\AzurLaneAutoScript-
 
 Do not enable unattended ALAS operation yet. The ALAS-owned reward flow has a
 fresh live zero-claim double run. Commission has two separately bounded live
-zero-oil start proofs and a clean zero-budget replay. One bounded reward input
-was admitted from an exact finished counter of `1`; its original command then
-failed closed when the old 64-record Button buffer truncated the popup state.
-After rebuilding with 128 records, exact counter `0` and a complete
-reward/start-budget-zero ALAS replay proved that the claim succeeded without a
-duplicate. Treat this as recovery-qualified rather than a clean in-context
-`CommissionRewardProof`. Larger budgets, nonzero-oil rows, cancellation, and
-repeated unattended starts are not qualified. Numeric-row claiming, stage
-selection, map and battle state, Lua/game-state access, other reward popups,
-general scroll/drag semantics, and full unattended task flows remain
-fail-closed.
+zero-oil start proofs plus a later one-hour start used to create a natural
+completion. The first bounded reward remains recovery-qualified after an old
+64-record observer-capacity failure. The later event cleanly produced an
+in-context `CommissionRewardProof` from exact counter `1 -> 0`, completed the
+reviewed popup chain, and passed a full dual-budget-zero replay. Reward budget
+`1` is therefore live-qualified; larger budgets are not. The five-row daily
+list also passed exact-handle multipage scanning and stable row-index merging.
+Nonzero-oil rows, cancellation, and repeated unattended starts are not
+qualified. Numeric-row claiming, stage selection, map and battle state,
+Lua/game-state access, other reward popups, gestures outside the exact
+commission handle, and full unattended task flows remain fail-closed.

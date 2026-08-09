@@ -170,6 +170,11 @@ if ! grep -Fq '"daily_btn", "urgency_btn"' \
   echo "Commission-list tab Image allowlist is missing" >&2
   exit 1
 fi
+if ! grep -Fq 'EventUI(Clone)/blur_panel/adapt/scroll_bar/Image' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Commission scrollbar Image raycast allowlist is missing" >&2
+  exit 1
+fi
 
 export PATH="${depot_tools_dir}:${PATH}"
 cd "${angle_dir}"

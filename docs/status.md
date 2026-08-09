@@ -4,7 +4,7 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-09
 
-### G8 real ALAS reward and commission slice: bounded recovery pass
+### G8 real ALAS reward and commission slice: clean bounded pass
 
 - A clean checkout of pinned upstream ALAS commit
   `81ccf63b4540f00241628c82a58c02c7a2bb11af` completed the real `Reward`
@@ -32,16 +32,32 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
   a `-force-gfx-st` restart, the snapshot was complete at 58/128, the exact
   finished counter was `0`, and a full reward/start-budget-zero `Commission`
   replay returned successfully without a second claim or a third start.
-- The remaining running commission was parsed as `1/4` and scheduled for
-  `2026-08-09 16:52:07`. This is a recovery-qualified live claim, not a claim
-  whose original command produced an in-context `CommissionRewardProof`.
-- Exact `[NetworkDown]` confirm/cancel semantics are build- and unit-validated,
-  but no live reconnect input was injected. Larger budgets, nonzero-oil rows,
-  cancellation, and unattended repeated starts remain unqualified. See the
+- At that historical recovery point, the remaining running commission was
+  parsed as `1/4` and scheduled for `2026-08-09 16:52:07`. That first claim
+  remains recovery-qualified rather than being rewritten as an in-context
+  `CommissionRewardProof`.
+- A later five-row daily list qualified exact typed multipage scrolling. The
+  reviewed handle moved from normalized top through `0.695` to bottom `0.998`
+  and returned to `0.010`; actionable row indexes changed `0-3 -> 0-4 -> 1-4`.
+  The ALAS replay deduplicated overlapping viewports by stable list mode and
+  row index, reporting exactly five daily rows and one running commission.
+  Single-page urgent state was proven by complete typed absence of both scroll
+  track and handle. Generic swipe and drag paths remain closed.
+- A separate one-hour `日常资源开发III` start was allowed to finish naturally.
+  The next real ALAS reward call used reward budget `1` and start budget `0`,
+  logged `SemanticCommissionReward 1 -> 0` with the reviewed ship-EXP and
+  AwardInfo close chain, and returned successfully. An exact dashboard read
+  and full dual-budget-zero ALAS replay then proved counter `0`, five pending
+  rows, and zero running rows. Commission reward budget `1` is therefore now
+  clean-qualified in addition to the preserved earlier recovery evidence.
+- One exact `[NetworkDown]` prompt blocked the pre-reward page. Its reviewed
+  Chinese prompt/labels and top-raycast confirm target were live-proven and
+  restored the page. Larger budgets, nonzero-oil rows, cancellation, and
+  unattended repeated starts remain unqualified. See the
   [G8 validation report](g8-alas-reward-commission-validation-report.md).
 - Final observer APK SHA-256:
-  `111ac661e3ba7d9ff0eebeeb4c803f22226092318b0b43161cfe8506a76c8d1d`.
-  The controller suite passes `139/139`; Python compilation, native build,
+  `3b86a745cefbc2a493b941571e6929e965cd7f44be4a2a14ccfa257efdf99fed`.
+  The controller suite passes `148/148`; Python compilation, native build,
   diff whitespace, and clean pinned-patch application checks pass.
 
 ### G7 typed task surfaces and read-only campaign: passed in reviewed scope

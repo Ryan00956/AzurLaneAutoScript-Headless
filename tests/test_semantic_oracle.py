@@ -161,6 +161,59 @@ def make_ui(texts, toggles=None, images=None, generation=10, age_ms=20):
     }
 
 
+def set_commission_scroll_view(
+    backend,
+    *,
+    index,
+    name,
+    handle_top,
+    generation,
+    handle_raycast_top=True,
+    duration="01:00:00",
+):
+    page = "root/UICamera/Canvas/UIMain/EventUI(Clone)"
+    row = page + "/scrollRect$/content/{0}".format(index)
+    backend.snapshot = make_snapshot(generation=generation)
+    backend.buttons = make_buttons(
+        [
+            make_button("back_btn", page + "/blur_panel/adapt/top/back_btn"),
+            make_button("bgNormal$", row + "/bgNormal$", 640, 190),
+        ],
+        generation=generation,
+    )
+    track = make_image(
+        page + "/blur_panel/adapt/scroll_bar",
+        "white_dot",
+        {"left": 1255, "top": 75, "right": 1259, "bottom": 675},
+    )
+    handle = make_image(
+        page + "/blur_panel/adapt/scroll_bar/Image",
+        "scroll_bar",
+        {
+            "left": 1250,
+            "top": handle_top,
+            "right": 1264,
+            "bottom": handle_top + 480,
+        },
+    )
+    handle["raycast_target"] = True
+    handle["raycast_top"] = handle_raycast_top
+    backend.ui = make_ui(
+        [
+            make_text(name, row + "/labelName$"),
+            make_text("15", row + "/level/labelLv$"),
+            make_text(duration, row + "/labelTime$/Text"),
+        ],
+        images=[
+            make_image(row + "/iconState$/0", "kongxian_bg"),
+            make_image(row + "/iconType$", "faxiankuangmai"),
+            track,
+            handle,
+        ],
+        generation=generation,
+    )
+
+
 class FakeBackend:
     def __init__(self, buttons):
         self.snapshot = make_snapshot()
@@ -170,7 +223,9 @@ class FakeBackend:
         self.ui_sequence = []
         self.foreground = COMPONENT
         self.taps = []
+        self.swipes = []
         self.on_tap = None
+        self.on_swipe = None
 
     def request(self, request_line):
         if request_line == "GET /v1/snapshot\n":
@@ -193,6 +248,11 @@ class FakeBackend:
         if self.on_tap is not None:
             self.on_tap()
 
+    def swipe(self, x1, y1, x2, y2, duration_ms):
+        self.swipes.append((x1, y1, x2, y2, duration_ms))
+        if self.on_swipe is not None:
+            self.on_swipe()
+
 
 def make_oracle(backend):
     return SemanticOracle(
@@ -206,6 +266,7 @@ def make_oracle(backend):
             expected_pid=1234,
         ),
         sleep=lambda _: None,
+        swipe=backend.swipe,
     )
 
 
@@ -966,6 +1027,176 @@ class SemanticOracleTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].type_sprite, "jianduixunlian")
 
+    def test_commission_scroll_uses_exact_handle_and_proves_row_change(self):
+        backend = FakeBackend([])
+        set_commission_scroll_view(
+            backend,
+            index=0,
+            name="第一页委托",
+            handle_top=75,
+            generation=10,
+        )
+
+        def advance_scroll():
+            set_commission_scroll_view(
+                backend,
+                index=1,
+                name="第二页委托",
+                handle_top=195,
+                generation=11,
+            )
+
+        backend.on_swipe = advance_scroll
+        oracle = make_oracle(backend)
+
+        before = oracle.commission_scroll_state()
+        proof = oracle.commission_scroll_next()
+
+        self.assertTrue(before.scrollable)
+        self.assertTrue(before.at_top)
+        self.assertIsNotNone(proof)
+        self.assertEqual(proof.direction, "next")
+        self.assertEqual(proof.before_position, 0.0)
+        self.assertEqual(proof.after_position, 1.0)
+        self.assertNotEqual(
+            proof.before_row_signatures,
+            proof.after_row_signatures,
+        )
+        self.assertEqual(len(backend.swipes), 1)
+        self.assertEqual(backend.swipes[0][0], backend.swipes[0][2])
+        self.assertEqual(backend.swipes[0][4], 500)
+
+    def test_commission_scroll_refuses_handle_without_top_raycast(self):
+        backend = FakeBackend([])
+        set_commission_scroll_view(
+            backend,
+            index=0,
+            name="第一页委托",
+            handle_top=75,
+            generation=10,
+            handle_raycast_top=False,
+        )
+
+        with self.assertRaisesRegex(SemanticGateClosed, "top-raycastable"):
+            make_oracle(backend).commission_scroll_next()
+
+        self.assertEqual(backend.swipes, [])
+
+    def test_commission_scroll_exact_absence_is_a_single_page_state(self):
+        backend = FakeBackend([])
+        set_commission_scroll_view(
+            backend,
+            index=0,
+            name="单页委托",
+            handle_top=75,
+            generation=10,
+        )
+        backend.ui["images"] = backend.ui["images"][:2]
+        backend.ui["image_count"] = 2
+
+        state = make_oracle(backend).commission_scroll_state()
+
+        self.assertFalse(state.scrollable)
+        self.assertTrue(state.at_top)
+        self.assertTrue(state.at_bottom)
+        self.assertEqual(state.handle_path, "")
+
+    def test_commission_scroll_refuses_partial_track_handle_pair(self):
+        backend = FakeBackend([])
+        set_commission_scroll_view(
+            backend,
+            index=0,
+            name="单页委托",
+            handle_top=75,
+            generation=10,
+        )
+        backend.ui["images"] = backend.ui["images"][:-1]
+        backend.ui["image_count"] -= 1
+
+        with self.assertRaisesRegex(SemanticGateClosed, "absent or ambiguous"):
+            make_oracle(backend).commission_scroll_state()
+
+    def test_commission_scroll_does_not_treat_countdown_tick_as_new_page(self):
+        backend = FakeBackend([])
+        set_commission_scroll_view(
+            backend,
+            index=0,
+            name="运行中委托",
+            handle_top=75,
+            generation=10,
+            duration="01:00:00",
+        )
+
+        def countdown_only():
+            set_commission_scroll_view(
+                backend,
+                index=0,
+                name="运行中委托",
+                handle_top=135,
+                generation=11,
+                duration="00:59:59",
+            )
+
+        backend.on_swipe = countdown_only
+
+        self.assertIsNone(make_oracle(backend).commission_scroll_next())
+        self.assertEqual(len(backend.swipes), 1)
+
+    def test_commission_scroll_to_top_proves_reverse_row_change(self):
+        backend = FakeBackend([])
+        set_commission_scroll_view(
+            backend,
+            index=1,
+            name="第二页委托",
+            handle_top=195,
+            generation=10,
+        )
+
+        def return_to_top():
+            set_commission_scroll_view(
+                backend,
+                index=0,
+                name="第一页委托",
+                handle_top=75,
+                generation=11,
+            )
+
+        backend.on_swipe = return_to_top
+        proof = make_oracle(backend).commission_scroll_to_top()
+
+        self.assertIsNotNone(proof)
+        self.assertEqual(proof.direction, "top")
+        self.assertEqual(proof.before_position, 1.0)
+        self.assertEqual(proof.after_position, 0.0)
+
+    def test_commission_scroll_to_top_repeats_until_exact_top(self):
+        backend = FakeBackend([])
+        set_commission_scroll_view(
+            backend,
+            index=1,
+            name="第二页委托",
+            handle_top=195,
+            generation=10,
+        )
+        steps = iter(((135, 11), (75, 12)))
+
+        def return_towards_top():
+            handle_top, generation = next(steps)
+            set_commission_scroll_view(
+                backend,
+                index=0 if handle_top == 75 else 1,
+                name="第一页委托" if handle_top == 75 else "第二页委托",
+                handle_top=handle_top,
+                generation=generation,
+            )
+
+        backend.on_swipe = return_towards_top
+        proof = make_oracle(backend).commission_scroll_to_top()
+
+        self.assertEqual(proof.before_position, 1.0)
+        self.assertEqual(proof.after_position, 0.0)
+        self.assertEqual(len(backend.swipes), 2)
+
     def test_commission_row_click_revalidates_exact_typed_signature(self):
         page = "root/UICamera/Canvas/UIMain/EventUI(Clone)"
         row = page + "/scrollRect$/content/0"
@@ -1192,7 +1423,11 @@ class SemanticOracleTests(unittest.TestCase):
         )
         backend.ui = make_ui([])
 
-        self.assertEqual(make_oracle(backend).commission_rows(), ())
+        with self.assertRaisesRegex(
+            SemanticGateClosed,
+            "no actionable typed rows",
+        ):
+            make_oracle(backend).commission_rows()
 
     def test_commission_empty_requires_explicit_typed_marker(self):
         page = "root/UICamera/Canvas/UIMain/EventUI(Clone)"

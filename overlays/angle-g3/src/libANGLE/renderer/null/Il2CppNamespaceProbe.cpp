@@ -546,6 +546,10 @@ bool ShouldEvaluateImageTopRaycast(std::string_view name,
           return EndsWith(path, direct) || EndsWith(path, selected);
         });
   }
+  if (EndsWith(path,
+               "EventUI(Clone)/blur_panel/adapt/scroll_bar/Image")) {
+    return true;
+  }
   return false;
 }
 

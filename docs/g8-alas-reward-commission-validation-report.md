@@ -17,14 +17,20 @@ independent, bounded mutation budgets:
    buffer became full. After increasing the capacity to 128 and restarting,
    an exact typed counter of zero plus a complete zero-budget ALAS replay proved
    that the claim succeeded and was not repeated.
+5. A later naturally completed `日常资源开发III` produced a clean, same-call
+   `CommissionRewardProof`: exact finished count `1 -> 0`, the reviewed
+   ship-EXP and AwardInfo close chain, successful ALAS completion, and a full
+   reward/start-budget-zero replay.
+6. The five-row daily list passed exact typed scrollbar round trips and the
+   original ALAS multipage scan without duplicate running rows.
 
-The reward result is therefore recovery-qualified. It is not represented as a
-clean first-attempt command that produced the adapter's in-context
-`CommissionRewardProof` object.
+The first reward remains recovery-qualified historical evidence. Commission
+reward budget `1` is now also clean-qualified by the later independent natural
+completion and in-context proof.
 
 This is not full unattended ALAS qualification. Larger budgets, nonzero-oil
-starts, cancellation, unrestricted list gestures, and other task mutations
-remain separate gates.
+starts, cancellation, gestures outside the exact reviewed commission handle,
+and other task mutations remain separate gates.
 
 ## Pinned runtime
 
@@ -35,13 +41,13 @@ remain separate gates.
 | Package | `com.bilibili.azurlane` |
 | Game build | pinned CN `9.7.10` fingerprint |
 | Observer/driver revision | `be80ce591a481c12d60c50d6040d40c035b40a2b` |
-| Final observer APK SHA-256 | `111ac661e3ba7d9ff0eebeeb4c803f22226092318b0b43161cfe8506a76c8d1d` |
+| Final observer APK SHA-256 | `3b86a745cefbc2a493b941571e6929e965cd7f44be4a2a14ccfa257efdf99fed` |
 | Semantic mode | `ALAS_SEMANTIC_MODE=1` |
 | Qualified start/reward budget | `1` per controlled invocation |
 
 Every game launch and restart used Unity `-force-gfx-st`. The final retained
 restart is recorded in
-`evidence/g4-game-init-20260809T083326Z-emulator-5580`. ADB screenshots were
+`evidence/g4-game-init-20260809T090409Z-emulator-5580`. ADB screenshots were
 black throughout, so all decisions and inputs used the typed observer rather
 than pixel fallback.
 
@@ -146,6 +152,81 @@ show that one reward was claimed and could not be repeated. Because the first
 process lost its flow context at the capacity gate, this cross-run evidence is
 kept distinct from the clean in-context proof required on future claims.
 
+## Clean one-budget reward follow-up
+
+A later bounded start used the existing zero-oil start gate to start
+`日常资源开发III` and logged the exact typed transition
+`SemanticCommissionStart 日常资源开发III: 3600s -> 3599s, tag_ongoing`. It was
+then allowed to finish naturally; no clock change, quick-finish item, or
+additional commission was used to manufacture the reward event.
+
+On the reward dashboard, the typed finished counter changed from `0` to `1` at
+observer generation `2218`. A real ALAS invocation used reward budget `1` and
+start budget `0`. The adapter revalidated finished=`1` immediately before the
+only finish input. ALAS closed the reviewed ship-EXP and AwardInfo targets, and
+the same invocation logged:
+
+```text
+SemanticCommissionReward 1 -> 0,
+close=['reward/ship-exp/close', 'reward/award-info/close']
+ALAS_COMMISSION_CLEAN_REWARD_RESULT True
+```
+
+ALAS probed its cached AwardInfo resource more than once after the Unity object
+disappeared. The adapter reused the already-recorded exact receipt for those
+late probes; it did not inject another ADB input. A distinct new AwardInfo
+target would still require a new exact click.
+
+An independent dashboard read then returned finished=`0`. A complete second
+ALAS invocation with both budgets at zero returned successfully, scanned all
+five replacement pending rows, and reported zero running rows:
+
+```text
+CLEAN_REWARD_POST_FINISHED 0
+ALAS_COMMISSION_CLEAN_POST_BUDGET0_RESULT True
+ALAS_COMMISSION_CLEAN_POST_DAILY_COUNT 5
+ALAS_COMMISSION_CLEAN_POST_RUNNING 0
+```
+
+This later event is the clean same-context qualification that the earlier
+capacity-fault recovery could not provide.
+
+## Typed multipage commission follow-up
+
+The daily list later contained five rows, so the fifth row was outside the
+initial actionable viewport. The native observer now evaluates EventSystem
+top-raycast only for the exact
+`EventUI(Clone)/blur_panel/adapt/scroll_bar/Image` handle. The controller
+requires a complete typed Image snapshot, the exact track/handle pair,
+reviewed geometry, foreground continuity, a newer generation, and movement in
+the requested direction before it accepts each bounded vertical handle
+gesture. Returning to the top permits at most six individually proven steps.
+There is no generic semantic swipe API.
+
+The live handle was top-raycastable. Its normalized position moved from the
+top through `0.695` to `0.998`; stable actionable row indexes changed from
+`0-3` to `0-4` and then `1-4`. Returning to the top reached `0.010`. Running
+countdown ticks and lifecycle changes are excluded from the viewport identity,
+so they cannot prove a page transition. A complete typed Image snapshot with
+neither track nor handle is accepted only as an exact single-page state; a
+partial or ambiguous pair fails closed.
+
+The pinned ALAS scan now reuses its original `_commission_scan_list()` loop and
+delegates only its scroll operations to those typed primitives. Semantic
+commissions carry a stable `(daily|urgent, row_index)` key so a ticking running
+row is deduplicated across viewports while two real same-name rows at different
+indexes remain distinct. A full reward/start-budget-zero run reported:
+
+```text
+ALAS_COMMISSION_MULTIPAGE_BUDGET0_RESULT True
+ALAS_DAILY_COUNT 5
+ALAS_DAILY_KEYS [('daily', 0), ('daily', 1), ('daily', 2), ('daily', 3), ('daily', 4)]
+ALAS_DAILY_RUNNING 1
+```
+
+The urgent list had no instantiated scrollbar and was correctly treated as a
+single page. No reward or start mutation was admitted by this run.
+
 ## Additional hardening
 
 - Commission reward and start permissions are independent canonical integer
@@ -159,15 +240,16 @@ kept distinct from the clean in-context proof required on future claims.
   `暂无可以进行的委托` marker.
 - `POPUP_CONFIRM`, `POPUP_CANCEL`, and `POPUP_CONFIRM_UI_ADDITIONAL` resolve
   only for the exact Chinese reconnect prompt ending in `[NetworkDown]`, the
-  exact `取消`/`确定` pair, and a top-raycast target. A real outage was observed,
-  but no reconnect input was injected; this path is build- and unit-validated
-  only.
+  exact `取消`/`确定` pair, and a top-raycast target. Immediately before the
+  clean reward run, one real outage blocked the commission page. The exact
+  reviewed confirm target was top-raycastable and restored the page; no other
+  Msgbox prompt is admitted by this mapping.
 - The current start mutation slice permits only exact pending, zero-oil rows;
   cancellation remains unallowlisted.
 
 ## Verification
 
-- Controller suite: `139 passed`.
+- Controller suite: `148 passed`.
 - Main Python and patched ALAS compilation: passed.
 - Native observer build with 128 Button records: passed.
 - Final APK installation and post-restart complete snapshot: passed.
