@@ -115,6 +115,11 @@ if ! grep -Fq 'LevelMainScene(Clone)/entrance/enters/enter_main' \
   echo "Campaign-menu normal-entry allowlist is missing" >&2
   exit 1
 fi
+if ! grep -Fq 'Overlay/UIMain/blur_panel/adapt/top/back_btn' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Construction-page back-button allowlist is missing" >&2
+  exit 1
+fi
 if ! grep -Fq 'CommissionInfoUI4Mellow(Clone)/frame/main/content/event/' \
     "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
   echo "Reward-page semantic entries are missing" >&2

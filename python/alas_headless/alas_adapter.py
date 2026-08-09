@@ -514,6 +514,24 @@ class AlasSemanticAdapter:
             raise SemanticGateClosed("reward popup close target is ambiguous")
         return targets[0] if targets else None
 
+    def _goto_main_target(self) -> Optional[str]:
+        targets = []
+        if self.oracle.campaign_menu_is_entry() and self.oracle.enabled(
+            "campaign-menu/page/back"
+        ):
+            targets.append("campaign-menu/page/back")
+        for identity, target in (
+            ("build/page/start", "build/page/back"),
+            ("research-menu/page/back", "research-menu/page/back"),
+            ("research/page/back", "research/page/back"),
+        ):
+            if self.oracle.exists(identity) and self.oracle.enabled(target):
+                targets.append(target)
+        unique = tuple(dict.fromkeys(targets))
+        if len(unique) > 1:
+            raise SemanticGateClosed("GOTO_MAIN target is ambiguous")
+        return unique[0] if unique else None
+
     def _mission_resource_appears(self, name: str) -> bool:
         self._require_mission_context()
         if name in ("MISSION_NOTICE", "MISSION_NOTICE_WHITE"):
@@ -597,9 +615,7 @@ class AlasSemanticAdapter:
         if semantic_id is None and name == "CAMPAIGN_CHECK":
             return self.oracle.campaign_page_is_normal()
         if semantic_id is None and name == "GOTO_MAIN":
-            return self.oracle.campaign_menu_is_entry() and self.oracle.enabled(
-                "campaign-menu/page/back"
-            )
+            return self._goto_main_target() is not None
         if self._mail_context is not None and name == "MAIL_MANAGE":
             return self.oracle.enabled("mail/manage")
         if semantic_id is None:
@@ -810,9 +826,10 @@ class AlasSemanticAdapter:
             )
         self._package_gate()
         if semantic_id is None and name == "GOTO_MAIN":
-            if not self.oracle.campaign_menu_is_entry():
-                raise SemanticGateClosed("GOTO_MAIN is outside the campaign entrance")
-            return self.oracle.click("campaign-menu/page/back")
+            target = self._goto_main_target()
+            if target is None:
+                raise SemanticGateClosed("GOTO_MAIN has no reviewed page target")
+            return self.oracle.click(target)
         if self._mail_context is not None and name == "MAIL_MANAGE":
             if self.oracle.enabled("mail/manage/back"):
                 return self.oracle.click("mail/manage/back")

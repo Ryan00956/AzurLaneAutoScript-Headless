@@ -294,6 +294,17 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertEqual(adapter.dorm_state().occupied_slots, 2)
         self.assertEqual(oracle.click_calls, [])
 
+    def test_build_goto_main_uses_exact_reviewed_back(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.exists_values["build/page/start"] = True
+        oracle.enabled_values["build/page/back"] = True
+
+        self.assertTrue(adapter.appear(NamedButton("GOTO_MAIN")))
+        receipt = adapter.click(NamedButton("GOTO_MAIN"))
+
+        self.assertEqual(receipt.semantic_id, "build/page/back")
+        self.assertEqual(oracle.click_calls, ["build/page/back"])
+
     def test_campaign_menu_uses_presence_check_and_exact_navigation_targets(self):
         adapter, oracle, _ = self.make_adapter()
         oracle.campaign_menu_value = True

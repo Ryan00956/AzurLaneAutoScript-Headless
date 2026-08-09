@@ -2,13 +2,17 @@
 
 Status terms are deliberately strict. A build passing does not imply a later gate has passed.
 
-Current status: G1-G4, G5a, controlled G5b, and scoped G6 passed. G4 includes login/main reachability,
+Current status: G1-G4, G5a, controlled G5b, scoped G6, and scoped G7 passed. G4 includes login/main reachability,
 sustained semantic state, RectTransform bounds, top EventSystem raycast identity
 for each action, and a settings-page return loop. G5a covers only the ALAS
 mission-reward no-claim branch. G5b covers one `GetAllButton` claim on the
 default task page. G6 adds typed Text/Image observation and a live semantic
 weekly-tab selection/return loop; weekly-only ALAS reward execution, row-only
 claiming, and every other ALAS task remain open.
+
+G7 broadens typed observation to selected task surfaces and a read-only
+campaign chapter. It does not enable resource-consuming task starts, stage
+selection, map control, battle control, or Lua invocation.
 
 ## G0 - Reproducible baseline
 
@@ -115,6 +119,24 @@ a separate live revalidation before it inherits the pass.
   weekly-only execution, and numeric-row claims remain separate open gates.
 
 See [G6 typed semantic UI validation](g6-semantic-ui-report.md).
+
+## G7 - Typed task surfaces and read-only campaign: scoped pass
+
+- Exact typed state covers reward counters, commission rows/empty state,
+  tactical slots/countdowns, research cards, construction pool/cost, dorm
+  summary, and visible campaign chapter/stage labels.
+- Only reviewed navigation, reward receipt, safe popup cancel/close, and page
+  return controls may be injected. Every action requires exact path, active and
+  interactable state, coherent fresh generations, foreground/package identity,
+  bounds, and native top EventSystem raycast proof.
+- ALAS retains state-machine ownership. Semantic mode replaces reviewed
+  observation/OCR inputs and rejects raw coordinate, gesture, unknown popup,
+  and generic reused-button fallbacks.
+- Construction submission, commission selection/start, tactical assignment,
+  research selection/start, dorm mutation, stage selection, map movement,
+  sortie, battle, and Lua state remain separate gates.
+
+See [G7 typed task and campaign adaptation](g7-task-campaign-adaptation-report.md).
 
 ## Stop or pivot conditions
 

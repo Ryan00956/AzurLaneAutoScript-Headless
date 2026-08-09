@@ -431,6 +431,11 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
         "BuildShipUI(Clone)/BuildShipPoolsPageUI(Clone)/gallery/start_btn",
     ),
     SemanticTarget(
+        "build/page/back",
+        "back_btn",
+        "Overlay/UIMain/blur_panel/adapt/top/back_btn",
+    ),
+    SemanticTarget(
         "campaign-menu/page/back",
         "back_button",
         "LevelMainScene(Clone)/top/top_chapter/back_button",
@@ -794,6 +799,7 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
             "build/pool/light",
             "build/pool/heavy",
             "build/pool/special",
+            "build/page/back",
         ),
     ),
     BlockerRule(

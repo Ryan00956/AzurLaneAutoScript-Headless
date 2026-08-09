@@ -38,7 +38,9 @@ G3 proves the rendezvous on the Unity contract. G4 independently verified that
 the pinned game accepts `-force-gfx-st`, exposes the allowlisted IL2CPP APIs,
 advances under bounded sampling, confirms each action through
 `EventSystem.RaycastAll`, and survives one harmless page round trip. Broader
-game/Lua semantics remain outside the current proof.
+non-UI/Lua semantics, stage selection, map control, and battle state remain
+outside the current proof. G5-G7 add task-specific typed UI slices without
+broadening the observer into a generic managed invocation surface.
 
 ## Hybrid rendering warning
 

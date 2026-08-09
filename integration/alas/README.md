@@ -18,12 +18,13 @@ ALAS behavior:
   popup receive loop, and daily/weekly branch ordering, remains the owner.
 
 The adapter is deliberately incomplete. Reviewed main-page aliases and the
-explicit mission virtual resources are accepted. Unknown actions, including
-the widely reused `BACK_ARROW`, always raise `AlasSemanticUnmapped`. During the
-ALAS mission context, unrelated presence checks may return false only while an
-independently proven main/task/reward surface exists; otherwise they also
-raise. The adapter never falls back to a black screenshot or an asset's old
-rectangle.
+explicit task virtual resources are accepted. The widely reused `BACK_ARROW`
+is contextual only inside reviewed commission/tactical flows and remains
+unmapped elsewhere. `GOTO_MAIN` resolves only when one reviewed campaign-menu,
+construction, or research page identity supplies a unique exact back target.
+During a task context, unrelated presence checks may return false only while
+an independently proven task surface exists; otherwise they also raise. The
+adapter never falls back to a black screenshot or an asset's old rectangle.
 
 Mapped presence/clicks also require the observer's top EventSystem raycast
 result to belong to the mapped Button. Active/interactable state and bounds
@@ -61,6 +62,15 @@ the task page. Positive mission red-dot behavior is not yet proven. Weekly-only
 full reward runs, numeric-row claiming, ship-reward popups, and empty-page
 inference remain closed.
 
+Additional typed readers cover reward summary counts, commission rows and
+empty state, tactical slots/countdowns, research project cards, construction
+pool/cost, dorm summary, and visible campaign chapter/stage labels. The pinned
+patch feeds tactical countdowns, safe continue-prompt cancellation, research
+status helpers, and dorm occupancy into the original ALAS code. These readers
+do not authorize commission start, course assignment, research start, dorm
+mutation, construction submission, stage selection, map movement, or battle
+input.
+
 To stage this against a compatible ALAS checkout:
 
 ```powershell
@@ -75,6 +85,7 @@ Do not enable unattended ALAS operation yet. The earlier default-page probe
 proved the semantic no-claim and one controlled claim-all primitives. The new
 ALAS-owned state-machine wiring has unit, syntax, lifecycle, and pinned-patch
 application coverage, but still needs a fresh live no-claim/claim revalidation.
-The mission sidebar and typed text have their narrower live adapter evidence;
-numeric-row claiming, campaign maps, battle state, other reward popups,
-scroll/drag semantics, and all other task flows remain fail-closed.
+The mission sidebar and newer typed task readers have narrower live adapter
+evidence; numeric-row claiming, stage selection, map and battle state,
+Lua/game-state access, other reward popups, scroll/drag semantics, and full
+unattended task flows remain fail-closed.

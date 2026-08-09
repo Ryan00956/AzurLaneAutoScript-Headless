@@ -425,6 +425,10 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
                 "LevelMainScene(Clone)/entrance/enters/enter_main"))) {
     return true;
   }
+  if (name == "back_btn" &&
+      EndsWith(path, "Overlay/UIMain/blur_panel/adapt/top/back_btn")) {
+    return true;
+  }
   if (name == "back" &&
       EndsWith(path,
                "SelectTechnologyUI(Clone)/blur_panel/adapt/top/back")) {

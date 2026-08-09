@@ -4,6 +4,45 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-09
 
+### G7 typed task surfaces and read-only campaign: passed in reviewed scope
+
+- The typed controller now models the reward dashboard, commission rows and
+  empty marker, tactical slots and countdowns, five research cards,
+  construction pool/cost, dorm occupancy/food/comfort/floor, and the visible
+  campaign chapter/stage labels. Missing, duplicate, truncated, incoherent, or
+  contradictory records fail closed.
+- The pinned ALAS patch retains the original mission, commission, tactical,
+  and research state machines. It supplies typed observation, countdown, and
+  safe-popup inputs; the dorm scheduler obtains its occupied-slot count from
+  typed state. The patch applies cleanly to upstream commit
+  `81ccf63b4540f00241628c82a58c02c7a2bb11af`.
+- Live adapter validation completed exact reward-to-tactical entry, observed
+  four empty tactical slots, and returned through the contextual ALAS
+  `BACK_ARROW`. Earlier in the same controlled session, four completed
+  tactical rewards were received and every exact “continue learning” prompt
+  was canceled; no new class was started.
+- Live dorm state was `6/6` occupied slots, `0/40000` food, `454` comfort, and
+  floor `1`; the exact statistics confirmation and return controls were
+  validated. Feeding, collecting, decorating, and ship assignment remain
+  unmapped.
+- Live construction state was pool `heavy`, `3661` cubes, `2` cubes/build, and
+  `1500` coins/build. The ALAS `GOTO_MAIN` alias returned through the exact
+  construction `back_btn`; the construction start control remains
+  presence-only and cannot be clicked through the adapter.
+- Live campaign validation entered only the normal chapter list, read chapter
+  `马里亚纳风云上` and stages `12-1` through `12-4` with their typed names,
+  then returned. Generic `BACK_ARROW` remained unmapped; no stage, formation,
+  sortie, or battle control was clicked.
+- The final observer APK SHA-256 is
+  `3c05c2bf913464ad7dee7a0e62c4fea3b5919a5c59c6a11d2274c8bd867d6c4e`.
+  The controller suite passes `109/109`; Python compilation, diff whitespace,
+  native observer build, installation, package fingerprint, and clean pinned
+  patch application checks also passed.
+- This is not a full unattended ALAS pass. Commission selection/start,
+  tactical course assignment, research selection/start, dorm mutations,
+  construction submission, campaign stage selection, map control, battle
+  control, and Lua state are still closed.
+
 ### G6 typed UI and mission sidebar: passed in reviewed scope
 
 - `GET /v1/ui` now exposes bounded, typed Toggle, UGUI Text, TextMesh Pro, and

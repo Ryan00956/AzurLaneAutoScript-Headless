@@ -29,7 +29,9 @@ The in-process typed observer contract is documented in the
 The first task-specific ALAS slice is documented in the
 [G5 mission validation report](docs/g5-mission-validation-report.md). The
 bounded typed UI layer and mission-sidebar closure are documented in the
-[G6 semantic UI report](docs/g6-semantic-ui-report.md).
+[G6 semantic UI report](docs/g6-semantic-ui-report.md). The broader typed
+reward/task surfaces and read-only campaign slice are documented in the
+[G7 adaptation report](docs/g7-task-campaign-adaptation-report.md).
 
 G1, G2, G3, and the formal G4 harmless closed loop passed. G4 includes
 EventSystem top-raycast proof for every injected target, not only object state
@@ -37,9 +39,11 @@ and RectTransform bounds. G5a passed the real ALAS mission-reward no-claim
 branch. G5b then passed one controlled `GetAllButton` claim: three claimable
 rows became zero, the exact `AwardInfoUI` close target was verified, five
 unfinished rows remained stable, and main returned. Automatic mission claiming
-requires a second explicit environment opt-in. Lua/game-state coverage,
-campaign maps, battle state, weekly-only end-to-end coverage, and full ALAS task coverage
-remain open.
+requires a second explicit environment opt-in. Commission, tactical training,
+research, construction, dorm, and the visible campaign chapter now have
+bounded typed readers, but only reviewed reward and return actions are enabled.
+Lua/game-state coverage, stage selection, sortie, battle state, weekly-only
+end-to-end coverage, and full unattended ALAS task coverage remain open.
 
 ## Repository layout
 
@@ -144,6 +148,8 @@ Claiming remains disabled by default; one `GetAllButton` claim per ALAS
 invocation is available only through the separate controlled-claim opt-in. The
 observer now also exposes typed Toggle, Text, TextMesh Pro, and Image records
 through `GET /v1/ui`. Exact task-sidebar selected sprites and top-raycast input
-have a live adapter-level pass. The ownership refactor and typed OCR hook are
-unit/pinned-patch validated; the complete ALAS-owned reward invocation still
-awaits a fresh live rerun.
+have a live adapter-level pass. Reward summary counts, commission rows,
+tactical slots, research cards, construction pool/cost, dorm summary, and
+visible campaign labels use typed state rather than OCR. The ownership refactor
+and typed OCR hook are unit/pinned-patch validated; complete unattended ALAS
+execution still awaits task-by-task live qualification.
