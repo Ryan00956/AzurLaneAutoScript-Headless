@@ -48,6 +48,19 @@ class AlasIntegrationPatchTests(unittest.TestCase):
             self.patch_text,
         )
 
+    def test_mail_hook_brackets_instead_of_replacing_alas_state_machine(self):
+        self.assertIn("diff --git a/module/freebies/mail_white.py", self.patch_text)
+        self.assertIn("semantic_adapter.begin_mail()", self.patch_text)
+        self.assertIn("semantic_adapter.end_mail()", self.patch_text)
+        self.assertIn("+            self.mail_claim(", self.patch_text)
+
+    def test_commission_hook_brackets_instead_of_replacing_alas_state_machine(self):
+        self.assertIn("diff --git a/module/commission/commission.py", self.patch_text)
+        self.assertIn("semantic_adapter.begin_commission()", self.patch_text)
+        self.assertIn("semantic_adapter.end_commission()", self.patch_text)
+        self.assertIn("+            self.commission_receive()", self.patch_text)
+        self.assertIn("+            self.commission_start()", self.patch_text)
+
 
 if __name__ == "__main__":
     unittest.main()

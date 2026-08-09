@@ -15,7 +15,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, Iterable, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 
 OBSERVER_SCHEMA = "alas-headless.observer/v1"
@@ -73,6 +73,21 @@ class SemanticImageTarget:
     path_parent_suffix: str
     selected_sprite: str
     inactive_sprite: str
+
+
+@dataclass(frozen=True)
+class SemanticToggleTarget:
+    semantic_id: str
+    name: str
+    path_suffix: str
+    expected_child_sprite: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class SemanticTextTarget:
+    semantic_id: str
+    path_suffix: str
+    expected_texts: Tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -135,9 +150,22 @@ class ToggleState:
     active_and_enabled: bool
     interactable: bool
     checked: bool
+    raycast_top: Optional[bool]
     point: Optional[Point]
     bounds: Optional[Bounds]
     raw: Mapping[str, Any]
+
+    @property
+    def actionable(self) -> bool:
+        return (
+            self.active_in_hierarchy
+            and self.active_and_enabled
+            and self.interactable
+            and self.raycast_top is True
+            and self.point is not None
+            and self.bounds is not None
+            and self.bounds.contains(self.point)
+        )
 
 
 @dataclass(frozen=True)
@@ -182,6 +210,13 @@ class UiState:
 
 
 @dataclass(frozen=True)
+class IndexedTextGroup:
+    index: int
+    path: str
+    texts: Tuple[TextState, ...]
+
+
+@dataclass(frozen=True)
 class OracleState:
     generation: int
     scene_handle: int
@@ -205,6 +240,7 @@ class MissionDisposition(str, Enum):
     CLAIMABLE_ALL = "claimable-all"
     CLAIMABLE_ROW = "claimable-row"
     UNFINISHED = "unfinished"
+    EMPTY = "empty"
     UNKNOWN = "unknown"
 
 
@@ -227,6 +263,25 @@ class MissionPageState:
         )
 
 
+class CommissionStatus(str, Enum):
+    """Commission row status proven from an exact typed Unity sprite."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    FINISHED = "finished"
+
+
+@dataclass(frozen=True)
+class CommissionRowState:
+    index: int
+    name: str
+    level: int
+    duration_seconds: int
+    status: CommissionStatus
+    type_sprite: str
+    button: ButtonState
+
+
 DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
     SemanticTarget(
         "login/enter",
@@ -241,6 +296,57 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
     SemanticTarget("main/dock", "dock", "frame/bottom/frame/dock"),
     SemanticTarget("main/task", "task", "frame/bottom/frame/task"),
     SemanticTarget("main/build", "build", "frame/bottom/frame/build"),
+    SemanticTarget("main/more", "extend", "frame/left/extend"),
+    SemanticTarget(
+        "reward/page/back",
+        "CommissionInfoUI4Mellow(Clone)",
+        "Overlay/UIMain/CommissionInfoUI4Mellow(Clone)",
+    ),
+    SemanticTarget(
+        "reward/commission",
+        "finish_btn",
+        "CommissionInfoUI4Mellow(Clone)/frame/main/content/event/frame/finish_btn",
+    ),
+    SemanticTarget(
+        "reward/commission/finish",
+        "finish_btn",
+        "CommissionInfoUI4Mellow(Clone)/frame/main/content/event/frame/finish_btn",
+    ),
+    SemanticTarget(
+        "reward/commission/go",
+        "go_btn",
+        "CommissionInfoUI4Mellow(Clone)/frame/main/content/event/frame/go_btn",
+    ),
+    SemanticTarget(
+        "reward/tactical",
+        "finish_btn",
+        "CommissionInfoUI4Mellow(Clone)/frame/main/content/class/frame/finish_btn",
+    ),
+    SemanticTarget(
+        "reward/tactical/finish",
+        "finish_btn",
+        "CommissionInfoUI4Mellow(Clone)/frame/main/content/class/frame/finish_btn",
+    ),
+    SemanticTarget(
+        "reward/tactical/go",
+        "go_btn",
+        "CommissionInfoUI4Mellow(Clone)/frame/main/content/class/frame/go_btn",
+    ),
+    SemanticTarget(
+        "reward/research",
+        "finish_btn",
+        "CommissionInfoUI4Mellow(Clone)/frame/main/content/technology/frame/finish_btn",
+    ),
+    SemanticTarget(
+        "reward/research/finish",
+        "finish_btn",
+        "CommissionInfoUI4Mellow(Clone)/frame/main/content/technology/frame/finish_btn",
+    ),
+    SemanticTarget(
+        "reward/research/go",
+        "go_btn",
+        "CommissionInfoUI4Mellow(Clone)/frame/main/content/technology/frame/go_btn",
+    ),
     SemanticTarget(
         "overlay/bulletin/close",
         "close_btn",
@@ -267,6 +373,36 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
         "TaskScene(Clone)/blur_panel/adapt/top/GetAllButton",
     ),
     SemanticTarget(
+        "commission/page/back",
+        "back_btn",
+        "EventUI(Clone)/blur_panel/adapt/top/back_btn",
+    ),
+    SemanticTarget(
+        "mail/page/back",
+        "back_btn",
+        "MailUI(Clone)/adapt/CommonTitleAndBack/back_btn",
+    ),
+    SemanticTarget(
+        "mail/manage",
+        "btn_managerMail",
+        "MailUI(Clone)/adapt/main/content/left/left_content/bottom/btn_managerMail",
+    ),
+    SemanticTarget(
+        "mail/manage/back",
+        "btnBack",
+        "MailMgrMsgboxUI(Clone)/window/top/btnBack",
+    ),
+    SemanticTarget(
+        "mail/manage/claim",
+        "btn_get",
+        "MailMgrMsgboxUI(Clone)/window/button_container/btn_get",
+    ),
+    SemanticTarget(
+        "mail/manage/delete",
+        "btn_delete",
+        "MailMgrMsgboxUI(Clone)/window/button_container/btn_delete",
+    ),
+    SemanticTarget(
         "reward/award-info/close",
         "close",
         "AwardInfoUI(Clone)/items/close",
@@ -275,6 +411,11 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
         "reward/award-info1/close",
         "close",
         "AwardInfoUI1(Clone)/items/close",
+    ),
+    SemanticTarget(
+        "reward/ship-exp/close",
+        "skipLayer",
+        "ShipExpUI(Clone)/skipLayer",
     ),
 )
 
@@ -294,7 +435,67 @@ DEFAULT_IMAGE_TARGETS: Tuple[SemanticImageTarget, ...] = tuple(
         ("weekly", "weekly", "icon_week_sel", "icon_week_unsel"),
         ("event", "activity", "icon_activity_sel", "icon_activity_unsel"),
     )
+) + (
+    SemanticImageTarget(
+        "commission/nav/daily",
+        "EventUI(Clone)/blur_panel/adapt/left_length/frame/scroll_rect/"
+        "tagRoot/daily_btn",
+        "toggle_meiri_sel 1",
+        "toggle_meiri_unsel 1",
+    ),
+    SemanticImageTarget(
+        "commission/nav/urgent",
+        "EventUI(Clone)/blur_panel/adapt/left_length/frame/scroll_rect/"
+        "tagRoot/urgency_btn",
+        "toggle_jinji_sel 1",
+        "toggle_jinji_unsel 1",
+    ),
 )
+
+
+DEFAULT_TOGGLE_TARGETS: Tuple[SemanticToggleTarget, ...] = (
+    SemanticToggleTarget(
+        "mail/manage/all",
+        "all",
+        "MailMgrMsgboxUI(Clone)/window/frame/toggle_group/all",
+    ),
+    SemanticToggleTarget(
+        "mail/manage/filter",
+        "filter",
+        "MailMgrMsgboxUI(Clone)/window/frame/toggle_group/filter",
+    ),
+    SemanticToggleTarget(
+        "mail/manage/cube",
+        "toggle_tpl",
+        "MailMgrMsgboxUI(Clone)/window/frame/toggle_group/filter/content/toggle_tpl",
+        "20001",
+    ),
+    SemanticToggleTarget(
+        "mail/manage/coins",
+        "toggle_tpl(Clone)",
+        "MailMgrMsgboxUI(Clone)/window/frame/toggle_group/filter/content/toggle_tpl(Clone)",
+        "gold",
+    ),
+    SemanticToggleTarget(
+        "mail/manage/oil",
+        "toggle_tpl(Clone)",
+        "MailMgrMsgboxUI(Clone)/window/frame/toggle_group/filter/content/toggle_tpl(Clone)",
+        "oil",
+    ),
+    SemanticToggleTarget(
+        "mail/manage/merit",
+        "toggle_tpl(Clone)",
+        "MailMgrMsgboxUI(Clone)/window/frame/toggle_group/filter/content/toggle_tpl(Clone)",
+        "exploit",
+    ),
+    SemanticToggleTarget(
+        "mail/manage/gems",
+        "toggle_tpl(Clone)",
+        "MailMgrMsgboxUI(Clone)/window/frame/toggle_group/filter/content/toggle_tpl(Clone)",
+        "gem",
+    ),
+)
+DEFAULT_TEXT_TARGETS: Tuple[SemanticTextTarget, ...] = ()
 
 
 DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
@@ -318,6 +519,55 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
         "award-info1",
         "/AwardInfoUI1(Clone)/",
         ("reward/award-info1/close",),
+    ),
+    BlockerRule(
+        "ship-exp",
+        "/ShipExpUI(Clone)/",
+        ("reward/ship-exp/close",),
+    ),
+    BlockerRule(
+        "mail-manager",
+        "/MailMgrMsgboxUI(Clone)/",
+        (
+            "mail/manage/back",
+            "mail/manage/claim",
+            "mail/manage/delete",
+            "mail/manage/all",
+            "mail/manage/filter",
+            "mail/manage/cube",
+            "mail/manage/coins",
+            "mail/manage/oil",
+            "mail/manage/merit",
+            "mail/manage/gems",
+        ),
+    ),
+    BlockerRule(
+        "reward-page",
+        "/CommissionInfoUI4Mellow(Clone)/",
+        (
+            "reward/page/back",
+            "reward/commission",
+            "reward/commission/finish",
+            "reward/commission/go",
+            "reward/tactical",
+            "reward/tactical/finish",
+            "reward/tactical/go",
+            "reward/research",
+            "reward/research/finish",
+            "reward/research/go",
+            "reward/award-info/close",
+            "reward/award-info1/close",
+            "reward/ship-exp/close",
+        ),
+    ),
+    BlockerRule(
+        "commission-page",
+        "/EventUI(Clone)/",
+        (
+            "commission/page/back",
+            "commission/nav/daily",
+            "commission/nav/urgent",
+        ),
     ),
 )
 
@@ -563,6 +813,8 @@ class SemanticOracle:
         fingerprint: OracleFingerprint,
         targets: Iterable[SemanticTarget] = DEFAULT_TARGETS,
         image_targets: Iterable[SemanticImageTarget] = DEFAULT_IMAGE_TARGETS,
+        toggle_targets: Iterable[SemanticToggleTarget] = DEFAULT_TOGGLE_TARGETS,
+        text_targets: Iterable[SemanticTextTarget] = DEFAULT_TEXT_TARGETS,
         blockers: Iterable[BlockerRule] = DEFAULT_BLOCKERS,
         monotonic: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
@@ -573,6 +825,8 @@ class SemanticOracle:
         self.fingerprint = fingerprint
         self._targets = self._index_targets(targets)
         self._image_targets = self._index_image_targets(image_targets)
+        self._toggle_targets = self._index_toggle_targets(toggle_targets)
+        self._text_targets = self._index_text_targets(text_targets)
         self._blockers = tuple(blockers)
         self._monotonic = monotonic
         self._sleep = sleep
@@ -609,6 +863,45 @@ class SemanticOracle:
                 or not target.inactive_sprite
             ):
                 raise ValueError("semantic image target mappings must be non-empty")
+            indexed[target.semantic_id] = target
+        return indexed
+
+    @staticmethod
+    def _index_toggle_targets(
+        targets: Iterable[SemanticToggleTarget],
+    ) -> Dict[str, SemanticToggleTarget]:
+        indexed: Dict[str, SemanticToggleTarget] = {}
+        for target in targets:
+            if target.semantic_id in indexed:
+                raise ValueError(
+                    "duplicate semantic toggle target id: {0}".format(
+                        target.semantic_id
+                    )
+                )
+            if not target.semantic_id or not target.name or not target.path_suffix:
+                raise ValueError("semantic toggle target mappings must be non-empty")
+            indexed[target.semantic_id] = target
+        return indexed
+
+    @staticmethod
+    def _index_text_targets(
+        targets: Iterable[SemanticTextTarget],
+    ) -> Dict[str, SemanticTextTarget]:
+        indexed: Dict[str, SemanticTextTarget] = {}
+        for target in targets:
+            if target.semantic_id in indexed:
+                raise ValueError(
+                    "duplicate semantic text target id: {0}".format(
+                        target.semantic_id
+                    )
+                )
+            if (
+                not target.semantic_id
+                or not target.path_suffix
+                or not target.expected_texts
+                or any(not value for value in target.expected_texts)
+            ):
+                raise ValueError("semantic text target mappings must be non-empty")
             indexed[target.semantic_id] = target
         return indexed
 
@@ -713,6 +1006,7 @@ class SemanticOracle:
             active_and_enabled=button.active_and_enabled,
             interactable=button.interactable,
             checked=checked,
+            raycast_top=button.raycast_top,
             point=button.point,
             bounds=button.bounds,
             raw=raw,
@@ -996,6 +1290,418 @@ class SemanticOracle:
             for area in bounds
         )
 
+    def text_state(self, semantic_id: str) -> TextState:
+        try:
+            target = self._text_targets[semantic_id]
+        except KeyError as exc:
+            raise SemanticGateClosed(
+                "semantic text target is not mapped: {0}".format(semantic_id)
+            ) from exc
+        state = self.read_ui_state()
+        matches = tuple(
+            item
+            for item in state.texts
+            if item.path.endswith(target.path_suffix)
+            and item.text in target.expected_texts
+        )
+        if len(matches) != 1:
+            raise SemanticGateClosed(
+                "semantic text target is absent or ambiguous: {0}".format(
+                    semantic_id
+                )
+            )
+        item = matches[0]
+        if (
+            item.truncated
+            or not item.active_in_hierarchy
+            or not item.active_and_enabled
+            or item.bounds is None
+        ):
+            raise SemanticGateClosed("semantic text target is incomplete")
+        return item
+
+    def text_exists(self, semantic_id: str) -> bool:
+        try:
+            self.text_state(semantic_id)
+        except SemanticGateClosed:
+            return False
+        return True
+
+    def indexed_text_groups(self, path_prefix: str) -> Tuple[IndexedTextGroup, ...]:
+        """Group live text below exact ``path_prefix/<numeric-index>`` nodes."""
+
+        if not path_prefix or path_prefix.endswith("/"):
+            raise ValueError("indexed text path prefix must be non-empty and normalized")
+        state = self.read_ui_state()
+        pattern = re.compile(
+            r"(?:^|/)" + re.escape(path_prefix) + r"/([0-9]+)(?:/|$)"
+        )
+        groups: Dict[int, List[TextState]] = {}
+        roots: Dict[int, str] = {}
+        for item in state.texts:
+            if (
+                item.truncated
+                or not item.active_in_hierarchy
+                or not item.active_and_enabled
+                or item.bounds is None
+            ):
+                continue
+            match = pattern.search(item.path)
+            if match is None:
+                continue
+            index = int(match.group(1))
+            root_end = match.end(1)
+            root = item.path[:root_end]
+            if index in roots and roots[index] != root:
+                raise SemanticGateClosed(
+                    "indexed text group root is ambiguous: {0}".format(index)
+                )
+            roots[index] = root
+            groups.setdefault(index, []).append(item)
+        result = []
+        for index in sorted(groups):
+            values = sorted(
+                groups[index],
+                key=lambda item: (
+                    item.bounds.top if item.bounds is not None else math.inf,
+                    item.bounds.left if item.bounds is not None else math.inf,
+                    item.path,
+                ),
+            )
+            result.append(IndexedTextGroup(index, roots[index], tuple(values)))
+        return tuple(result)
+
+    @staticmethod
+    def parse_countdown_seconds(value: str) -> int:
+        """Parse a strict ``MM:SS`` or ``HH:MM:SS`` typed Unity countdown."""
+
+        if not isinstance(value, str):
+            raise SemanticGateClosed("countdown text is not a string")
+        match = re.fullmatch(r"(?:(\d{1,3}):)?([0-5]\d):([0-5]\d)", value.strip())
+        if match is None:
+            raise SemanticGateClosed("typed countdown has an unsupported format")
+        hours = int(match.group(1) or 0)
+        minutes = int(match.group(2))
+        seconds = int(match.group(3))
+        return hours * 3600 + minutes * 60 + seconds
+
+    def mail_count(self) -> Tuple[int, int]:
+        """Return the explicit ``used/capacity`` marker from the pinned mail page."""
+
+        button_state = self.read_state()
+        page_back = self._unique(button_state, "mail/page/back")
+        if not page_back.actionable or self._blocking_rules(
+            button_state, "mail/page/back"
+        ):
+            raise SemanticGateClosed("mail page identity is not safely actionable")
+
+        ui_state = self.read_ui_state()
+        suffix = (
+            "MailUI(Clone)/adapt/main/content/left/left_content/top/count"
+        )
+        matches = tuple(
+            item
+            for item in ui_state.texts
+            if item.path.endswith(suffix)
+            and item.name == "count"
+            and item.active_in_hierarchy
+            and item.active_and_enabled
+            and not item.truncated
+            and item.bounds is not None
+        )
+        if len(matches) != 1:
+            raise SemanticGateClosed("mail count marker is absent or ambiguous")
+        plain = re.sub(r"<[^>]*>", "", matches[0].text).strip()
+        count_match = re.fullmatch(r"(\d{1,3})/(\d{1,3})", plain)
+        if count_match is None:
+            raise SemanticGateClosed("mail count marker is malformed")
+        used = int(count_match.group(1))
+        capacity = int(count_match.group(2))
+        if capacity <= 0 or used > capacity:
+            raise SemanticGateClosed("mail count marker is inconsistent")
+        return used, capacity
+
+    def mail_is_empty(self) -> bool:
+        """Classify empty mail only from the explicit typed counter."""
+
+        used, _ = self.mail_count()
+        return used == 0
+
+    def main_mail_unread_count(self) -> int:
+        """Read the exact numeric badge attached to the pinned main mail Button."""
+
+        button_state = self.read_state()
+        mail = self._unique(button_state, "main/mail")
+        if not mail.actionable or self._blocking_rules(button_state, "main/mail"):
+            raise SemanticGateClosed("main mail identity is not safely actionable")
+        ui_state = self.read_ui_state()
+        suffix = "NewMainMellowTheme(Clone)/frame/top/btns/mail/Text"
+        matches = tuple(
+            item
+            for item in ui_state.texts
+            if item.name == "Text"
+            and item.path.endswith(suffix)
+            and item.active_in_hierarchy
+            and item.active_and_enabled
+            and not item.truncated
+            and item.bounds is not None
+        )
+        if not matches:
+            return 0
+        if len(matches) != 1 or re.fullmatch(r"[1-9]\d{0,2}", matches[0].text) is None:
+            raise SemanticGateClosed("main mail unread badge is malformed or ambiguous")
+        return int(matches[0].text)
+
+    def main_red_dot(self, semantic_id: str) -> bool:
+        """Read a reviewed main-menu ``reddot`` marker without using pixels."""
+
+        suffixes = {
+            "main/task": "NewMainMellowTheme(Clone)/frame/bottom/frame/task/tip",
+            "main/build": "NewMainMellowTheme(Clone)/frame/bottom/frame/build/tip",
+            "main/live": "NewMainMellowTheme(Clone)/frame/bottom/frame/live/tip",
+        }
+        try:
+            suffix = suffixes[semantic_id]
+        except KeyError as exc:
+            raise SemanticGateClosed("main red-dot target is not mapped") from exc
+        button_state = self.read_state()
+        if not self._matches(button_state, semantic_id):
+            raise SemanticGateClosed("main red-dot parent identity is absent")
+        ui_state = self.read_ui_state()
+        matches = tuple(
+            image
+            for image in ui_state.images
+            if image.name == "tip"
+            and image.path.endswith(suffix)
+            and image.sprite == "reddot"
+            and image.active_in_hierarchy
+            and image.active_and_enabled
+            and not image.truncated
+            and image.bounds is not None
+        )
+        if len(matches) > 1:
+            raise SemanticGateClosed("main red-dot marker is ambiguous")
+        return bool(matches)
+
+    def reward_summary_count(self, section: str, counter: str) -> int:
+        """Read one exact non-negative counter from the reward side panel."""
+
+        section_names = {
+            "commission": "event",
+            "tactical": "class",
+            "research": "technology",
+        }
+        if section not in section_names:
+            raise SemanticGateClosed("reward summary section is not mapped")
+        if counter not in ("finished", "ongoing", "leisure"):
+            raise SemanticGateClosed("reward summary counter is not mapped")
+
+        button_state = self.read_state()
+        page = self._unique(button_state, "reward/page/back")
+        if not page.actionable or self._blocking_rules(button_state, "reward/page/back"):
+            raise SemanticGateClosed("reward summary page identity is not proven")
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("reward summary snapshots are not coherent")
+        suffix = (
+            "CommissionInfoUI4Mellow(Clone)/frame/main/content/"
+            + section_names[section]
+            + "/frame/counter/"
+            + counter
+            + "/Text"
+        )
+        matches = tuple(
+            item
+            for item in ui_state.texts
+            if item.path.endswith(suffix)
+            and item.active_in_hierarchy
+            and item.active_and_enabled
+            and not item.truncated
+            and item.bounds is not None
+        )
+        if len(matches) != 1 or re.fullmatch(r"[0-9]+", matches[0].text) is None:
+            raise SemanticGateClosed("reward summary counter is absent or malformed")
+        return int(matches[0].text)
+
+    def commission_rows(self) -> Tuple[CommissionRowState, ...]:
+        """Read visible commission rows without inferring hidden or unknown state.
+
+        This deliberately exposes only rows whose exact row Button is currently
+        top-raycastable on screen.  It is therefore a viewport read, not a claim
+        that the scrollable commission list has been exhausted.
+        """
+
+        button_state = self.read_state()
+        page_back = self._unique(button_state, "commission/page/back")
+        if not page_back.actionable or self._blocking_rules(
+            button_state, "commission/page/back"
+        ):
+            raise SemanticGateClosed("commission page identity is not proven")
+
+        row_pattern = re.compile(
+            r"(?:^|/)EventUI\(Clone\)/scrollRect\$/content/([0-9]+)/bgNormal\$$"
+        )
+        indexed_buttons: Dict[int, ButtonState] = {}
+        row_roots: Dict[int, str] = {}
+        for button in button_state.buttons:
+            if button.name != "bgNormal$":
+                continue
+            match = row_pattern.search(button.path)
+            if match is None or not button.active_in_hierarchy:
+                continue
+            index = int(match.group(1))
+            if index in indexed_buttons:
+                raise SemanticGateClosed(
+                    "commission row Button index is ambiguous: {0}".format(index)
+                )
+            indexed_buttons[index] = button
+            row_roots[index] = button.path[: -len("/bgNormal$")]
+
+        ui_state = self.read_ui_state()
+        if ui_state.image_truncated or ui_state.method_mask & 0x8 == 0:
+            raise SemanticGateClosed("typed commission Image snapshot is incomplete")
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("commission snapshots are not coherent")
+
+        def exact_text(path: str) -> TextState:
+            matches = tuple(
+                item
+                for item in ui_state.texts
+                if item.path == path
+                and item.active_in_hierarchy
+                and item.active_and_enabled
+                and not item.truncated
+                and item.bounds is not None
+            )
+            if len(matches) != 1:
+                raise SemanticGateClosed(
+                    "commission row text is absent or ambiguous: " + path
+                )
+            return matches[0]
+
+        def exact_image(path: str) -> ImageState:
+            matches = tuple(
+                item
+                for item in ui_state.images
+                if item.path == path
+                and item.active_in_hierarchy
+                and item.active_and_enabled
+                and not item.truncated
+                and item.bounds is not None
+            )
+            if len(matches) != 1:
+                raise SemanticGateClosed(
+                    "commission row image is absent or ambiguous: " + path
+                )
+            return matches[0]
+
+        status_sprites = {
+            # This is the only row-state sprite observed and exercised on the
+            # pinned CN 9.7.10 build so far.  New sprites must be reviewed before
+            # they are assigned ALAS meanings.
+            "kongxian_bg": CommissionStatus.PENDING,
+        }
+        rows = []
+        for index in sorted(indexed_buttons):
+            button = indexed_buttons[index]
+            if (
+                not button.actionable
+                or button.point is None
+                or not 0 <= button.point.x < self.fingerprint.width
+                or not 0 <= button.point.y < self.fingerprint.height
+            ):
+                continue
+            root = row_roots[index]
+            name = exact_text(root + "/labelName$").text.strip()
+            level_text = exact_text(root + "/level/labelLv$").text.strip()
+            duration_text = exact_text(root + "/labelTime$/Text").text.strip()
+            status_image = exact_image(root + "/iconState$/0")
+            type_image = exact_image(root + "/iconType$")
+            if not name or re.fullmatch(r"[0-9]{1,3}", level_text) is None:
+                raise SemanticGateClosed("commission row identity is malformed")
+            level = int(level_text)
+            if level <= 0:
+                raise SemanticGateClosed("commission row level is invalid")
+            try:
+                status = status_sprites[status_image.sprite]
+            except KeyError as exc:
+                raise SemanticGateClosed(
+                    "commission row status sprite is not reviewed: "
+                    + status_image.sprite
+                ) from exc
+            if not type_image.sprite:
+                raise SemanticGateClosed("commission row type sprite is empty")
+            rows.append(
+                CommissionRowState(
+                    index=index,
+                    name=name,
+                    level=level,
+                    duration_seconds=self.parse_countdown_seconds(duration_text),
+                    status=status,
+                    type_sprite=type_image.sprite,
+                    button=button,
+                )
+            )
+        return tuple(rows)
+
+    def commission_is_empty(self) -> bool:
+        """Return true only for the pinned commission page's explicit empty text."""
+
+        button_state = self.read_state()
+        page_back = self._unique(button_state, "commission/page/back")
+        if not page_back.actionable or self._blocking_rules(
+            button_state, "commission/page/back"
+        ):
+            raise SemanticGateClosed("commission page identity is not proven")
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("commission empty snapshots are not coherent")
+        matches = tuple(
+            item
+            for item in ui_state.texts
+            if item.path.endswith("EventUI(Clone)/empty/Text")
+            and item.text == "暂无可以进行的委托"
+            and item.active_in_hierarchy
+            and item.active_and_enabled
+            and not item.truncated
+            and item.bounds is not None
+            and item.bounds.right > 0
+            and item.bounds.bottom > 0
+            and item.bounds.left < self.fingerprint.width
+            and item.bounds.top < self.fingerprint.height
+        )
+        if len(matches) > 1:
+            raise SemanticGateClosed("commission empty marker is ambiguous")
+        if matches:
+            row_pattern = re.compile(
+                r"(?:^|/)EventUI\(Clone\)/scrollRect\$/content/([0-9]+)/"
+                r"bgNormal\$$"
+            )
+            visible_rows = tuple(
+                button
+                for button in button_state.buttons
+                if button.name == "bgNormal$"
+                and row_pattern.search(button.path) is not None
+                and button.actionable
+                and button.point is not None
+                and 0 <= button.point.x < self.fingerprint.width
+                and 0 <= button.point.y < self.fingerprint.height
+            )
+            if visible_rows:
+                raise SemanticGateClosed(
+                    "commission page reports rows and empty together"
+                )
+        return bool(matches)
+
     def _mapping(self, semantic_id: str) -> SemanticTarget:
         try:
             return self._targets[semantic_id]
@@ -1011,6 +1717,109 @@ class SemanticOracle:
             raise SemanticGateClosed(
                 "semantic image target is not mapped: {0}".format(semantic_id)
             ) from exc
+
+    def _toggle_mapping(self, semantic_id: str) -> SemanticToggleTarget:
+        try:
+            return self._toggle_targets[semantic_id]
+        except KeyError as exc:
+            raise SemanticGateClosed(
+                "semantic toggle target is not mapped: {0}".format(semantic_id)
+            ) from exc
+
+    def _toggle_matches(
+        self, state: UiState, semantic_id: str
+    ) -> Tuple[ToggleState, ...]:
+        target = self._toggle_mapping(semantic_id)
+        candidates = tuple(
+            toggle
+            for toggle in state.toggles
+            if toggle.name == target.name
+            and toggle.path.endswith(target.path_suffix)
+        )
+        if target.expected_child_sprite is None:
+            return candidates
+
+        matching = []
+        for toggle in candidates:
+            if toggle.bounds is None:
+                continue
+            child_images = tuple(
+                image
+                for image in state.images
+                if not image.truncated
+                and image.active_in_hierarchy
+                and image.active_and_enabled
+                and image.bounds is not None
+                and image.sprite == target.expected_child_sprite
+                and image.path.startswith(toggle.path + "/")
+                and toggle.bounds.contains(
+                    Point(
+                        (image.bounds.left + image.bounds.right) / 2.0,
+                        (image.bounds.top + image.bounds.bottom) / 2.0,
+                    )
+                )
+            )
+            if len(child_images) == 1:
+                matching.append(toggle)
+            elif len(child_images) > 1:
+                raise SemanticGateClosed(
+                    "semantic toggle child sprite is ambiguous: {0}".format(
+                        semantic_id
+                    )
+                )
+        return tuple(matching)
+
+    def toggle_state(self, semantic_id: str) -> ToggleState:
+        state = self.read_ui_state()
+        if state.method_mask & 0x1 == 0:
+            raise SemanticGateClosed("typed Unity Toggle snapshot is incomplete")
+        matches = self._toggle_matches(state, semantic_id)
+        if len(matches) != 1:
+            raise SemanticGateClosed(
+                "semantic toggle target is absent or ambiguous: {0}".format(
+                    semantic_id
+                )
+            )
+        return matches[0]
+
+    def toggle_selected(self, semantic_id: str) -> bool:
+        return self.toggle_state(semantic_id).checked
+
+    def click_toggle(self, semantic_id: str) -> ActionReceipt:
+        button_state = self.read_state()
+        ui_state = self.read_ui_state()
+        if ui_state.method_mask & 0x1 == 0:
+            raise SemanticGateClosed("typed Unity Toggle snapshot is incomplete")
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("button and toggle snapshots are not coherent")
+        matches = self._toggle_matches(ui_state, semantic_id)
+        if len(matches) != 1 or not matches[0].actionable:
+            raise SemanticGateClosed("semantic toggle target is not actionable")
+        toggle = matches[0]
+        if self._blocking_rules(button_state, semantic_id):
+            raise SemanticGateClosed("semantic toggle action is blocked")
+        assert toggle.point is not None
+        assert toggle.bounds is not None
+        if not (
+            0 <= toggle.point.x < self.fingerprint.width
+            and 0 <= toggle.point.y < self.fingerprint.height
+        ):
+            raise SemanticGateClosed("semantic toggle target point is invalid")
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("game activity changed before toggle input")
+        self._tap(int(round(toggle.point.x)), int(round(toggle.point.y)))
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("game activity changed after toggle input")
+        return ActionReceipt(
+            semantic_id=semantic_id,
+            generation=ui_state.generation,
+            point=toggle.point,
+            bounds=toggle.bounds,
+            path=toggle.path,
+        )
 
     def _image_matches(
         self,
@@ -1079,12 +1888,20 @@ class SemanticOracle:
             or image.bounds is None
         ):
             raise SemanticGateClosed("semantic image target is not actionable")
-        page_back = self._unique(button_state, "task/page/back")
+        if semantic_id.startswith("task/nav/"):
+            page_semantic_id = "task/page/back"
+            page_name = "mission"
+        elif semantic_id.startswith("commission/nav/"):
+            page_semantic_id = "commission/page/back"
+            page_name = "commission"
+        else:
+            raise SemanticGateClosed("semantic image action has no page identity")
+        page_back = self._unique(button_state, page_semantic_id)
         if (
             not page_back.actionable
             or self._blocking_rules(button_state, semantic_id)
         ):
-            raise SemanticGateClosed("mission page image action is blocked")
+            raise SemanticGateClosed(page_name + " page image action is blocked")
         point = Point(
             (image.bounds.left + image.bounds.right) / 2.0,
             (image.bounds.top + image.bounds.bottom) / 2.0,
@@ -1201,6 +2018,32 @@ class SemanticOracle:
         claim_rows = self._mission_rows(state, "get_btn")
         unfinished_rows = self._mission_rows(state, "go_btn")
 
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.generation < state.generation
+            or ui_state.generation > state.generation + 2
+        ):
+            raise SemanticGateClosed("button and mission text snapshots are not coherent")
+        empty_markers = tuple(
+            item
+            for item in ui_state.texts
+            if item.name == "Text"
+            and item.path.endswith(
+                "TaskScene(Clone)/TaskEmptyListUI(Clone)/Text"
+            )
+            and item.text == "没有进行中的任务"
+            and item.active_in_hierarchy
+            and item.active_and_enabled
+            and not item.truncated
+            and item.bounds is not None
+            and item.bounds.right > 0
+            and item.bounds.bottom > 0
+            and item.bounds.left < self.fingerprint.width
+            and item.bounds.top < self.fingerprint.height
+        )
+        if len(empty_markers) > 1:
+            raise SemanticGateClosed("mission empty marker is ambiguous")
+
         actionable_claim_rows = tuple(
             button for button in claim_rows if button.actionable
         )
@@ -1217,9 +2060,10 @@ class SemanticOracle:
             disposition = MissionDisposition.UNKNOWN
         elif actionable_unfinished_rows:
             disposition = MissionDisposition.UNFINISHED
+        elif empty_markers:
+            disposition = MissionDisposition.EMPTY
         else:
-            # The empty-list prefab has no reviewed Button marker.  Never infer
-            # EMPTY from mere absence while a page may still be loading.
+            # Never infer EMPTY from mere absence while a page may still load.
             disposition = MissionDisposition.UNKNOWN
 
         return MissionPageState(

@@ -39,6 +39,8 @@ class FakeOracle:
         self.enable_main_after_overlay_click = False
         self.text_groups = ()
         self.image_selected_values = {"task/nav/all": True}
+        self.toggle_selected_values = {}
+        self.mail_empty = False
 
     def enabled(self, semantic_id):
         self.enabled_calls.append(semantic_id)
@@ -85,6 +87,22 @@ class FakeOracle:
             bounds=Bounds(0, 0, 100, 100),
             path="root/tagRoot/target/Image",
         )
+
+    def toggle_selected(self, semantic_id):
+        return self.toggle_selected_values.get(semantic_id, False)
+
+    def click_toggle(self, semantic_id):
+        self.click_calls.append(semantic_id)
+        return ActionReceipt(
+            semantic_id=semantic_id,
+            generation=8,
+            point=Point(50, 50),
+            bounds=Bounds(0, 0, 100, 100),
+            path="root/toggle",
+        )
+
+    def mail_is_empty(self):
+        return self.mail_empty
 
     def wait_for(self, semantic_id, timeout_seconds, minimum_generation=None):
         self.wait_calls.append((semantic_id, timeout_seconds, minimum_generation))
@@ -171,6 +189,143 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertEqual(oracle.click_calls, ["main/formation"])
         self.assertEqual(receipt.semantic_id, "main/formation")
         self.assertEqual(len(gate_calls), 2)
+
+    def test_mail_page_identity_and_manage_use_exact_semantic_targets(self):
+        adapter, _, _ = self.make_adapter()
+
+        self.assertEqual(adapter.semantic_id_for("MAIL_CHECK"), "mail/page/back")
+        self.assertEqual(adapter.semantic_id_for("MAIL_MANAGE"), "mail/manage")
+
+    def test_mail_context_reuses_alas_state_machine_and_exact_back(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.exists_values["main/mail"] = True
+        oracle.enabled_values["mail/page/back"] = True
+        oracle.enabled_values["mail/manage/claim"] = False
+        oracle.enabled_values["mail/manage/delete"] = False
+        adapter.begin_mail()
+
+        adapter.click(NamedButton("MAIL_ENTER"))
+        self.assertTrue(adapter.appear(NamedButton("GOTO_MAIN_WHITE")))
+        self.assertFalse(adapter.appear(NamedButton("MAIL_BATCH_CLAIM")))
+        self.assertFalse(adapter.appear(NamedButton("UNRELATED_MAIL_POPUP")))
+        receipt = adapter.click(NamedButton("GOTO_MAIN_WHITE"))
+
+        self.assertEqual(receipt.semantic_id, "mail/page/back")
+        self.assertEqual(oracle.click_calls, ["main/mail", "mail/page/back"])
+        adapter.end_mail()
+        with self.assertRaises(AlasSemanticUnmapped):
+            adapter.appear(NamedButton("MAIL_BATCH_CLAIM"))
+
+    def test_mail_reward_popup_uses_reviewed_award_close(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.enabled_values = {
+            "reward/award-info/close": True,
+            "reward/award-info1/close": False,
+        }
+        adapter.begin_mail()
+
+        self.assertTrue(adapter.appear(NamedButton("GET_ITEMS_2")))
+        receipt = adapter.click(NamedButton("GET_ITEMS_2"))
+
+        self.assertEqual(receipt.semantic_id, "reward/award-info/close")
+
+    def test_mail_manager_close_and_filters_use_typed_controls(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_mail()
+        oracle.enabled_values["mail/manage/back"] = True
+        oracle.toggle_selected_values["mail/manage/merit"] = True
+
+        self.assertTrue(
+            adapter.image_color_count(
+                NamedButton("MAIL_SELECT_MERIT"),
+                color=(57, 56, 57),
+                threshold=221,
+                count=50,
+            )
+        )
+        toggle = adapter.click(NamedButton("MAIL_SELECT_OIL"))
+        close = adapter.click(NamedButton("MAIL_MANAGE"))
+
+        self.assertEqual(toggle.semantic_id, "mail/manage/oil")
+        self.assertEqual(close.semantic_id, "mail/manage/back")
+
+    def test_mail_mutations_require_separate_opt_in(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_mail()
+        oracle.enabled_values["mail/manage/claim"] = True
+
+        self.assertTrue(adapter.appear(NamedButton("MAIL_BATCH_CLAIM")))
+        with self.assertRaises(SemanticGateClosed):
+            adapter.click(NamedButton("MAIL_BATCH_CLAIM"))
+
+        opted_in = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            allow_mail_mutations=True,
+        )
+        opted_in.begin_mail()
+        receipt = opted_in.click(NamedButton("MAIL_BATCH_CLAIM"))
+        self.assertEqual(receipt.semantic_id, "mail/manage/claim")
+
+    def test_mail_empty_never_uses_button_absence(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_mail()
+
+        self.assertFalse(adapter.appear(NamedButton("MAIL_WHITE_EMPTY")))
+        oracle.mail_empty = True
+        self.assertTrue(adapter.appear(NamedButton("MAIL_WHITE_EMPTY")))
+
+    def test_commission_reward_and_navigation_are_distinct_alas_inputs(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_commission()
+
+        self.assertEqual(
+            adapter.semantic_id_for("REWARD_1"), "reward/commission/finish"
+        )
+        self.assertEqual(
+            adapter.semantic_id_for("REWARD_GOTO_COMMISSION"),
+            "reward/commission/go",
+        )
+        self.assertTrue(adapter.appear(NamedButton("REWARD_1")))
+        with self.assertRaises(SemanticGateClosed):
+            adapter.click(NamedButton("REWARD_1"))
+        self.assertEqual(oracle.click_calls, [])
+
+    def test_commission_reward_chain_reuses_alas_loop_with_explicit_opt_in(self):
+        oracle = FakeOracle()
+        oracle.enabled_values = {
+            "reward/ship-exp/close": True,
+            "reward/award-info/close": True,
+            "reward/award-info1/close": False,
+        }
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            allow_commission_rewards=True,
+        )
+        adapter.begin_commission()
+
+        self.assertTrue(adapter.appear(NamedButton("EXP_INFO_S_REWARD")))
+        exp = adapter.click(NamedButton("REWARD_SAVE_CLICK"))
+        award = adapter.click(NamedButton("GET_ITEMS_3"))
+
+        self.assertEqual(exp.semantic_id, "reward/ship-exp/close")
+        self.assertEqual(award.semantic_id, "reward/award-info/close")
+        self.assertEqual(
+            oracle.click_calls,
+            ["reward/ship-exp/close", "reward/award-info/close"],
+        )
+
+    def test_unknown_commission_presence_is_false_only_on_proven_surface(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_commission()
+        oracle.exists_values["reward/page/back"] = True
+
+        self.assertFalse(adapter.appear(NamedButton("OIL_MAXED")))
+
+        oracle.exists_values.clear()
+        with self.assertRaises(AlasSemanticUnmapped):
+            adapter.appear(NamedButton("OIL_MAXED"))
 
     def test_unmapped_resource_fails_before_identity_or_input(self):
         adapter, oracle, gate_calls = self.make_adapter()
@@ -566,6 +721,19 @@ class AlasSemanticAdapterTests(unittest.TestCase):
             session = AlasSemanticSession.from_environment("emulator-test")
 
         self.assertTrue(session.allow_mission_claim_once)
+
+    def test_environment_factory_captures_commission_reward_opt_in(self):
+        environment = {
+            "ALAS_SEMANTIC_MODE": "1",
+            "ALAS_SEMANTIC_DRIVER_REVISION": (
+                "be80ce591a481c12d60c50d6040d40c035b40a2b"
+            ),
+            "ALAS_SEMANTIC_ALLOW_COMMISSION_REWARDS": "1",
+        }
+        with patch.dict("os.environ", environment, clear=True):
+            session = AlasSemanticSession.from_environment("emulator-test")
+
+        self.assertTrue(session.allow_commission_rewards)
 
 
 class ScriptedAdbBridge(AdbObserverBridge):

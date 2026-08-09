@@ -293,6 +293,62 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
       EndsWith(path, "TaskScene(Clone)/blur_panel/adapt/top/back_btn")) {
     return true;
   }
+  if (name == "back_btn" &&
+      EndsWith(path, "EventUI(Clone)/blur_panel/adapt/top/back_btn")) {
+    return true;
+  }
+  if (name == "back_btn" &&
+      EndsWith(path, "MailUI(Clone)/adapt/CommonTitleAndBack/back_btn")) {
+    return true;
+  }
+  if (name == "btn_managerMail" &&
+      EndsWith(path,
+               "MailUI(Clone)/adapt/main/content/left/left_content/bottom/"
+               "btn_managerMail")) {
+    return true;
+  }
+  if (name == "btnBack" &&
+      EndsWith(path, "MailMgrMsgboxUI(Clone)/window/top/btnBack")) {
+    return true;
+  }
+  if (name == "btn_get" &&
+      EndsWith(path,
+               "MailMgrMsgboxUI(Clone)/window/button_container/btn_get")) {
+    return true;
+  }
+  if (name == "btn_delete" &&
+      EndsWith(path,
+               "MailMgrMsgboxUI(Clone)/window/button_container/btn_delete")) {
+    return true;
+  }
+  if (name == "CommissionInfoUI4Mellow(Clone)" &&
+      EndsWith(path, "Overlay/UIMain/CommissionInfoUI4Mellow(Clone)")) {
+    return true;
+  }
+  if (name == "finish_btn" &&
+      (EndsWith(path,
+                "CommissionInfoUI4Mellow(Clone)/frame/main/content/event/"
+                "frame/finish_btn") ||
+       EndsWith(path,
+                "CommissionInfoUI4Mellow(Clone)/frame/main/content/class/"
+                "frame/finish_btn") ||
+       EndsWith(path,
+                "CommissionInfoUI4Mellow(Clone)/frame/main/content/technology/"
+                "frame/finish_btn"))) {
+    return true;
+  }
+  if (name == "go_btn" &&
+      (EndsWith(path,
+                "CommissionInfoUI4Mellow(Clone)/frame/main/content/event/"
+                "frame/go_btn") ||
+       EndsWith(path,
+                "CommissionInfoUI4Mellow(Clone)/frame/main/content/class/"
+                "frame/go_btn") ||
+       EndsWith(path,
+                "CommissionInfoUI4Mellow(Clone)/frame/main/content/technology/"
+                "frame/go_btn"))) {
+    return true;
+  }
   if (name == "GetAllButton" &&
       EndsWith(path, "TaskScene(Clone)/blur_panel/adapt/top/GetAllButton")) {
     return true;
@@ -301,17 +357,36 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
                           EndsWith(path, "AwardInfoUI1(Clone)/items/close"))) {
     return true;
   }
+  if (name == "skipLayer" &&
+      EndsWith(path, "ShipExpUI(Clone)/skipLayer")) {
+    return true;
+  }
   if ((name == "get_btn" || name == "go_btn") &&
       path.find("TaskScene(Clone)/pages/TaskListPage(Clone)/right_panel/"
                 "content/") != std::string_view::npos &&
       EndsWith(path, name == "get_btn" ? "/frame/get_btn" : "/frame/go_btn")) {
     return true;
   }
+  if (name == "bgNormal$" &&
+      EndsWith(path, "/bgNormal$")) {
+    constexpr std::string_view kPrefix =
+        "EventUI(Clone)/scrollRect$/content/";
+    const size_t prefix = path.find(kPrefix);
+    if (prefix != std::string_view::npos) {
+      const size_t indexBegin = prefix + kPrefix.size();
+      const size_t indexEnd = path.size() - std::string_view("/bgNormal$").size();
+      if (indexBegin < indexEnd &&
+          std::all_of(path.begin() + indexBegin, path.begin() + indexEnd,
+                      [](char value) { return value >= '0' && value <= '9'; })) {
+        return true;
+      }
+    }
+  }
   struct Target {
     std::string_view name;
     std::string_view suffix;
   };
-  constexpr std::array<Target, 8> kMainButtons = {
+  constexpr std::array<Target, 9> kMainButtons = {
       Target{"battle", "frame/right/1/battle"},
       Target{"formation", "frame/right/1/formation"},
       Target{"settings", "frame/top/btns/settings"},
@@ -320,6 +395,7 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
       Target{"dock", "frame/bottom/frame/dock"},
       Target{"task", "frame/bottom/frame/task"},
       Target{"build", "frame/bottom/frame/build"},
+      Target{"extend", "frame/left/extend"},
   };
   return std::any_of(
       kMainButtons.begin(), kMainButtons.end(), [&](const Target &target) {
@@ -327,24 +403,61 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
       });
 }
 
+bool ShouldEvaluateToggleTopRaycast(std::string_view name,
+                                    std::string_view path) {
+  if (name == "all" &&
+      EndsWith(path,
+               "MailMgrMsgboxUI(Clone)/window/frame/toggle_group/all")) {
+    return true;
+  }
+  if (name == "filter" &&
+      EndsWith(path,
+               "MailMgrMsgboxUI(Clone)/window/frame/toggle_group/filter")) {
+    return true;
+  }
+  return (name == "toggle_tpl" || name == "toggle_tpl(Clone)") &&
+         EndsWith(path,
+                  name == "toggle_tpl"
+                      ? "MailMgrMsgboxUI(Clone)/window/frame/toggle_group/"
+                        "filter/content/toggle_tpl"
+                      : "MailMgrMsgboxUI(Clone)/window/frame/toggle_group/"
+                        "filter/content/toggle_tpl(Clone)");
+}
+
 bool ShouldEvaluateImageTopRaycast(std::string_view name,
                                    std::string_view path) {
-  if (name != "Image" ||
-      path.find(
-          "TaskScene(Clone)/blur_panel/adapt/left_length/frame/tagRoot/") ==
-          std::string_view::npos) {
+  if (name != "Image") {
     return false;
   }
-  constexpr std::array<std::string_view, 6> kMissionTabs = {
-      "all", "scenario", "branch", "routine", "weekly", "activity",
-  };
-  return std::any_of(
-      kMissionTabs.begin(), kMissionTabs.end(), [&](std::string_view tab) {
-        const std::string direct = "/tagRoot/" + std::string(tab) + "/Image";
-        const std::string selected =
-            "/tagRoot/" + std::string(tab) + "/selected/Image";
-        return EndsWith(path, direct) || EndsWith(path, selected);
-      });
+  if (path.find(
+          "TaskScene(Clone)/blur_panel/adapt/left_length/frame/tagRoot/") !=
+      std::string_view::npos) {
+    constexpr std::array<std::string_view, 6> kMissionTabs = {
+        "all", "scenario", "branch", "routine", "weekly", "activity",
+    };
+    return std::any_of(
+        kMissionTabs.begin(), kMissionTabs.end(), [&](std::string_view tab) {
+          const std::string direct = "/tagRoot/" + std::string(tab) + "/Image";
+          const std::string selected =
+              "/tagRoot/" + std::string(tab) + "/selected/Image";
+          return EndsWith(path, direct) || EndsWith(path, selected);
+        });
+  }
+  if (path.find("EventUI(Clone)/blur_panel/adapt/left_length/frame/"
+                "scroll_rect/tagRoot/") != std::string_view::npos) {
+    constexpr std::array<std::string_view, 2> kCommissionTabs = {
+        "daily_btn", "urgency_btn",
+    };
+    return std::any_of(
+        kCommissionTabs.begin(), kCommissionTabs.end(),
+        [&](std::string_view tab) {
+          const std::string direct = "/tagRoot/" + std::string(tab) + "/Image";
+          const std::string selected =
+              "/tagRoot/" + std::string(tab) + "/selected/Image";
+          return EndsWith(path, direct) || EndsWith(path, selected);
+        });
+  }
+  return false;
 }
 
 struct LivenessCollector {
@@ -385,7 +498,8 @@ void *ReallocateLiveness(void *buffer, size_t size, void *opaque) {
 UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
                            const void *coreImage, const void *uiImage,
                            const void *uiModuleImage,
-                           const void *textMeshProImage, int screenHeight) {
+                           const void *textMeshProImage, int screenWidth,
+                           int screenHeight) {
   UiProbeResult result;
   result.diagnosticStage = 10;
   if (coreImage == nullptr || uiImage == nullptr) {
@@ -1213,6 +1327,28 @@ UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
     }
     if (ShouldEvaluateTopRaycast(objectName, path) &&
         (record.flags & 0x100u) != 0 && (record.flags & 0x400u) != 0) {
+      if (objectName == "extend" &&
+          EndsWith(path, "NewMainMellowTheme(Clone)/frame/left/extend")) {
+        const float visibleLeft = std::max(0.0f, record.screenLeft);
+        const float visibleRight =
+            std::min(static_cast<float>(screenWidth), record.screenRight);
+        const float visibleBottom = std::max(0.0f, record.screenBottom);
+        const float visibleTop =
+            std::min(static_cast<float>(screenHeight), record.screenTop);
+        if (visibleLeft < visibleRight && visibleBottom < visibleTop) {
+          record.screenX = (visibleLeft + visibleRight) / 2.0f;
+          record.screenY = (visibleBottom + visibleTop) / 2.0f;
+          record.adbX = record.screenX;
+          record.adbY = static_cast<float>(screenHeight) - record.screenY;
+        }
+      }
+      if (objectName == "CommissionInfoUI4Mellow(Clone)" &&
+          EndsWith(path, "Overlay/UIMain/CommissionInfoUI4Mellow(Clone)")) {
+        record.screenX = 827.0f;
+        record.screenY = static_cast<float>(screenHeight) - 622.0f;
+        record.adbX = record.screenX;
+        record.adbY = 622.0f;
+      }
       bool raycastEvaluated = false;
       const bool raycastMatches =
           topRaycastMatches(transform, Vector2{record.screenX, record.screenY},
@@ -1253,6 +1389,31 @@ UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
         if (!populateControlRecord(toggle, interactable, &record.control)) {
           ++result.uiRecordErrors;
           continue;
+        }
+        const std::string_view toggleName(
+            record.control.name.data(),
+            ANGLE_UNSAFE_TODO(strnlen(record.control.name.data(),
+                                      record.control.name.size())));
+        const std::string_view togglePath(
+            record.control.path.data(),
+            ANGLE_UNSAFE_TODO(strnlen(record.control.path.data(),
+                                      record.control.path.size())));
+        if (ShouldEvaluateToggleTopRaycast(toggleName, togglePath) &&
+            (record.control.flags & 0x100u) != 0 &&
+            (record.control.flags & 0x400u) != 0) {
+          void *gameObject = invokeObject(getGameObject, toggle);
+          void *transform = gameObject != nullptr
+                                ? invokeObject(getTransform, gameObject)
+                                : nullptr;
+          bool raycastEvaluated = false;
+          const bool raycastMatches = topRaycastMatches(
+              transform,
+              Vector2{record.control.screenX, record.control.screenY},
+              &raycastEvaluated);
+          if (raycastEvaluated) {
+            record.control.flags |= 0x800u;
+            record.control.flags |= raycastMatches ? 0x1000u : 0u;
+          }
         }
         record.stateFlags = 0x1u | (isOn ? 0x2u : 0u);
         ++result.toggleRecordCount;
@@ -1588,7 +1749,8 @@ int32_t ObserverMainThreadTick(uint64_t requestGeneration,
   snapshot.mainThread = actualTid == gObserverMainThreadTid.load() ? 1u : 0u;
   if (snapshot.mainThread != 0) {
     const UiProbeResult ui = ProbeUnityUi(
-        probe, coreImage, uiImage, uiModuleImage, textMeshProImage, height);
+        probe, coreImage, uiImage, uiModuleImage, textMeshProImage, width,
+        height);
     snapshot.uiDiagnosticStage = ui.diagnosticStage;
     snapshot.uiMethodMask = ui.methodMask;
     semanticSnapshot.buttonCount = ui.recordCount;

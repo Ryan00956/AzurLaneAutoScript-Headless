@@ -213,3 +213,134 @@ index 50a7171..9e8db21 100644
  
      @cached_property
      def _reward_side_navbar(self):
+diff --git a/module/freebies/mail_white.py b/module/freebies/mail_white.py
+index 6d9e42f..25a9dcc 100644
+--- a/module/freebies/mail_white.py
++++ b/module/freebies/mail_white.py
+@@ -257,23 +257,30 @@ class MailWhite(UI):
+             logger.warning('Nothing to claim')
+             return False
+ 
+-        # Must using white UI
+-        self.ui_ensure(page_main)
+-        if self.appear(page_main_white.check_button, offset=(30, 30)):
+-            logger.info('At page_main_white')
+-            pass
+-        elif self.appear(page_main.check_button, offset=(5, 5)):
+-            logger.info('At page_main')
+-            pass
+-        else:
+-            logger.warning('Unknown page_main, cannot enter mail page')
+-            return False
++        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
++        if semantic_adapter is not None:
++            semantic_adapter.begin_mail()
++        try:
++            # Must using white UI
++            self.ui_ensure(page_main)
++            if self.appear(page_main_white.check_button, offset=(30, 30)):
++                logger.info('At page_main_white')
++                pass
++            elif self.appear(page_main.check_button, offset=(5, 5)):
++                logger.info('At page_main')
++                pass
++            else:
++                logger.warning('Unknown page_main, cannot enter mail page')
++                return False
+ 
+-        # Claim
+-        self.mail_claim(
+-            merit=merit,
+-            maintenance=maintenance,
+-            trade_license=trade_license,
+-            delete=delete,
+-        )
+-        return True
++            # Claim
++            self.mail_claim(
++                merit=merit,
++                maintenance=maintenance,
++                trade_license=trade_license,
++                delete=delete,
++            )
++            return True
++        finally:
++            if semantic_adapter is not None:
++                semantic_adapter.end_mail()
+diff --git a/module/commission/commission.py b/module/commission/commission.py
+index 195d84a..2a7d996 100644
+--- a/module/commission/commission.py
++++ b/module/commission/commission.py
+@@ -606,34 +606,41 @@ class RewardCommission(UI, InfoHandler):
+             in: Any
+             out: page_commission
+         """
+-        self.ui_ensure(page_reward)
+-        self.commission_receive()
+-
+-        # info_bar appears when get ship in Launch Ceremony commissions
+-        # This is a game bug, the info_bar shows get ship, will appear over and over again, until you click get_ship.
+-        self.handle_info_bar()
+-        self.commission_start()
+-
+-        # Scheduler
+-        total = self.daily.add_by_eq(self.urgent)
+-        future_finish = sorted([f for f in total.get('finish_time') if f is not None])
+-        logger.info(f'Commission finish: {[str(f) for f in future_finish]}')
+-        if len(future_finish):
+-            self.config.task_delay(target=future_finish)
+-        else:
+-            logger.info('No commission running')
+-            self.config.task_delay(success=False)
+-
+-        # Delay GemsFarming
+-        if self.config.cross_get(keys='GemsFarming.GemsFarming.CommissionLimit', default=False):
+-            daily = self.daily.select(category_str='daily', status='pending').count
+-            filtered_urgent = self.comm_choose.intersect_by_eq(self.urgent.select(status='pending')).count
+-            logger.info(f'Daily commission: {daily}, filtered_urgent: {filtered_urgent}')
+-            if daily > 0 and filtered_urgent >= 1:
+-                logger.info('Having daily commissions to do, delay task `GemsFarming`')
+-                self.config.task_delay(
+-                    minute=120, target=future_finish if len(future_finish) else None, task='GemsFarming')
+-            elif filtered_urgent >= 4:
+-                logger.info('Having too many urgent commissions, delay task `GemsFarming`')
+-                self.config.task_delay(
+-                    minute=120, target=future_finish if len(future_finish) else None, task='GemsFarming')
++        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
++        if semantic_adapter is not None:
++            semantic_adapter.begin_commission()
++        try:
++            self.ui_ensure(page_reward)
++            self.commission_receive()
++
++            # info_bar appears when get ship in Launch Ceremony commissions
++            # This is a game bug, the info_bar shows get ship, will appear over and over again, until you click get_ship.
++            self.handle_info_bar()
++            self.commission_start()
++
++            # Scheduler
++            total = self.daily.add_by_eq(self.urgent)
++            future_finish = sorted([f for f in total.get('finish_time') if f is not None])
++            logger.info(f'Commission finish: {[str(f) for f in future_finish]}')
++            if len(future_finish):
++                self.config.task_delay(target=future_finish)
++            else:
++                logger.info('No commission running')
++                self.config.task_delay(success=False)
++
++            # Delay GemsFarming
++            if self.config.cross_get(keys='GemsFarming.GemsFarming.CommissionLimit', default=False):
++                daily = self.daily.select(category_str='daily', status='pending').count
++                filtered_urgent = self.comm_choose.intersect_by_eq(self.urgent.select(status='pending')).count
++                logger.info(f'Daily commission: {daily}, filtered_urgent: {filtered_urgent}')
++                if daily > 0 and filtered_urgent >= 1:
++                    logger.info('Having daily commissions to do, delay task `GemsFarming`')
++                    self.config.task_delay(
++                        minute=120, target=future_finish if len(future_finish) else None, task='GemsFarming')
++                elif filtered_urgent >= 4:
++                    logger.info('Having too many urgent commissions, delay task `GemsFarming`')
++                    self.config.task_delay(
++                        minute=120, target=future_finish if len(future_finish) else None, task='GemsFarming')
++        finally:
++            if semantic_adapter is not None:
++                semantic_adapter.end_commission()

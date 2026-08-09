@@ -35,6 +35,36 @@ if ! grep -Fq 'ShouldEvaluateImageTopRaycast' \
   echo "Typed Image raycast observer is missing" >&2
   exit 1
 fi
+if ! grep -Fq 'MailUI(Clone)/adapt/CommonTitleAndBack/back_btn' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Mail page raycast allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'ShouldEvaluateToggleTopRaycast' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Typed Toggle raycast observer is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'MailMgrMsgboxUI(Clone)/window/button_container/btn_get' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Mail manager raycast allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'Target{"extend", "frame/left/extend"}' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Main drawer raycast allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'CommissionInfoUI4Mellow(Clone)/frame/main/content/event/' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Reward-page semantic entries are missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'frame/go_btn' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Reward-page go-button allowlist is missing" >&2
+  exit 1
+fi
 if ! grep -Fq 'kIl2CppAllowlistSize = 32' \
     "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.h"; then
   echo "32-symbol raycast observer allowlist is missing" >&2
@@ -48,6 +78,21 @@ fi
 if ! grep -Fq 'AwardInfoUI(Clone)/items/close' \
     "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
   echo "G5 reward popup raycast allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'ShipExpUI(Clone)/skipLayer' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Commission EXP reward raycast allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'EventUI(Clone)/scrollRect$/content/' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Commission-list Button raycast allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq '"daily_btn", "urgency_btn"' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Commission-list tab Image allowlist is missing" >&2
   exit 1
 fi
 

@@ -44,6 +44,8 @@ DEFAULT_ALAS_BUTTON_TARGETS: Mapping[str, str] = {
     "MAIN_GOTO_FLEET_WHITE": "main/formation",
     "MAIN_GOTO_BUILD": "main/build",
     "MAIN_GOTO_BUILD_WHITE": "main/build",
+    "MAIN_GOTO_REWARD": "main/more",
+    "MAIN_GOTO_REWARD_WHITE": "main/more",
     "MAIN_GOTO_DOCK": "main/dock",
     "MAIN_GOTO_DOCK_WHITE": "main/dock",
     "MAIN_GOTO_MISSION": "main/task",
@@ -52,7 +54,20 @@ DEFAULT_ALAS_BUTTON_TARGETS: Mapping[str, str] = {
     "MAIN_GOTO_SHOP_WHITE": "main/shop",
     "MAIL_ENTER": "main/mail",
     "MAIL_ENTER_WHITE": "main/mail",
+    "MAIL_CHECK": "mail/page/back",
+    "MAIL_MANAGE": "mail/manage",
     "MISSION_CHECK": "task/page/back",
+    "COMMISSION_CHECK": "commission/page/back",
+    "REWARD_CHECK": "reward/page/back",
+    "REWARD_GOTO_MAIN": "reward/page/back",
+    "REWARD_1": "reward/commission/finish",
+    "REWARD_1_WHITE": "reward/commission/finish",
+    "REWARD_GOTO_COMMISSION": "reward/commission/go",
+    "REWARD_GOTO_COMMISSION_WHITE": "reward/commission/go",
+    "REWARD_2": "reward/tactical/finish",
+    "REWARD_2_WHITE": "reward/tactical/finish",
+    "REWARD_GOTO_TACTICAL": "reward/tactical/go",
+    "REWARD_GOTO_TACTICAL_WHITE": "reward/tactical/go",
     "LOGIN_ANNOUNCE": "overlay/bulletin/close",
     "LOGIN_ANNOUNCE_2": "overlay/bulletin/close",
 }
@@ -93,6 +108,58 @@ MISSION_NAVBAR_TARGETS = (
     "task/nav/daily",
     "task/nav/weekly",
     "task/nav/event",
+)
+MAIL_VIRTUAL_RESOURCES = frozenset(
+    {
+        "MAIL_BATCH_CLAIM",
+        "MAIL_BATCH_DELETE",
+        "MAIL_WHITE_EMPTY",
+        "GOTO_MAIN_WHITE",
+        "GET_ITEMS_1",
+        "GET_ITEMS_2",
+    }
+)
+MAIL_CLICK_RESOURCES = frozenset(
+    {
+        "MAIL_BATCH_CLAIM",
+        "MAIL_BATCH_DELETE",
+        "MAIL_MANAGE",
+        "MAIL_SELECT_ALL",
+        "MAIL_SELECT_COINS",
+        "MAIL_SELECT_CUBE",
+        "MAIL_SELECT_GEMS",
+        "MAIL_SELECT_MERIT",
+        "MAIL_SELECT_OIL",
+        "GOTO_MAIN_WHITE",
+        "GET_ITEMS_1",
+        "GET_ITEMS_2",
+    }
+)
+MAIL_TOGGLE_TARGETS: Mapping[str, str] = {
+    "MAIL_SELECT_ALL": "mail/manage/all",
+    "MAIL_SELECT_CUBE": "mail/manage/cube",
+    "MAIL_SELECT_COINS": "mail/manage/coins",
+    "MAIL_SELECT_OIL": "mail/manage/oil",
+    "MAIL_SELECT_MERIT": "mail/manage/merit",
+    "MAIL_SELECT_GEMS": "mail/manage/gems",
+}
+COMMISSION_VIRTUAL_RESOURCES = frozenset(
+    {
+        "EXP_INFO_S_REWARD",
+        "GET_ITEMS_1",
+        "GET_ITEMS_2",
+        "GET_ITEMS_3",
+        "GET_SHIP",
+    }
+)
+COMMISSION_CLICK_RESOURCES = frozenset(
+    {
+        "EXP_INFO_S_REWARD",
+        "REWARD_SAVE_CLICK",
+        "GET_ITEMS_1",
+        "GET_ITEMS_2",
+        "GET_ITEMS_3",
+    }
 )
 
 
@@ -161,6 +228,17 @@ class _MissionFlowContext:
 
 
 @dataclass
+class _MailFlowContext:
+    entry_clicked: bool = False
+    mutations_allowed: bool = False
+
+
+@dataclass
+class _CommissionFlowContext:
+    rewards_allowed: bool = False
+
+
+@dataclass
 class PinnedPackageGate:
     """Cache one independent ADB verification of the installed package."""
 
@@ -186,6 +264,8 @@ class AlasSemanticAdapter:
         package_gate: Callable[[], None],
         mappings: Mapping[str, str] = DEFAULT_ALAS_BUTTON_TARGETS,
         allow_mission_claim_once: bool = False,
+        allow_mail_mutations: bool = False,
+        allow_commission_rewards: bool = False,
     ) -> None:
         if package_gate is None:
             raise ValueError("semantic ALAS mode requires a package identity gate")
@@ -198,7 +278,11 @@ class AlasSemanticAdapter:
         ):
             raise ValueError("ALAS semantic mappings must be non-empty")
         self._allow_mission_claim_once = bool(allow_mission_claim_once)
+        self._allow_mail_mutations = bool(allow_mail_mutations)
+        self._allow_commission_rewards = bool(allow_commission_rewards)
         self._mission_context: Optional[_MissionFlowContext] = None
+        self._mail_context: Optional[_MailFlowContext] = None
+        self._commission_context: Optional[_CommissionFlowContext] = None
 
     @staticmethod
     def _button_name(button: Any) -> str:
@@ -224,6 +308,10 @@ class AlasSemanticAdapter:
         return bool(
             name in self._mappings
             or name in MISSION_VIRTUAL_RESOURCES
+            or name in MAIL_VIRTUAL_RESOURCES
+            or name in MAIL_CLICK_RESOURCES
+            or name in COMMISSION_VIRTUAL_RESOURCES
+            or name in COMMISSION_CLICK_RESOURCES
             or MISSION_NAVBAR_PATTERN.fullmatch(name)
         )
 
@@ -244,6 +332,40 @@ class AlasSemanticAdapter:
 
         self._mission_context = None
 
+    def begin_mail(self) -> None:
+        """Open one ALAS-owned mail state-machine invocation."""
+
+        self._package_gate()
+        if (
+            self._mail_context is not None
+            or self._mission_context is not None
+            or self._commission_context is not None
+        ):
+            raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
+        self._mail_context = _MailFlowContext(
+            mutations_allowed=self._allow_mail_mutations
+        )
+
+    def end_mail(self) -> None:
+        self._mail_context = None
+
+    def begin_commission(self) -> None:
+        """Open one ALAS-owned commission state-machine invocation."""
+
+        self._package_gate()
+        if (
+            self._commission_context is not None
+            or self._mail_context is not None
+            or self._mission_context is not None
+        ):
+            raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
+        self._commission_context = _CommissionFlowContext(
+            rewards_allowed=self._allow_commission_rewards
+        )
+
+    def end_commission(self) -> None:
+        self._commission_context = None
+
     def _require_mission_context(self) -> _MissionFlowContext:
         if self._mission_context is None:
             raise SemanticGateClosed("mission resource used outside ALAS mission flow")
@@ -259,6 +381,36 @@ class AlasSemanticAdapter:
                 "reward/award-info1/close",
                 "overlay/bulletin/close",
                 "overlay/guild-message/close",
+            )
+        )
+
+    def _known_mail_surface_exists(self) -> bool:
+        return any(
+            self.oracle.exists(semantic_id)
+            for semantic_id in (
+                "main/mail",
+                "mail/page/back",
+                "mail/manage",
+                "mail/manage/back",
+                "mail/manage/claim",
+                "mail/manage/delete",
+                "reward/award-info/close",
+                "reward/award-info1/close",
+            )
+        )
+
+    def _known_commission_surface_exists(self) -> bool:
+        return any(
+            self.oracle.exists(semantic_id)
+            for semantic_id in (
+                "main/more",
+                "reward/page/back",
+                "reward/commission/finish",
+                "reward/commission/go",
+                "commission/page/back",
+                "reward/ship-exp/close",
+                "reward/award-info/close",
+                "reward/award-info1/close",
             )
         )
 
@@ -332,8 +484,7 @@ class AlasSemanticAdapter:
         if name == "MISSION_UNFINISH":
             return state.disposition == MissionDisposition.UNFINISHED
         if name == "MISSION_EMPTY":
-            # Absence of row Buttons is not a reviewed empty-page marker.
-            return False
+            return state.disposition == MissionDisposition.EMPTY
         raise AlasSemanticUnmapped(
             "ALAS mission resource is not semantically mapped: {0}".format(name)
         )
@@ -341,13 +492,31 @@ class AlasSemanticAdapter:
     def appear(self, button: Any) -> bool:
         name = self._button_name(button)
         semantic_id = self._mappings.get(name)
-        if semantic_id is None and name not in MISSION_VIRTUAL_RESOURCES:
-            if self._mission_context is None:
+        if (
+            semantic_id is None
+            and name not in MISSION_VIRTUAL_RESOURCES
+            and name not in MAIL_VIRTUAL_RESOURCES
+            and name not in COMMISSION_VIRTUAL_RESOURCES
+        ):
+            if (
+                self._mission_context is None
+                and self._mail_context is None
+                and self._commission_context is None
+            ):
                 raise AlasSemanticUnmapped(
                     "ALAS resource is not semantically mapped: {0}".format(name)
                 )
             self._package_gate()
-            if self._known_mission_surface_exists():
+            if (
+                self._mission_context is not None
+                and self._known_mission_surface_exists()
+            ) or (
+                self._mail_context is not None
+                and self._known_mail_surface_exists()
+            ) or (
+                self._commission_context is not None
+                and self._known_commission_surface_exists()
+            ):
                 # ALAS scans many page/popup assets.  An independently proven
                 # mission surface lets unknown presence checks be safely false;
                 # unknown clicks remain forbidden.
@@ -356,7 +525,35 @@ class AlasSemanticAdapter:
                 "ALAS resource is not semantically mapped: {0}".format(name)
             )
         self._package_gate()
+        if self._mail_context is not None and name == "MAIL_MANAGE":
+            return self.oracle.enabled("mail/manage")
         if semantic_id is None:
+            if (
+                self._commission_context is not None
+                and name in COMMISSION_VIRTUAL_RESOURCES
+            ):
+                if name == "EXP_INFO_S_REWARD":
+                    return self.oracle.enabled("reward/ship-exp/close")
+                if name in ("GET_ITEMS_1", "GET_ITEMS_2", "GET_ITEMS_3"):
+                    return self._award_close_target() is not None
+                if name == "GET_SHIP":
+                    return False
+            if self._mail_context is not None and name in MAIL_VIRTUAL_RESOURCES:
+                if name == "GOTO_MAIN_WHITE":
+                    return self.oracle.enabled("mail/page/back")
+                if name in ("GET_ITEMS_1", "GET_ITEMS_2"):
+                    return self._award_close_target() is not None
+                if name == "MAIL_BATCH_CLAIM":
+                    return self.oracle.enabled("mail/manage/claim")
+                if name == "MAIL_BATCH_DELETE":
+                    return self.oracle.enabled("mail/manage/delete")
+                if name == "MAIL_WHITE_EMPTY":
+                    return self.oracle.mail_is_empty()
+                return False
+            if name in MAIL_VIRTUAL_RESOURCES and name not in MISSION_VIRTUAL_RESOURCES:
+                raise AlasSemanticUnmapped(
+                    "ALAS mail resource used outside mail flow: {0}".format(name)
+                )
             return self._mission_resource_appears(name)
         # enabled() includes active/interactable/bounds and blocker checks.  A
         # Unity object hidden behind an overlay must not count as visible to ALAS.
@@ -466,17 +663,81 @@ class AlasSemanticAdapter:
         if (
             semantic_id is None
             and name not in MISSION_CLICK_RESOURCES
+            and name not in MAIL_CLICK_RESOURCES
+            and name not in COMMISSION_CLICK_RESOURCES
             and navbar_match is None
         ):
             raise AlasSemanticUnmapped(
                 "ALAS resource is not semantically mapped for input: {0}".format(name)
             )
         self._package_gate()
+        if self._mail_context is not None and name == "MAIL_MANAGE":
+            if self.oracle.enabled("mail/manage/back"):
+                return self.oracle.click("mail/manage/back")
+            return self.oracle.click("mail/manage")
         if semantic_id is not None:
+            if (
+                self._commission_context is not None
+                and semantic_id in (
+                    "reward/commission/finish",
+                    "reward/tactical/finish",
+                )
+                and not self._commission_context.rewards_allowed
+            ):
+                raise SemanticGateClosed(
+                    "commission or tactical reward requires the separate explicit opt-in"
+                )
             receipt = self.oracle.click(semantic_id)
             if semantic_id == "main/task" and self._mission_context is not None:
                 self._mission_context.entry_clicked = True
+            if semantic_id == "main/mail" and self._mail_context is not None:
+                self._mail_context.entry_clicked = True
             return receipt
+
+        if (
+            self._commission_context is not None
+            and name in COMMISSION_CLICK_RESOURCES
+        ):
+            if name in ("EXP_INFO_S_REWARD", "REWARD_SAVE_CLICK"):
+                if not self._commission_context.rewards_allowed:
+                    raise SemanticGateClosed(
+                        "commission reward requires the separate explicit opt-in"
+                    )
+                return self.oracle.click("reward/ship-exp/close")
+            if name in ("GET_ITEMS_1", "GET_ITEMS_2", "GET_ITEMS_3"):
+                if not self._commission_context.rewards_allowed:
+                    raise SemanticGateClosed(
+                        "commission reward requires the separate explicit opt-in"
+                    )
+                target = self._award_close_target()
+                if target is None:
+                    raise SemanticGateClosed("reviewed commission reward popup is absent")
+                return self.oracle.click(target)
+
+        if self._mail_context is not None and name in MAIL_CLICK_RESOURCES:
+            toggle_target = MAIL_TOGGLE_TARGETS.get(name)
+            if toggle_target is not None:
+                return self.oracle.click_toggle(toggle_target)
+            if name in ("MAIL_BATCH_CLAIM", "MAIL_BATCH_DELETE"):
+                if not self._mail_context.mutations_allowed:
+                    raise SemanticGateClosed(
+                        "mail mutation requires the separate explicit opt-in"
+                    )
+                target = (
+                    "mail/manage/claim"
+                    if name == "MAIL_BATCH_CLAIM"
+                    else "mail/manage/delete"
+                )
+                return self.oracle.click(target)
+            if name == "GOTO_MAIN_WHITE":
+                if not self._mail_context.entry_clicked:
+                    raise SemanticGateClosed("mail entry identity is not proven")
+                return self.oracle.click("mail/page/back")
+            if name in ("GET_ITEMS_1", "GET_ITEMS_2"):
+                target = self._award_close_target()
+                if target is None:
+                    raise SemanticGateClosed("reviewed mail reward popup is absent")
+                return self.oracle.click(target)
 
         if navbar_match is not None:
             context = self._require_mission_context()
@@ -531,6 +792,14 @@ class AlasSemanticAdapter:
         self._package_gate()
         if name in ("MISSION_NOTICE_WHITE", "MISSION_WEEKLY_RED_DOT"):
             return self._mission_resource_appears(name)
+
+        mail_toggle = MAIL_TOGGLE_TARGETS.get(name)
+        if mail_toggle is not None:
+            if self._mail_context is None:
+                raise AlasSemanticUnmapped(
+                    "ALAS mail option used outside mail flow: {0}".format(name)
+                )
+            return self.oracle.toggle_selected(mail_toggle)
 
         match = MISSION_NAVBAR_PATTERN.fullmatch(name)
         if match is None:
@@ -626,7 +895,10 @@ class AlasSemanticAdapter:
                 exit_receipt=exit_receipt,
                 dismissed_overlays=tuple(dismissed_overlays),
             )
-        if page.disposition != MissionDisposition.UNFINISHED:
+        if page.disposition not in (
+            MissionDisposition.UNFINISHED,
+            MissionDisposition.EMPTY,
+        ):
             self._return_from_mission(timeout_seconds)
             raise SemanticGateClosed("mission state is not proven")
         exit_receipt = self._return_from_mission(timeout_seconds)
@@ -732,6 +1004,8 @@ class AlasSemanticSession:
             "com.bilibili.azurlane/com.manjuu.azurlane.MainActivity"
         ),
         allow_mission_claim_once: bool = False,
+        allow_mail_mutations: bool = False,
+        allow_commission_rewards: bool = False,
     ) -> None:
         if not serial:
             raise ValueError("semantic ALAS mode requires an ADB serial")
@@ -742,6 +1016,8 @@ class AlasSemanticSession:
         self.package = package
         self.component = component
         self.allow_mission_claim_once = bool(allow_mission_claim_once)
+        self.allow_mail_mutations = bool(allow_mail_mutations)
+        self.allow_commission_rewards = bool(allow_commission_rewards)
         self.bridge = AdbObserverBridge(serial, package, adb=adb)
         self.adapter: Optional[AlasSemanticAdapter] = None
 
@@ -757,6 +1033,12 @@ class AlasSemanticSession:
             adb=adb,
             allow_mission_claim_once=(
                 os.environ.get("ALAS_SEMANTIC_ALLOW_MISSION_CLAIM_ONCE") == "1"
+            ),
+            allow_mail_mutations=(
+                os.environ.get("ALAS_SEMANTIC_ALLOW_MAIL_MUTATIONS") == "1"
+            ),
+            allow_commission_rewards=(
+                os.environ.get("ALAS_SEMANTIC_ALLOW_COMMISSION_REWARDS") == "1"
             ),
         )
 
@@ -782,6 +1064,8 @@ class AlasSemanticSession:
                 oracle,
                 package_gate,
                 allow_mission_claim_once=self.allow_mission_claim_once,
+                allow_mail_mutations=self.allow_mail_mutations,
+                allow_commission_rewards=self.allow_commission_rewards,
             )
             return self.adapter
         except Exception:
@@ -842,6 +1126,7 @@ class AlasSemanticSession:
         if (
             name not in DEFAULT_ALAS_BUTTON_TARGETS
             and name not in MISSION_CLICK_RESOURCES
+            and name not in MAIL_CLICK_RESOURCES
             and MISSION_NAVBAR_PATTERN.fullmatch(name) is None
         ):
             raise AlasSemanticUnmapped(
@@ -855,6 +1140,20 @@ class AlasSemanticSession:
     def end_mission_reward(self) -> None:
         if self.adapter is not None:
             self.adapter.end_mission_reward()
+
+    def begin_mail(self) -> None:
+        self.open().begin_mail()
+
+    def end_mail(self) -> None:
+        if self.adapter is not None:
+            self.adapter.end_mail()
+
+    def begin_commission(self) -> None:
+        self.open().begin_commission()
+
+    def end_commission(self) -> None:
+        if self.adapter is not None:
+            self.adapter.end_commission()
 
     def run_mission_reward(
         self,

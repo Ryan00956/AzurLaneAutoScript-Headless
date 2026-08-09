@@ -362,12 +362,15 @@ std::string UiResponse(uid_t peerUid, const std::string &package) {
         fields, sizeof(fields),
         ",\"flags\":%u,\"active_in_hierarchy\":%s,"
         "\"active_and_enabled\":%s,\"interactable\":%s,\"checked\":%s,"
-        "\"adb_point\":%s,\"adb_bounds\":%s}",
+        "\"raycast_top\":%s,\"adb_point\":%s,\"adb_bounds\":%s}",
         control.flags, (control.flags & 0x1u) != 0 ? "true" : "false",
         (control.flags & 0x2u) != 0 ? "true" : "false",
         (control.flags & 0x4u) != 0 ? "true" : "false",
         (toggle.stateFlags & 0x1u) != 0
             ? ((toggle.stateFlags & 0x2u) != 0 ? "true" : "false")
+            : "null",
+        (control.flags & 0x800u) != 0
+            ? ((control.flags & 0x1000u) != 0 ? "true" : "false")
             : "null",
         (control.flags & 0x100u) != 0 ? "{}" : "null",
         (control.flags & 0x400u) != 0 ? "{}" : "null"));
