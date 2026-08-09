@@ -138,6 +138,22 @@ See [G6 typed semantic UI validation](g6-semantic-ui-report.md).
 
 See [G7 typed task and campaign adaptation](g7-task-campaign-adaptation-report.md).
 
+## G8 - Real ALAS reward and one-budget commission start: scoped pass
+
+- The pinned upstream ALAS reward command must complete twice with semantic
+  observations and zero claim inputs.
+- Commission must first complete with start budget zero and no row-selection or
+  start input.
+- A controlled start requires an exact pending row/detail signature, assigned
+  ships, zero oil cost, an independent integer budget, and a typed transition
+  to a lower countdown plus the reviewed `tag_ongoing` marker.
+- A second zero-budget run must parse the running commission, schedule from its
+  typed countdown, and start no additional row.
+- Commission rewards, nonzero-oil rows, larger start budgets, scrolling,
+  cancellation, and unattended repetition remain separate gates.
+
+See [G8 real ALAS validation](g8-alas-reward-commission-validation-report.md).
+
 ## Stop or pivot conditions
 
 - A critical flow depends on rendered GPU results rather than completion signaling.

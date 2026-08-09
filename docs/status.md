@@ -4,6 +4,32 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-09
 
+### G8 real ALAS reward and commission slice: scoped partial pass
+
+- A clean checkout of pinned upstream ALAS commit
+  `81ccf63b4540f00241628c82a58c02c7a2bb11af` completed the real `Reward`
+  command twice. Both runs observed typed claimable state and stopped before
+  claim because the mission claim budget was zero.
+- The real `Commission` command completed once with start budget zero. ALAS
+  scanned typed rows, applied its existing `cube` preset, selected three daily
+  candidates, and stopped before row input.
+- With `ALAS_SEMANTIC_COMMISSION_START_BUDGET=1`, ALAS selected
+  `高阶战术研发II`, revalidated level 50, 7200 seconds, six assigned ships, and
+  oil cost zero, then injected exactly one start input.
+- Typed post-state proved the same commission at `7124` seconds with the exact
+  `tag_ongoing` marker and `取消` action label. A second run with budget zero
+  parsed it as running at `01:53:44`, scheduled `2026-08-09 16:52:07`, and
+  started nothing else.
+- The positive-budget command discovered that the pinned game remains on a
+  running detail view after start and did not return cleanly. The adapter now
+  recognizes that exact post-state and returns through reviewed navigation;
+  unit, syntax, and pinned-patch checks pass, but a fresh positive-budget clean
+  exit was not forced by starting a second commission.
+- Commission reward receipt was disabled throughout. Larger budgets,
+  nonzero-oil rows, scrolling, cancellation, and unattended repeated starts
+  remain unqualified. See the
+  [G8 validation report](g8-alas-reward-commission-validation-report.md).
+
 ### G7 typed task surfaces and read-only campaign: passed in reviewed scope
 
 - The typed controller now models the reward dashboard, commission rows and

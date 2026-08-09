@@ -281,6 +281,44 @@ class CommissionRowState:
     type_sprite: str
     button: ButtonState
 
+    @property
+    def signature(self) -> Tuple[Union[int, str], ...]:
+        return (
+            self.index,
+            self.name,
+            self.level,
+            self.duration_seconds,
+            self.status.value,
+            self.type_sprite,
+        )
+
+
+@dataclass(frozen=True)
+class CommissionDetailState:
+    name: str
+    level: int
+    duration_seconds: int
+    oil_cost: int
+    selected_ship_count: int
+    empty_ship_count: int
+
+    @property
+    def signature(self) -> Tuple[Union[int, str], ...]:
+        return (self.name, self.level, self.duration_seconds)
+
+
+@dataclass(frozen=True)
+class CommissionStartProof:
+    index: int
+    name: str
+    level: int
+    type_sprite: str
+    before_duration_seconds: int
+    after_duration_seconds: int
+    before_status_sprite: str
+    after_status_sprite: str
+    generation: int
+
 
 class BuildPool(str, Enum):
     LIGHT = "light"
@@ -571,6 +609,21 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
         "EventUI(Clone)/blur_panel/adapt/top/back_btn",
     ),
     SemanticTarget(
+        "commission/detail/back",
+        "back_btn",
+        "Overlay/UIMain/blur_panel/adapt/top/back_btn",
+    ),
+    SemanticTarget(
+        "commission/detail/recommend",
+        "btn_recommend",
+        "Overlay/UIMain/blur_panel/scrollItem/maskDetail/detailPanel/btn_recommend",
+    ),
+    SemanticTarget(
+        "commission/detail/start",
+        "btn",
+        "Overlay/UIMain/blur_panel/scrollItem/maskDetail/detailPanel/btn",
+    ),
+    SemanticTarget(
         "mail/page/back",
         "back_btn",
         "MailUI(Clone)/adapt/CommonTitleAndBack/back_btn",
@@ -782,12 +835,40 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
         ),
     ),
     BlockerRule(
+        "task-page",
+        "/TaskScene(Clone)/",
+        (
+            "task/page/back",
+            "task/claim/all",
+            "task/nav/all",
+            "task/nav/main",
+            "task/nav/side",
+            "task/nav/daily",
+            "task/nav/weekly",
+            "task/nav/event",
+            "reward/award-info/close",
+            "reward/award-info1/close",
+        ),
+    ),
+    BlockerRule(
         "commission-page",
         "/EventUI(Clone)/",
         (
             "commission/page/back",
             "commission/nav/daily",
             "commission/nav/urgent",
+            "commission/detail/back",
+            "commission/detail/recommend",
+            "commission/detail/start",
+        ),
+    ),
+    BlockerRule(
+        "commission-detail",
+        "/Overlay/UIMain/blur_panel/scrollItem/maskDetail/detailPanel/",
+        (
+            "commission/detail/back",
+            "commission/detail/recommend",
+            "commission/detail/start",
         ),
     ),
     BlockerRule(
@@ -1951,10 +2032,10 @@ class SemanticOracle:
             return matches[0]
 
         status_sprites = {
-            # This is the only row-state sprite observed and exercised on the
-            # pinned CN 9.7.10 build so far.  New sprites must be reviewed before
-            # they are assigned ALAS meanings.
+            # These are the exact pending/running row markers observed and
+            # exercised on the pinned CN 9.7.10 build. New sprites remain closed.
             "kongxian_bg": CommissionStatus.PENDING,
+            "tag_ongoing": CommissionStatus.RUNNING,
         }
         rows = []
         for index in sorted(indexed_buttons):
@@ -1970,7 +2051,23 @@ class SemanticOracle:
             name = exact_text(root + "/labelName$").text.strip()
             level_text = exact_text(root + "/level/labelLv$").text.strip()
             duration_text = exact_text(root + "/labelTime$/Text").text.strip()
-            status_image = exact_image(root + "/iconState$/0")
+            status_matches = tuple(
+                item
+                for item in ui_state.images
+                if item.path in (
+                    root + "/iconState$/0",
+                    root + "/iconState$/1",
+                )
+                and item.active_in_hierarchy
+                and item.active_and_enabled
+                and not item.truncated
+                and item.bounds is not None
+            )
+            if len(status_matches) != 1:
+                raise SemanticGateClosed(
+                    "commission row status image is absent or ambiguous: " + root
+                )
+            status_image = status_matches[0]
             type_image = exact_image(root + "/iconType$")
             if not name or re.fullmatch(r"[0-9]{1,3}", level_text) is None:
                 raise SemanticGateClosed("commission row identity is malformed")
@@ -2050,6 +2147,369 @@ class SemanticOracle:
                     "commission page reports rows and empty together"
                 )
         return bool(matches)
+
+    def click_commission_row(
+        self, expected_signature: Sequence[Union[int, str]]
+    ) -> ActionReceipt:
+        """Select one exact visible pending row after re-reading typed state."""
+
+        expected = tuple(expected_signature)
+        if len(expected) != 6:
+            raise SemanticGateClosed("commission row signature is malformed")
+        rows = self.commission_rows()
+        matches = tuple(row for row in rows if row.signature == expected)
+        if len(matches) != 1:
+            raise SemanticGateClosed("commission row identity is absent or ambiguous")
+        row = matches[0]
+        if row.status != CommissionStatus.PENDING:
+            raise SemanticGateClosed("commission row is not pending")
+        state = self.read_state()
+        current = tuple(button for button in state.buttons if button.path == row.button.path)
+        if len(current) != 1:
+            raise SemanticGateClosed("commission row Button changed before input")
+        button = current[0]
+        if not button.actionable or button.point is None or button.bounds is None:
+            raise SemanticGateClosed("commission row is not actionable")
+        if self._blocking_rules(state, "commission/page/back"):
+            raise SemanticGateClosed("commission row action is blocked")
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("game activity changed before commission input")
+        self._tap(int(round(button.point.x)), int(round(button.point.y)))
+        return ActionReceipt(
+            semantic_id="commission/row/{0}".format(row.index),
+            generation=state.generation,
+            point=button.point,
+            bounds=button.bounds,
+            path=button.path,
+        )
+
+    def commission_detail_state(self) -> CommissionDetailState:
+        """Read the exact selected commission and ship-assignment state."""
+
+        button_state = self.read_state()
+        back = self._unique(button_state, "commission/detail/back")
+        recommend = self._unique(button_state, "commission/detail/recommend")
+        start = self._unique(button_state, "commission/detail/start")
+        if not back.actionable:
+            raise SemanticGateClosed("commission detail page identity is not proven")
+        for target in (recommend, start):
+            if (
+                not target.active_in_hierarchy
+                or not target.active_and_enabled
+                or not target.interactable
+                or target.point is None
+                or target.bounds is None
+                or target.raycast_top is False
+            ):
+                raise SemanticGateClosed("commission detail input is not structurally valid")
+
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("commission detail snapshots are not coherent")
+
+        base = "Overlay/UIMain/blur_panel/scrollItem/"
+
+        def exact_text(suffix: str) -> str:
+            matches = tuple(
+                item
+                for item in ui_state.texts
+                if item.path.endswith(base + suffix)
+                and item.active_in_hierarchy
+                and item.active_and_enabled
+                and not item.truncated
+            )
+            if len(matches) != 1:
+                raise SemanticGateClosed(
+                    "commission detail text is absent or ambiguous: " + suffix
+                )
+            return re.sub(r"<[^<>]{1,128}>", "", matches[0].text).strip()
+
+        name = exact_text("labelName$")
+        level_text = exact_text("level/labelLv$")
+        duration_text = exact_text("labelTime$/Text")
+        oil_text = exact_text("maskDetail/detailPanel/consume/Text")
+        if (
+            not name
+            or re.fullmatch(r"[0-9]{1,3}", level_text) is None
+            or re.fullmatch(r"[0-9]+", oil_text) is None
+        ):
+            raise SemanticGateClosed("commission detail identity is malformed")
+
+        empty_pattern = re.compile(
+            r"(?:^|/)maskDetail/detailPanel/frame/ship_contain_(?:left|right)/"
+            r"ship_[1-3]/emptytpl$"
+        )
+        empty_paths = {
+            button.path
+            for button in button_state.buttons
+            if empty_pattern.search(button.path) is not None
+            and button.active_in_hierarchy
+            and button.active_and_enabled
+        }
+        if len(empty_paths) > 6:
+            raise SemanticGateClosed("commission detail empty ship slots are malformed")
+        empty_count = len(empty_paths)
+        selected_count = 6 - empty_count
+        return CommissionDetailState(
+            name=name,
+            level=int(level_text),
+            duration_seconds=self.parse_countdown_seconds(duration_text),
+            oil_cost=int(oil_text),
+            selected_ship_count=selected_count,
+            empty_ship_count=empty_count,
+        )
+
+    def _click_commission_detail(
+        self,
+        semantic_id: str,
+        expected_signature: Sequence[Union[int, str]],
+        require_assigned_ships: bool,
+    ) -> ActionReceipt:
+        expected = tuple(expected_signature)
+        if len(expected) != 6:
+            raise SemanticGateClosed("commission row signature is malformed")
+        detail = self.commission_detail_state()
+        if detail.signature != (expected[1], expected[2], expected[3]):
+            raise SemanticGateClosed("selected commission detail identity changed")
+        if require_assigned_ships and detail.selected_ship_count < 3:
+            raise SemanticGateClosed("commission start requires at least three assigned ships")
+        if require_assigned_ships and detail.oil_cost != 0:
+            raise SemanticGateClosed(
+                "semantic commission start is limited to zero-oil rows"
+            )
+
+        state = self.read_state()
+        target = self._unique(state, semantic_id)
+        if (
+            not target.active_in_hierarchy
+            or not target.active_and_enabled
+            or not target.interactable
+            or target.point is None
+            or target.bounds is None
+            or target.raycast_top is False
+            or self._blocking_rules(state, semantic_id)
+        ):
+            raise SemanticGateClosed("commission detail action is blocked")
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("game activity changed before commission detail input")
+        self._tap(int(round(target.point.x)), int(round(target.point.y)))
+        return ActionReceipt(
+            semantic_id=semantic_id,
+            generation=state.generation,
+            point=target.point,
+            bounds=target.bounds,
+            path=target.path,
+        )
+
+    def click_commission_recommend(
+        self, expected_signature: Sequence[Union[int, str]]
+    ) -> ActionReceipt:
+        return self._click_commission_detail(
+            "commission/detail/recommend",
+            expected_signature,
+            require_assigned_ships=False,
+        )
+
+    def click_commission_start(
+        self, expected_signature: Sequence[Union[int, str]]
+    ) -> ActionReceipt:
+        return self._click_commission_detail(
+            "commission/detail/start",
+            expected_signature,
+            require_assigned_ships=True,
+        )
+
+    def commission_start_transition(
+        self, expected_signature: Sequence[Union[int, str]]
+    ) -> CommissionStartProof:
+        """Prove that the exact pending row returned with a live countdown."""
+
+        expected = tuple(expected_signature)
+        if len(expected) != 6 or expected[4] != CommissionStatus.PENDING.value:
+            raise SemanticGateClosed("commission start proof signature is malformed")
+        index, name, level, before_duration, _, type_sprite = expected
+        if not isinstance(index, int):
+            raise SemanticGateClosed("commission start proof index is malformed")
+
+        button_state = self.read_state()
+        page_back_matches = self._matches(button_state, "commission/page/back")
+        detail_back_matches = self._matches(button_state, "commission/detail/back")
+        if not page_back_matches and len(detail_back_matches) == 1:
+            detail_back = detail_back_matches[0]
+            if not detail_back.actionable or self._blocking_rules(
+                button_state, "commission/detail/back"
+            ):
+                raise SemanticGateClosed(
+                    "running commission detail identity is not proven"
+                )
+            ui_state = self.read_ui_state()
+            if ui_state.image_truncated or ui_state.method_mask & 0x8 == 0:
+                raise SemanticGateClosed(
+                    "running commission detail Image snapshot is incomplete"
+                )
+            if (
+                ui_state.generation < button_state.generation
+                or ui_state.generation > button_state.generation + 2
+            ):
+                raise SemanticGateClosed(
+                    "running commission detail snapshots are not coherent"
+                )
+            root = "Overlay/UIMain/blur_panel/scrollItem"
+
+            def detail_text(suffix: str) -> str:
+                matches = tuple(
+                    item
+                    for item in ui_state.texts
+                    if item.path.endswith(root + suffix)
+                    and item.active_in_hierarchy
+                    and item.active_and_enabled
+                    and not item.truncated
+                )
+                if len(matches) != 1:
+                    raise SemanticGateClosed(
+                        "running commission detail text is ambiguous"
+                    )
+                return re.sub(r"<[^<>]{1,128}>", "", matches[0].text).strip()
+
+            def detail_image(suffix: str) -> ImageState:
+                matches = tuple(
+                    item
+                    for item in ui_state.images
+                    if item.path.endswith(root + suffix)
+                    and item.active_in_hierarchy
+                    and item.active_and_enabled
+                    and not item.truncated
+                )
+                if len(matches) != 1:
+                    raise SemanticGateClosed(
+                        "running commission detail image is ambiguous"
+                    )
+                return matches[0]
+
+            actual_name = detail_text("/labelName$")
+            actual_level = detail_text("/level/labelLv$")
+            after_duration = self.parse_countdown_seconds(
+                detail_text("/labelTime$/Text")
+            )
+            cancel_label = detail_text(
+                "/maskDetail/detailPanel/btn/giveup/text"
+            )
+            actual_type = detail_image("/iconType$").sprite
+            after_status = detail_image("/iconState$/1").sprite
+            if (
+                actual_name != name
+                or actual_level != str(level)
+                or actual_type != type_sprite
+                or cancel_label != "取消"
+                or after_status != "tag_ongoing"
+            ):
+                raise SemanticGateClosed(
+                    "running commission detail identity changed"
+                )
+            if not 0 < after_duration <= int(before_duration):
+                raise SemanticGateClosed(
+                    "running commission detail countdown is invalid"
+                )
+            return CommissionStartProof(
+                index=index,
+                name=actual_name,
+                level=int(actual_level),
+                type_sprite=actual_type,
+                before_duration_seconds=int(before_duration),
+                after_duration_seconds=after_duration,
+                before_status_sprite="kongxian_bg",
+                after_status_sprite=after_status,
+                generation=button_state.generation,
+            )
+        if len(page_back_matches) != 1 or detail_back_matches:
+            raise SemanticGateClosed(
+                "commission start transition surface is absent or ambiguous"
+            )
+        page_back = page_back_matches[0]
+        if not page_back.actionable or self._blocking_rules(
+            button_state, "commission/page/back"
+        ):
+            raise SemanticGateClosed("commission page identity is not proven")
+        root = "EventUI(Clone)/scrollRect$/content/{0}".format(index)
+        row_buttons = tuple(
+            button
+            for button in button_state.buttons
+            if button.name == "bgNormal$"
+            and button.path.endswith(root + "/bgNormal$")
+            and button.active_in_hierarchy
+        )
+        if len(row_buttons) != 1:
+            raise SemanticGateClosed("started commission row is absent or ambiguous")
+
+        ui_state = self.read_ui_state()
+        if ui_state.image_truncated or ui_state.method_mask & 0x8 == 0:
+            raise SemanticGateClosed("commission start proof Image snapshot is incomplete")
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("commission start proof snapshots are not coherent")
+
+        def exact_text(suffix: str) -> str:
+            matches = tuple(
+                item
+                for item in ui_state.texts
+                if item.path.endswith(root + suffix)
+                and item.active_in_hierarchy
+                and item.active_and_enabled
+                and not item.truncated
+            )
+            if len(matches) != 1:
+                raise SemanticGateClosed("commission start proof text is ambiguous")
+            return item_text(matches[0])
+
+        def item_text(item: TextState) -> str:
+            return re.sub(r"<[^<>]{1,128}>", "", item.text).strip()
+
+        def exact_image(suffix: str) -> ImageState:
+            matches = tuple(
+                item
+                for item in ui_state.images
+                if item.path.endswith(root + suffix)
+                and item.active_in_hierarchy
+                and item.active_and_enabled
+                and not item.truncated
+            )
+            if len(matches) != 1:
+                raise SemanticGateClosed("commission start proof image is ambiguous")
+            return matches[0]
+
+        actual_name = exact_text("/labelName$")
+        actual_level = exact_text("/level/labelLv$")
+        after_duration = self.parse_countdown_seconds(
+            exact_text("/labelTime$/Text")
+        )
+        after_status = exact_image("/iconState$/1").sprite
+        actual_type = exact_image("/iconType$").sprite
+        if (
+            actual_name != name
+            or actual_level != str(level)
+            or actual_type != type_sprite
+        ):
+            raise SemanticGateClosed("started commission row identity changed")
+        if not 0 < after_duration <= int(before_duration):
+            raise SemanticGateClosed("started commission countdown is invalid")
+        if after_status != "tag_ongoing":
+            raise SemanticGateClosed("commission row did not leave pending state")
+        return CommissionStartProof(
+            index=index,
+            name=actual_name,
+            level=int(actual_level),
+            type_sprite=actual_type,
+            before_duration_seconds=int(before_duration),
+            after_duration_seconds=after_duration,
+            before_status_sprite="kongxian_bg",
+            after_status_sprite=after_status,
+            generation=button_state.generation,
+        )
 
     def build_selected_pool(self) -> BuildPool:
         """Return the selected construction pool from exact Unity Toggles."""

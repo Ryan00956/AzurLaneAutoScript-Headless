@@ -21,6 +21,9 @@ from .semantic_oracle import (
     BuildCostState,
     BuildPool,
     CampaignPageState,
+    CommissionDetailState,
+    CommissionRowState,
+    CommissionStartProof,
     DormState,
     MissionPageState,
     MissionDisposition,
@@ -171,6 +174,10 @@ MAIL_TOGGLE_TARGETS: Mapping[str, str] = {
 }
 COMMISSION_VIRTUAL_RESOURCES = frozenset(
     {
+        "COMMISSION_DAILY",
+        "COMMISSION_URGENT",
+        "COMMISSION_ADVICE",
+        "COMMISSION_START",
         "EXP_INFO_S_REWARD",
         "GET_ITEMS_1",
         "GET_ITEMS_2",
@@ -180,6 +187,10 @@ COMMISSION_VIRTUAL_RESOURCES = frozenset(
 )
 COMMISSION_CLICK_RESOURCES = frozenset(
     {
+        "COMMISSION_DAILY",
+        "COMMISSION_URGENT",
+        "COMMISSION_ADVICE",
+        "COMMISSION_START",
         "EXP_INFO_S_REWARD",
         "REWARD_SAVE_CLICK",
         "GET_ITEMS_1",
@@ -188,6 +199,11 @@ COMMISSION_CLICK_RESOURCES = frozenset(
         "BACK_ARROW",
     }
 )
+COMMISSION_TAB_TARGETS: Mapping[str, str] = {
+    "COMMISSION_DAILY": "commission/nav/daily",
+    "COMMISSION_URGENT": "commission/nav/urgent",
+}
+COMMISSION_ROW_PATTERN = re.compile(r"^COMMISSION_ROW_([0-9]+)$")
 CAMPAIGN_VIRTUAL_RESOURCES = frozenset(
     {
         "CAMPAIGN_CHECK",
@@ -269,7 +285,11 @@ class _MissionFlowContext:
     daily: bool
     weekly: bool
     claim_budget: int
+    summary_entry_clicked: bool = False
     entry_clicked: bool = False
+    summary_entry_receipt: Optional[ActionReceipt] = None
+    entry_receipt: Optional[ActionReceipt] = None
+    passive_transition_until: float = 0.0
     last_signature: Optional[Tuple[Any, ...]] = None
     last_generation: int = -1
     stable_generations: int = 0
@@ -285,6 +305,13 @@ class _MailFlowContext:
 @dataclass
 class _CommissionFlowContext:
     rewards_allowed: bool = False
+    start_budget: int = 0
+    selected_signature: Optional[Tuple[Union[int, str], ...]] = None
+    selected_at: float = 0.0
+    start_receipt: Optional[ActionReceipt] = None
+    start_clicked_at: float = 0.0
+    start_proof: Optional[CommissionStartProof] = None
+    passive_transition_until: float = 0.0
     cancelled_tactical_prompts: Set[str] = field(default_factory=set)
 
 
@@ -316,6 +343,7 @@ class AlasSemanticAdapter:
         allow_mission_claim_once: bool = False,
         allow_mail_mutations: bool = False,
         allow_commission_rewards: bool = False,
+        commission_start_budget: int = 0,
     ) -> None:
         if package_gate is None:
             raise ValueError("semantic ALAS mode requires a package identity gate")
@@ -330,9 +358,17 @@ class AlasSemanticAdapter:
         self._allow_mission_claim_once = bool(allow_mission_claim_once)
         self._allow_mail_mutations = bool(allow_mail_mutations)
         self._allow_commission_rewards = bool(allow_commission_rewards)
+        if (
+            isinstance(commission_start_budget, bool)
+            or not isinstance(commission_start_budget, int)
+            or commission_start_budget < 0
+        ):
+            raise ValueError("commission start budget must be a non-negative integer")
+        self._commission_start_budget = commission_start_budget
         self._mission_context: Optional[_MissionFlowContext] = None
         self._mail_context: Optional[_MailFlowContext] = None
         self._commission_context: Optional[_CommissionFlowContext] = None
+        self._observer_stale_since: Optional[float] = None
 
     @staticmethod
     def _button_name(button: Any) -> str:
@@ -366,6 +402,7 @@ class AlasSemanticAdapter:
             or name in CAMPAIGN_CLICK_RESOURCES
             or name in PAGE_VIRTUAL_RESOURCES
             or MISSION_NAVBAR_PATTERN.fullmatch(name)
+            or COMMISSION_ROW_PATTERN.fullmatch(name)
         )
 
     def begin_mission_reward(self, daily: bool, weekly: bool) -> None:
@@ -384,6 +421,17 @@ class AlasSemanticAdapter:
         """Close the ALAS-owned mission invocation and discard all cached state."""
 
         self._mission_context = None
+
+    def mission_reward_active(self) -> bool:
+        """Return whether ALAS currently owns the mission/reward flow."""
+
+        return self._mission_context is not None
+
+    def mission_claim_allowed(self) -> bool:
+        """Expose the remaining input budget without weakening the click gate."""
+
+        context = self._require_mission_context()
+        return context.claim_budget > 0
 
     def begin_mail(self) -> None:
         """Open one ALAS-owned mail state-machine invocation."""
@@ -413,7 +461,8 @@ class AlasSemanticAdapter:
         ):
             raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
         self._commission_context = _CommissionFlowContext(
-            rewards_allowed=self._allow_commission_rewards
+            rewards_allowed=self._allow_commission_rewards,
+            start_budget=self._commission_start_budget,
         )
 
     def end_commission(self) -> None:
@@ -424,11 +473,20 @@ class AlasSemanticAdapter:
             raise SemanticGateClosed("mission resource used outside ALAS mission flow")
         return self._mission_context
 
+    def _require_commission_context(self) -> _CommissionFlowContext:
+        if self._commission_context is None:
+            raise SemanticGateClosed(
+                "commission resource used outside ALAS commission flow"
+            )
+        return self._commission_context
+
     def _known_mission_surface_exists(self) -> bool:
         return any(
             self.oracle.exists(semantic_id)
             for semantic_id in (
                 "main/task",
+                "main/more",
+                "reward/page/back",
                 "task/page/back",
                 "reward/award-info/close",
                 "reward/award-info1/close",
@@ -436,6 +494,25 @@ class AlasSemanticAdapter:
                 "overlay/guild-message/close",
             )
         )
+
+    def _record_mission_transition(self, receipt: ActionReceipt) -> ActionReceipt:
+        context = self._mission_context
+        if context is not None and receipt.semantic_id in (
+            "main/more",
+            "reward/page/back",
+            "main/task",
+            "task/page/back",
+        ):
+            context.passive_transition_until = time.monotonic() + 12.0
+        commission_context = self._commission_context
+        if commission_context is not None and receipt.semantic_id in (
+            "reward/page/back",
+            "reward/commission/go",
+            "commission/page/back",
+            "commission/detail/back",
+        ):
+            commission_context.passive_transition_until = time.monotonic() + 12.0
+        return receipt
 
     def _known_mail_surface_exists(self) -> bool:
         return any(
@@ -461,6 +538,9 @@ class AlasSemanticAdapter:
                 "reward/commission/finish",
                 "reward/commission/go",
                 "commission/page/back",
+                "commission/detail/back",
+                "commission/detail/recommend",
+                "commission/detail/start",
                 "reward/ship-exp/close",
                 "reward/award-info/close",
                 "reward/award-info1/close",
@@ -521,6 +601,7 @@ class AlasSemanticAdapter:
         ):
             targets.append("campaign-menu/page/back")
         for identity, target in (
+            ("task/page/back", "task/page/back"),
             ("build/page/start", "build/page/back"),
             ("research-menu/page/back", "research-menu/page/back"),
             ("research/page/back", "research/page/back"),
@@ -563,6 +644,23 @@ class AlasSemanticAdapter:
         )
 
     def appear(self, button: Any) -> bool:
+        """Run one presence probe with a bounded render-transition grace."""
+
+        try:
+            result = self._appear_once(button)
+        except SemanticGateClosed as exc:
+            if str(exc) != "observer snapshot is stale":
+                raise
+            now = time.monotonic()
+            if self._observer_stale_since is None:
+                self._observer_stale_since = now
+            if now - self._observer_stale_since <= 5.0:
+                return False
+            raise
+        self._observer_stale_since = None
+        return result
+
+    def _appear_once(self, button: Any) -> bool:
         name = self._button_name(button)
         semantic_id = self._mappings.get(name)
         if (
@@ -584,6 +682,18 @@ class AlasSemanticAdapter:
             self._package_gate()
             if (
                 self._mission_context is not None
+                and time.monotonic()
+                <= self._mission_context.passive_transition_until
+            ):
+                return False
+            if (
+                self._commission_context is not None
+                and time.monotonic()
+                <= self._commission_context.passive_transition_until
+            ):
+                return False
+            if (
+                self._mission_context is not None
                 and self._known_mission_surface_exists()
             ) or (
                 self._mail_context is not None
@@ -600,6 +710,14 @@ class AlasSemanticAdapter:
                 "ALAS resource is not semantically mapped: {0}".format(name)
             )
         self._package_gate()
+        if self._mission_context is not None:
+            if (
+                semantic_id == "main/more"
+                and self._mission_context.summary_entry_clicked
+            ):
+                return False
+            if semantic_id == "main/task" and self._mission_context.entry_clicked:
+                return False
         if name in PAGE_VIRTUAL_RESOURCES:
             target = {
                 "BUILD_CHECK": "build/page/start",
@@ -623,6 +741,32 @@ class AlasSemanticAdapter:
                 self._commission_context is not None
                 and name in COMMISSION_VIRTUAL_RESOURCES
             ):
+                tab_target = COMMISSION_TAB_TARGETS.get(name)
+                if tab_target is not None:
+                    return self.oracle.image_selected(tab_target)
+                if name in ("COMMISSION_ADVICE", "COMMISSION_START"):
+                    context = self._commission_context
+                    if context.selected_signature is None:
+                        return False
+                    try:
+                        detail = self.oracle.commission_detail_state()
+                    except SemanticGateClosed:
+                        if time.monotonic() - context.selected_at <= 12.0:
+                            return False
+                        raise
+                    expected = context.selected_signature
+                    if detail.signature != (expected[1], expected[2], expected[3]):
+                        raise SemanticGateClosed(
+                            "selected commission detail identity changed"
+                        )
+                    if name == "COMMISSION_ADVICE":
+                        return detail.selected_ship_count < 3
+                    return (
+                        detail.selected_ship_count >= 3
+                        and detail.oil_cost == 0
+                        and context.start_budget > 0
+                        and context.start_receipt is None
+                    )
                 if name == "EXP_INFO_S_REWARD":
                     return self.oracle.enabled("reward/ship-exp/close")
                 if name in ("GET_ITEMS_1", "GET_ITEMS_2", "GET_ITEMS_3"):
@@ -645,7 +789,27 @@ class AlasSemanticAdapter:
                 raise AlasSemanticUnmapped(
                     "ALAS mail resource used outside mail flow: {0}".format(name)
                 )
-            return self._mission_resource_appears(name)
+            if self._mission_context is not None:
+                return self._mission_resource_appears(name)
+            if name in MISSION_VIRTUAL_RESOURCES:
+                # ALAS' generic popup loop probes a few mission-owned resource
+                # names from reward flows as well.  A proven non-mission surface
+                # makes those passive probes safely absent; the resources are
+                # still not admitted to click() outside the mission context.
+                if (
+                    self._commission_context is not None
+                    and self._known_commission_surface_exists()
+                ) or (
+                    self._mail_context is not None
+                    and self._known_mail_surface_exists()
+                ):
+                    return False
+                raise AlasSemanticUnmapped(
+                    "ALAS mission resource used outside mission flow: {0}".format(name)
+                )
+            raise AlasSemanticUnmapped(
+                "ALAS virtual resource has no active semantic flow: {0}".format(name)
+            )
         # enabled() includes active/interactable/bounds and blocker checks.  A
         # Unity object hidden behind an overlay must not count as visible to ALAS.
         return self.oracle.enabled(semantic_id)
@@ -791,6 +955,68 @@ class AlasSemanticAdapter:
         self._package_gate()
         return self.oracle.tactical_remaining_seconds()
 
+    def commission_rows(self) -> Tuple[CommissionRowState, ...]:
+        self._package_gate()
+        self._require_commission_context()
+        return self.oracle.commission_rows()
+
+    def commission_is_empty(self) -> bool:
+        self._package_gate()
+        self._require_commission_context()
+        return self.oracle.commission_is_empty()
+
+    def commission_start_allowed(self) -> bool:
+        return self._require_commission_context().start_budget > 0
+
+    def commission_detail_state(self) -> CommissionDetailState:
+        self._package_gate()
+        self._require_commission_context()
+        return self.oracle.commission_detail_state()
+
+    def commission_start_confirmed(self) -> bool:
+        context = self._require_commission_context()
+        if context.start_receipt is None or context.selected_signature is None:
+            return False
+        if context.start_proof is not None:
+            return True
+        try:
+            context.start_proof = self.oracle.commission_start_transition(
+                context.selected_signature
+            )
+        except SemanticGateClosed:
+            if time.monotonic() - context.start_clicked_at <= 15.0:
+                return False
+            raise
+        return True
+
+    def commission_start_proof(self) -> CommissionStartProof:
+        """Return the cached typed proof after the exact row entered running state."""
+
+        context = self._require_commission_context()
+        if not self.commission_start_confirmed() or context.start_proof is None:
+            raise SemanticGateClosed("commission start transition is not proven")
+        return context.start_proof
+
+    def close_started_commission_detail(self) -> ActionReceipt:
+        """Leave the proven running detail without touching its cancel action."""
+
+        context = self._require_commission_context()
+        if context.start_proof is None:
+            raise SemanticGateClosed(
+                "commission running detail cannot close before start proof"
+            )
+        self._package_gate()
+        if not self.oracle.enabled("commission/detail/back"):
+            raise SemanticGateClosed("proven commission detail back is absent")
+        receipt = self.oracle.click("commission/detail/back")
+        context.passive_transition_until = time.monotonic() + 12.0
+        self.oracle.wait_for(
+            "reward/page/back",
+            timeout_seconds=12.0,
+            minimum_generation=receipt.generation,
+        )
+        return receipt
+
     def cancel_tactical_continue_if_present(self) -> bool:
         self._package_gate()
         if self._commission_context is None:
@@ -810,6 +1036,7 @@ class AlasSemanticAdapter:
         name = self._button_name(button)
         semantic_id = self._mappings.get(name)
         navbar_match = MISSION_NAVBAR_PATTERN.fullmatch(name)
+        commission_row_match = COMMISSION_ROW_PATTERN.fullmatch(name)
         if (
             semantic_id is None
             and name not in MISSION_CLICK_RESOURCES
@@ -820,6 +1047,7 @@ class AlasSemanticAdapter:
                 and name in COMMISSION_CLICK_RESOURCES
             )
             and navbar_match is None
+            and commission_row_match is None
         ):
             raise AlasSemanticUnmapped(
                 "ALAS resource is not semantically mapped for input: {0}".format(name)
@@ -829,12 +1057,23 @@ class AlasSemanticAdapter:
             target = self._goto_main_target()
             if target is None:
                 raise SemanticGateClosed("GOTO_MAIN has no reviewed page target")
-            return self.oracle.click(target)
+            return self._record_mission_transition(self.oracle.click(target))
         if self._mail_context is not None and name == "MAIL_MANAGE":
             if self.oracle.enabled("mail/manage/back"):
                 return self.oracle.click("mail/manage/back")
             return self.oracle.click("mail/manage")
         if semantic_id is not None:
+            if self._mission_context is not None:
+                if (
+                    semantic_id == "main/more"
+                    and self._mission_context.summary_entry_receipt is not None
+                ):
+                    return self._mission_context.summary_entry_receipt
+                if (
+                    semantic_id == "main/task"
+                    and self._mission_context.entry_receipt is not None
+                ):
+                    return self._mission_context.entry_receipt
             if (
                 self._commission_context is not None
                 and semantic_id in (
@@ -849,14 +1088,56 @@ class AlasSemanticAdapter:
             receipt = self.oracle.click(semantic_id)
             if semantic_id == "main/task" and self._mission_context is not None:
                 self._mission_context.entry_clicked = True
+                self._mission_context.entry_receipt = receipt
+            if semantic_id == "main/more" and self._mission_context is not None:
+                self._mission_context.summary_entry_clicked = True
+                self._mission_context.summary_entry_receipt = receipt
             if semantic_id == "main/mail" and self._mail_context is not None:
                 self._mail_context.entry_clicked = True
-            return receipt
+            return self._record_mission_transition(receipt)
 
         if (
             self._commission_context is not None
             and name in COMMISSION_CLICK_RESOURCES
         ):
+            tab_target = COMMISSION_TAB_TARGETS.get(name)
+            if tab_target is not None:
+                return self.oracle.click_image(tab_target)
+            if name in ("COMMISSION_ADVICE", "COMMISSION_START"):
+                context = self._commission_context
+                if context.selected_signature is None:
+                    raise SemanticGateClosed("commission row selection is not proven")
+                if name == "COMMISSION_ADVICE":
+                    return self.oracle.click_commission_recommend(
+                        context.selected_signature
+                    )
+                if context.start_receipt is not None:
+                    return context.start_receipt
+                if context.start_budget <= 0:
+                    raise SemanticGateClosed(
+                        "commission start input requires a positive independent budget"
+                    )
+                detail = self.oracle.commission_detail_state()
+                expected = context.selected_signature
+                if detail.signature != (expected[1], expected[2], expected[3]):
+                    raise SemanticGateClosed(
+                        "selected commission detail identity changed"
+                    )
+                if detail.selected_ship_count < 3:
+                    raise SemanticGateClosed(
+                        "commission start requires at least three assigned ships"
+                    )
+                if detail.oil_cost != 0:
+                    raise SemanticGateClosed(
+                        "semantic commission start is limited to zero-oil rows"
+                    )
+                receipt = self.oracle.click_commission_start(
+                    context.selected_signature
+                )
+                context.start_budget -= 1
+                context.start_receipt = receipt
+                context.start_clicked_at = time.monotonic()
+                return receipt
             if name == "BACK_ARROW":
                 targets = tuple(
                     semantic_id
@@ -886,6 +1167,19 @@ class AlasSemanticAdapter:
                 if target is None:
                     raise SemanticGateClosed("reviewed commission reward popup is absent")
                 return self.oracle.click(target)
+
+        if self._commission_context is not None and commission_row_match is not None:
+            signature = getattr(button, "semantic_commission_signature", None)
+            if not isinstance(signature, tuple) or len(signature) != 6:
+                raise SemanticGateClosed("ALAS commission row identity is malformed")
+            receipt = self.oracle.click_commission_row(signature)
+            context = self._commission_context
+            context.selected_signature = signature
+            context.selected_at = time.monotonic()
+            context.start_receipt = None
+            context.start_clicked_at = 0.0
+            context.start_proof = None
+            return receipt
 
         if self._mail_context is not None and name in MAIL_CLICK_RESOURCES:
             toggle_target = MAIL_TOGGLE_TARGETS.get(name)
@@ -1179,6 +1473,7 @@ class AlasSemanticSession:
         allow_mission_claim_once: bool = False,
         allow_mail_mutations: bool = False,
         allow_commission_rewards: bool = False,
+        commission_start_budget: int = 0,
     ) -> None:
         if not serial:
             raise ValueError("semantic ALAS mode requires an ADB serial")
@@ -1191,6 +1486,13 @@ class AlasSemanticSession:
         self.allow_mission_claim_once = bool(allow_mission_claim_once)
         self.allow_mail_mutations = bool(allow_mail_mutations)
         self.allow_commission_rewards = bool(allow_commission_rewards)
+        if (
+            isinstance(commission_start_budget, bool)
+            or not isinstance(commission_start_budget, int)
+            or commission_start_budget < 0
+        ):
+            raise ValueError("commission start budget must be a non-negative integer")
+        self.commission_start_budget = commission_start_budget
         self.bridge = AdbObserverBridge(serial, package, adb=adb)
         self.adapter: Optional[AlasSemanticAdapter] = None
 
@@ -1200,6 +1502,13 @@ class AlasSemanticSession:
             raise SemanticGateClosed("ALAS semantic mode is not explicitly enabled")
         revision = os.environ.get("ALAS_SEMANTIC_DRIVER_REVISION", "").lower()
         adb = os.environ.get("ALAS_SEMANTIC_ADB", "adb")
+        raw_start_budget = os.environ.get(
+            "ALAS_SEMANTIC_COMMISSION_START_BUDGET", "0"
+        )
+        if re.fullmatch(r"0|[1-9][0-9]*", raw_start_budget) is None:
+            raise SemanticGateClosed(
+                "commission start budget must be a canonical non-negative integer"
+            )
         return cls(
             serial=serial,
             driver_revision=revision,
@@ -1213,6 +1522,7 @@ class AlasSemanticSession:
             allow_commission_rewards=(
                 os.environ.get("ALAS_SEMANTIC_ALLOW_COMMISSION_REWARDS") == "1"
             ),
+            commission_start_budget=int(raw_start_budget),
         )
 
     def open(self) -> AlasSemanticAdapter:
@@ -1239,6 +1549,7 @@ class AlasSemanticSession:
                 allow_mission_claim_once=self.allow_mission_claim_once,
                 allow_mail_mutations=self.allow_mail_mutations,
                 allow_commission_rewards=self.allow_commission_rewards,
+                commission_start_budget=self.commission_start_budget,
             )
             return self.adapter
         except Exception:
@@ -1324,6 +1635,27 @@ class AlasSemanticSession:
     def tactical_remaining_seconds(self) -> Tuple[int, ...]:
         return self.open().tactical_remaining_seconds()
 
+    def commission_rows(self) -> Tuple[CommissionRowState, ...]:
+        return self.open().commission_rows()
+
+    def commission_is_empty(self) -> bool:
+        return self.open().commission_is_empty()
+
+    def commission_start_allowed(self) -> bool:
+        return self.open().commission_start_allowed()
+
+    def commission_detail_state(self) -> CommissionDetailState:
+        return self.open().commission_detail_state()
+
+    def commission_start_confirmed(self) -> bool:
+        return self.open().commission_start_confirmed()
+
+    def commission_start_proof(self) -> CommissionStartProof:
+        return self.open().commission_start_proof()
+
+    def close_started_commission_detail(self) -> ActionReceipt:
+        return self.open().close_started_commission_detail()
+
     def cancel_tactical_continue_if_present(self) -> bool:
         return self.open().cancel_tactical_continue_if_present()
 
@@ -1339,6 +1671,7 @@ class AlasSemanticSession:
                 and name in COMMISSION_CLICK_RESOURCES
             )
             and MISSION_NAVBAR_PATTERN.fullmatch(name) is None
+            and COMMISSION_ROW_PATTERN.fullmatch(name) is None
         ):
             raise AlasSemanticUnmapped(
                 "ALAS resource is not semantically mapped for input: {0}".format(name)
@@ -1351,6 +1684,14 @@ class AlasSemanticSession:
     def end_mission_reward(self) -> None:
         if self.adapter is not None:
             self.adapter.end_mission_reward()
+
+    def mission_reward_active(self) -> bool:
+        return bool(
+            self.adapter is not None and self.adapter.mission_reward_active()
+        )
+
+    def mission_claim_allowed(self) -> bool:
+        return self.open().mission_claim_allowed()
 
     def begin_mail(self) -> None:
         self.open().begin_mail()

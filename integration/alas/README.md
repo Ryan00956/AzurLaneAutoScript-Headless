@@ -66,10 +66,22 @@ Additional typed readers cover reward summary counts, commission rows and
 empty state, tactical slots/countdowns, research project cards, construction
 pool/cost, dorm summary, and visible campaign chapter/stage labels. The pinned
 patch feeds tactical countdowns, safe continue-prompt cancellation, research
-status helpers, and dorm occupancy into the original ALAS code. These readers
-do not authorize commission start, course assignment, research start, dorm
-mutation, construction submission, stage selection, map movement, or battle
-input.
+status helpers, and dorm occupancy into the original ALAS code.
+
+Commission start has a separate integer budget and remains closed by default:
+
+```powershell
+$env:ALAS_SEMANTIC_COMMISSION_START_BUDGET = '1'
+```
+
+Each commission invocation receives the configured budget and decrements it
+only for an exact start input. The selected row/detail signature, assigned ship
+count, zero oil cost, and typed transition to `tag_ongoing` are required. The
+live qualified value is `1`; larger budgets are parsing-compatible but are not
+live-qualified. Commission reward receipt uses a different opt-in and was not
+enabled in the controlled start validation. Course assignment, research start,
+dorm mutation, construction submission, stage selection, map movement, and
+battle input remain unauthorized.
 
 To stage this against a compatible ALAS checkout:
 
@@ -81,11 +93,12 @@ $env:ALAS_SEMANTIC_MODE = '1'
 $env:ALAS_SEMANTIC_DRIVER_REVISION = (Get-Content H:\program\AzurLaneAutoScript-Headless\ANGLE_REVISION -Raw).Trim()
 ```
 
-Do not enable unattended ALAS operation yet. The earlier default-page probe
-proved the semantic no-claim and one controlled claim-all primitives. The new
-ALAS-owned state-machine wiring has unit, syntax, lifecycle, and pinned-patch
-application coverage, but still needs a fresh live no-claim/claim revalidation.
-The mission sidebar and newer typed task readers have narrower live adapter
-evidence; numeric-row claiming, stage selection, map and battle state,
+Do not enable unattended ALAS operation yet. The ALAS-owned reward flow has a
+fresh live zero-claim double run. Commission has one live zero-oil start proof
+plus a clean zero-budget second pass. The positive-budget command discovered
+the running-detail return shape and did not itself exit cleanly; the corrected
+return path needs a fresh live positive-budget rerun. Raw list scrolling,
+larger budgets, nonzero-oil rows, reward receipt, cancellation, and repeated
+unattended starts are not qualified. Numeric-row claiming, stage selection, map and battle state,
 Lua/game-state access, other reward popups, scroll/drag semantics, and full
 unattended task flows remain fail-closed.

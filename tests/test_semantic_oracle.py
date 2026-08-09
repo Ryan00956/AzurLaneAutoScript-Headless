@@ -846,6 +846,195 @@ class SemanticOracleTests(unittest.TestCase):
         self.assertEqual(rows[0].duration_seconds, 10 * 60 * 60)
         self.assertEqual(rows[0].status, CommissionStatus.PENDING)
         self.assertEqual(rows[0].type_sprite, "jianduixunlian")
+        self.assertEqual(
+            rows[0].signature,
+            (0, "高阶自主训练", 50, 10 * 60 * 60, "pending", "jianduixunlian"),
+        )
+
+    def test_commission_row_click_revalidates_exact_typed_signature(self):
+        page = "root/UICamera/Canvas/UIMain/EventUI(Clone)"
+        row = page + "/scrollRect$/content/0"
+        backend = FakeBackend(
+            [
+                make_button("back_btn", page + "/blur_panel/adapt/top/back_btn"),
+                make_button("bgNormal$", row + "/bgNormal$", 640, 190),
+            ]
+        )
+        backend.ui = make_ui(
+            [
+                make_text("高阶自主训练", row + "/labelName$"),
+                make_text("50", row + "/level/labelLv$"),
+                make_text("10:00:00", row + "/labelTime$/Text"),
+            ],
+            images=[
+                make_image(row + "/iconState$/0", "kongxian_bg"),
+                make_image(row + "/iconType$", "jianduixunlian"),
+            ],
+        )
+        oracle = make_oracle(backend)
+        signature = oracle.commission_rows()[0].signature
+
+        receipt = oracle.click_commission_row(signature)
+
+        self.assertEqual(receipt.semantic_id, "commission/row/0")
+        self.assertEqual(backend.taps, [(640, 190)])
+        with self.assertRaises(SemanticGateClosed):
+            oracle.click_commission_row((0, "另一个委托", 50, 36000, "pending", "x"))
+        self.assertEqual(backend.taps, [(640, 190)])
+
+    def test_commission_running_row_uses_reviewed_ongoing_marker(self):
+        page = "root/UICamera/Canvas/UIMain/EventUI(Clone)"
+        row = page + "/scrollRect$/content/0"
+        backend = FakeBackend(
+            [
+                make_button("back_btn", page + "/blur_panel/adapt/top/back_btn"),
+                make_button("bgNormal$", row + "/bgNormal$", 640, 190),
+            ]
+        )
+        backend.ui = make_ui(
+            [
+                make_text("高阶战术研发II", row + "/labelName$"),
+                make_text("50", row + "/level/labelLv$"),
+                make_text("01:58:44", row + "/labelTime$/Text"),
+            ],
+            images=[
+                make_image(row + "/iconState$/1", "tag_ongoing"),
+                make_image(row + "/iconType$", "faxiankuangmai"),
+            ],
+        )
+
+        rows = make_oracle(backend).commission_rows()
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].status, CommissionStatus.RUNNING)
+        self.assertEqual(rows[0].duration_seconds, 7124)
+
+    def test_commission_detail_recommend_requires_exact_selected_identity(self):
+        root = "root/Overlay/UIMain/blur_panel/"
+        detail = root + "scrollItem/maskDetail/detailPanel/"
+        buttons = [
+            make_button("back_btn", root + "adapt/top/back_btn", 58, 53),
+            make_button("btn_recommend", detail + "btn_recommend", 935, 363),
+            make_button("btn", detail + "btn", 1092, 363),
+        ]
+        for side in ("left", "right"):
+            for slot in range(1, 4):
+                buttons.append(
+                    make_button(
+                        "emptytpl",
+                        detail
+                        + "frame/ship_contain_{0}/ship_{1}/emptytpl".format(
+                            side, slot
+                        ),
+                    )
+                )
+        backend = FakeBackend(buttons)
+        base = "root/Overlay/UIMain/blur_panel/scrollItem/"
+        backend.ui = make_ui(
+            [
+                make_text("日常资源开发III", base + "labelName$"),
+                make_text("15", base + "level/labelLv$"),
+                make_text("01:00:00", base + "labelTime$/Text"),
+                make_text("0", base + "maskDetail/detailPanel/consume/Text"),
+            ]
+        )
+        oracle = make_oracle(backend)
+        signature = (1, "日常资源开发III", 15, 3600, "pending", "faxiankuangmai")
+
+        state = oracle.commission_detail_state()
+        receipt = oracle.click_commission_recommend(signature)
+
+        self.assertEqual(state.selected_ship_count, 0)
+        self.assertEqual(state.empty_ship_count, 6)
+        self.assertEqual(state.oil_cost, 0)
+        self.assertEqual(receipt.semantic_id, "commission/detail/recommend")
+        self.assertEqual(backend.taps, [(935, 363)])
+        with self.assertRaises(SemanticGateClosed):
+            oracle.click_commission_start(signature)
+        self.assertEqual(backend.taps, [(935, 363)])
+
+    def test_commission_start_proof_requires_exact_non_pending_countdown_row(self):
+        page = "root/UICamera/Canvas/UIMain/EventUI(Clone)"
+        row = page + "/scrollRect$/content/1"
+        backend = FakeBackend(
+            [
+                make_button("back_btn", page + "/blur_panel/adapt/top/back_btn"),
+                make_button("bgNormal$", row + "/bgNormal$", 640, 190),
+            ]
+        )
+        backend.ui = make_ui(
+            [
+                make_text("日常资源开发III", row + "/labelName$"),
+                make_text("15", row + "/level/labelLv$"),
+                make_text("00:59:55", row + "/labelTime$/Text"),
+            ],
+            images=[
+                make_image(row + "/iconState$/1", "tag_ongoing"),
+                make_image(row + "/iconType$", "faxiankuangmai"),
+            ],
+        )
+        signature = (1, "日常资源开发III", 15, 3600, "pending", "faxiankuangmai")
+
+        proof = make_oracle(backend).commission_start_transition(signature)
+
+        self.assertEqual(proof.before_duration_seconds, 3600)
+        self.assertEqual(proof.after_duration_seconds, 3595)
+        self.assertEqual(proof.before_status_sprite, "kongxian_bg")
+        self.assertEqual(proof.after_status_sprite, "tag_ongoing")
+
+    def test_commission_start_proof_accepts_exact_running_detail(self):
+        root = "root/Overlay/UIMain/blur_panel/"
+        backend = FakeBackend(
+            [make_button("back_btn", root + "adapt/top/back_btn", 58, 53)]
+        )
+        base = root + "scrollItem"
+        backend.ui = make_ui(
+            [
+                make_text("高阶战术研发II", base + "/labelName$"),
+                make_text("50", base + "/level/labelLv$"),
+                make_text("01:58:44", base + "/labelTime$/Text"),
+                make_text(
+                    "取消",
+                    base + "/maskDetail/detailPanel/btn/giveup/text",
+                ),
+            ],
+            images=[
+                make_image(base + "/iconState$/1", "tag_ongoing"),
+                make_image(base + "/iconType$", "faxiankuangmai"),
+            ],
+        )
+        signature = (3, "高阶战术研发II", 50, 7200, "pending", "faxiankuangmai")
+
+        proof = make_oracle(backend).commission_start_transition(signature)
+
+        self.assertEqual(proof.name, "高阶战术研发II")
+        self.assertEqual(proof.after_duration_seconds, 7124)
+        self.assertEqual(proof.after_status_sprite, "tag_ongoing")
+
+    def test_commission_start_rejects_nonzero_oil_cost(self):
+        root = "root/Overlay/UIMain/blur_panel/"
+        detail = root + "scrollItem/maskDetail/detailPanel/"
+        backend = FakeBackend(
+            [
+                make_button("back_btn", root + "adapt/top/back_btn", 58, 53),
+                make_button("btn_recommend", detail + "btn_recommend", 935, 363),
+                make_button("btn", detail + "btn", 1092, 363),
+            ]
+        )
+        base = "root/Overlay/UIMain/blur_panel/scrollItem/"
+        backend.ui = make_ui(
+            [
+                make_text("日常资源开发III", base + "labelName$"),
+                make_text("15", base + "level/labelLv$"),
+                make_text("01:00:00", base + "labelTime$/Text"),
+                make_text("10", base + "maskDetail/detailPanel/consume/Text"),
+            ]
+        )
+        signature = (1, "日常资源开发III", 15, 3600, "pending", "faxiankuangmai")
+
+        with self.assertRaises(SemanticGateClosed):
+            make_oracle(backend).click_commission_start(signature)
+        self.assertEqual(backend.taps, [])
 
     def test_commission_unknown_status_sprite_fails_closed(self):
         page = "root/UICamera/Canvas/UIMain/EventUI(Clone)"
@@ -1082,6 +1271,29 @@ class SemanticOracleTests(unittest.TestCase):
 
         self.assertEqual(receipt.semantic_id, "overlay/guild-message/close")
         self.assertEqual(backend.taps, [(1150, 90)])
+
+    def test_task_page_blocks_main_but_allows_exact_back(self):
+        backend = FakeBackend(
+            [
+                make_button("task", "root/frame/bottom/frame/task", 875, 684),
+                make_button(
+                    "back_btn",
+                    "root/TaskScene(Clone)/blur_panel/adapt/top/back_btn",
+                    58,
+                    53,
+                ),
+            ]
+        )
+        oracle = make_oracle(backend)
+
+        self.assertFalse(oracle.enabled("main/task"))
+        self.assertTrue(oracle.enabled("task/page/back"))
+        with self.assertRaises(SemanticGateClosed):
+            oracle.click("main/task")
+        receipt = oracle.click("task/page/back")
+
+        self.assertEqual(receipt.semantic_id, "task/page/back")
+        self.assertEqual(backend.taps, [(58, 53)])
 
     def test_award_info_blocks_task_page_but_allows_exact_close(self):
         backend = FakeBackend(

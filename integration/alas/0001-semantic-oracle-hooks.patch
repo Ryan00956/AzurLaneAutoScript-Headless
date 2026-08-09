@@ -1,8 +1,18 @@
 diff --git a/module/base/base.py b/module/base/base.py
-index dfd12a9..b214559 100644
+index dfd12a9..448d06f 100644
 --- a/module/base/base.py
 +++ b/module/base/base.py
-@@ -247,7 +247,10 @@ class ModuleBase:
+@@ -70,6 +70,9 @@ class ModuleBase:
+         The import is paralleled since taking screenshot is I/O-bound while importing is CPU-bound,
+         thus would speed up the startup 0.5 ~ 1.0s and even 5s on slow PCs.
+         """
++        if getattr(self.device, 'semantic_adapter', None) is not None:
++            logger.info('Semantic mode uses typed text, skip early_ocr_import')
++            return
+         if ModuleBase.EARLY_OCR_IMPORT:
+             return
+         if not self.config.is_actual_task:
+@@ -247,7 +250,10 @@ class ModuleBase:
              if not self.interval_timer[button.name].reached():
                  return False
  
@@ -14,7 +24,7 @@ index dfd12a9..b214559 100644
              appear = bool(button)
          elif offset:
              if isinstance(offset, bool):
-@@ -285,8 +288,12 @@ class ModuleBase:
+@@ -285,8 +291,12 @@ class ModuleBase:
              if not self.interval_timer[button.name].reached():
                  return False
  
@@ -29,7 +39,7 @@ index dfd12a9..b214559 100644
  
          if appear and interval:
              self.interval_timer[button.name].reset()
-@@ -373,6 +380,10 @@ class ModuleBase:
+@@ -373,6 +383,10 @@ class ModuleBase:
          Returns:
              bool:
          """
@@ -176,10 +186,25 @@ index 9dfd4f0..9fca01b 100644
              image_list = [self.pre_process(i) for i in image]
          else:
 diff --git a/module/reward/reward.py b/module/reward/reward.py
-index 50a7171..9e8db21 100644
+index 50a7171..3df61a5 100644
 --- a/module/reward/reward.py
 +++ b/module/reward/reward.py
-@@ -234,16 +234,23 @@ class Reward(UI):
+@@ -166,6 +166,14 @@ class Reward(UI):
+                 logger.info('Mission collect finished')
+                 break
+             elif state in [MISSION_MULTI, MISSION_SINGLE]:
++                semantic_adapter = getattr(self.device, 'semantic_adapter', None)
++                if (
++                    semantic_adapter is not None
++                    and not semantic_adapter.mission_claim_allowed()
++                ):
++                    logger.info(
++                        'Mission claimable state observed; semantic claim budget is zero')
++                    break
+                 # Clear any existing interval for the following assets
+                 self.interval_clear([GET_ITEMS_1, GET_ITEMS_2, MISSION_MULTI, MISSION_SINGLE, GET_SHIP])
+                 self._reward_mission_claim_click()
+@@ -234,16 +242,27 @@ class Reward(UI):
          """
          if not daily and not weekly:
              return False
@@ -194,7 +219,11 @@ index 50a7171..9e8db21 100644
 -        if weekly:
 -            self._reward_mission_weekly()
 +        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
-+        if semantic_adapter is not None:
++        owns_semantic_flow = (
++            semantic_adapter is not None
++            and not semantic_adapter.mission_reward_active()
++        )
++        if owns_semantic_flow:
 +            semantic_adapter.begin_mission_reward(daily=daily, weekly=weekly)
 +        try:
 +            logger.hr('Mission reward')
@@ -208,11 +237,42 @@ index 50a7171..9e8db21 100644
 +            if weekly:
 +                self._reward_mission_weekly()
 +        finally:
-+            if semantic_adapter is not None:
++            if owns_semantic_flow:
 +                semantic_adapter.end_mission_reward()
  
      @cached_property
      def _reward_side_navbar(self):
+@@ -300,12 +319,21 @@ class Reward(UI):
+             in: Any page
+             out: page_main or page_mission, may have info_bar
+         """
+-        self.ui_ensure(page_reward)
+-        self.reward_receive(
+-            oil=self.config.Reward_CollectOil,
+-            coin=self.config.Reward_CollectCoin,
+-            exp=self.config.Reward_CollectExp)
+-        self.ui_goto(page_main)
+-        self.reward_mission(daily=self.config.Reward_CollectMission,
+-                            weekly=self.config.Reward_CollectWeeklyMission)
+-        self.config.task_delay(success=True)
++        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
++        if semantic_adapter is not None:
++            semantic_adapter.begin_mission_reward(
++                daily=self.config.Reward_CollectMission,
++                weekly=self.config.Reward_CollectWeeklyMission)
++        try:
++            self.ui_ensure(page_reward)
++            self.reward_receive(
++                oil=self.config.Reward_CollectOil,
++                coin=self.config.Reward_CollectCoin,
++                exp=self.config.Reward_CollectExp)
++            self.ui_goto(page_main)
++            self.reward_mission(daily=self.config.Reward_CollectMission,
++                                weekly=self.config.Reward_CollectWeeklyMission)
++            self.config.task_delay(success=True)
++        finally:
++            if semantic_adapter is not None:
++                semantic_adapter.end_mission_reward()
 diff --git a/module/freebies/mail_white.py b/module/freebies/mail_white.py
 index 6d9e42f..25a9dcc 100644
 --- a/module/freebies/mail_white.py
@@ -268,10 +328,114 @@ index 6d9e42f..25a9dcc 100644
 +            if semantic_adapter is not None:
 +                semantic_adapter.end_mail()
 diff --git a/module/commission/commission.py b/module/commission/commission.py
-index 195d84a..2a7d996 100644
+index 195d84a..7fb64e1 100644
 --- a/module/commission/commission.py
 +++ b/module/commission/commission.py
-@@ -606,34 +606,41 @@ class RewardCommission(UI, InfoHandler):
+@@ -89,6 +89,13 @@ class RewardCommission(UI, InfoHandler):
+         Returns:
+             SelectedGrids:
+         """
++        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
++        if semantic_adapter is not None:
++            rows = semantic_adapter.commission_rows()
++            return SelectedGrids([
++                Commission.from_semantic(row, config=self.config) for row in rows
++            ])
++
+         commissions = SelectedGrids([])
+         for _ in range(trial):
+             if skip_first_screenshot:
+@@ -347,6 +354,7 @@ class RewardCommission(UI, InfoHandler):
+         self.interval_clear(COMMISSION_START)
+         comm_timer = Timer(7)
+         count = 0
++        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
+         while 1:
+             if skip_first_screenshot:
+                 skip_first_screenshot = False
+@@ -354,6 +362,18 @@ class RewardCommission(UI, InfoHandler):
+                 self.device.screenshot()
+ 
+             # End
++            if semantic_adapter is not None:
++                if semantic_adapter.commission_start_confirmed():
++                    proof = semantic_adapter.commission_start_proof()
++                    logger.attr(
++                        'SemanticCommissionStart',
++                        f'{proof.name}: {proof.before_duration_seconds}s -> '
++                        f'{proof.after_duration_seconds}s, '
++                        f'{proof.after_status_sprite}',
++                    )
++                    semantic_adapter.close_started_commission_detail()
++                    self.ui_ensure(page_commission)
++                    break
+             if self.info_bar_count():
+                 break
+             if count >= 3:
+@@ -381,19 +401,22 @@ class RewardCommission(UI, InfoHandler):
+                 continue
+             # Check if is the right commission
+             if self.appear(COMMISSION_ADVICE, offset=(5, 20), interval=7):
+-                area = (0, 0, image_size(self.device.image)[0], COMMISSION_ADVICE.button[1])
+-                current = self.commission_detect(area=area)
+-                if is_urgent:
+-                    current.call('convert_to_night')  # Convert extra commission to night
+-                if current.count >= 1:
+-                    current = current[0]
+-                    if current == comm:
+-                        logger.info('Selected to the correct commission')
+-                    else:
+-                        logger.warning('Selected to the wrong commission')
+-                        return False
++                if semantic_adapter is not None:
++                    logger.info('Selected exact typed commission row')
+                 else:
+-                    logger.warning('No selected commission detected, assuming correct')
++                    area = (0, 0, image_size(self.device.image)[0], COMMISSION_ADVICE.button[1])
++                    current = self.commission_detect(area=area)
++                    if is_urgent:
++                        current.call('convert_to_night')  # Convert extra commission to night
++                    if current.count >= 1:
++                        current = current[0]
++                        if current == comm:
++                            logger.info('Selected to the correct commission')
++                        else:
++                            logger.warning('Selected to the wrong commission')
++                            return False
++                    else:
++                        logger.warning('No selected commission detected, assuming correct')
+                 self.device.click(COMMISSION_ADVICE)
+                 count += 1
+                 self.interval_reset(COMMISSION_ADVICE)
+@@ -476,6 +499,13 @@ class RewardCommission(UI, InfoHandler):
+         logger.hr('Commission run', level=1)
+         if self.daily_choose:
+             for comm in self.daily_choose:
++                semantic_adapter = getattr(self.device, 'semantic_adapter', None)
++                if (
++                    semantic_adapter is not None
++                    and not semantic_adapter.commission_start_allowed()
++                ):
++                    logger.info('Semantic commission start budget exhausted')
++                    break
+                 self._commission_ensure_mode('daily')
+                 self._commission_swipe_to_top()
+                 self.handle_info_bar()
+@@ -484,6 +514,13 @@ class RewardCommission(UI, InfoHandler):
+                 self._commission_mode_reset()
+         if self.urgent_choose:
+             for comm in self.urgent_choose:
++                semantic_adapter = getattr(self.device, 'semantic_adapter', None)
++                if (
++                    semantic_adapter is not None
++                    and not semantic_adapter.commission_start_allowed()
++                ):
++                    logger.info('Semantic commission start budget exhausted')
++                    break
+                 self._commission_ensure_mode('urgent')
+                 self._commission_swipe_to_top()
+                 self.handle_info_bar()
+@@ -606,34 +643,41 @@ class RewardCommission(UI, InfoHandler):
              in: Any
              out: page_commission
          """
@@ -344,6 +508,90 @@ index 195d84a..2a7d996 100644
 +        finally:
 +            if semantic_adapter is not None:
 +                semantic_adapter.end_commission()
+diff --git a/module/commission/project.py b/module/commission/project.py
+index cd88c16..61422d1 100644
+--- a/module/commission/project.py
++++ b/module/commission/project.py
+@@ -106,6 +106,55 @@ class Commission:
+     # Value: 1:30, 1:45, 2:00, 8:00, 12:00, ...
+     duration_hm: str
+ 
++    @classmethod
++    def from_semantic(cls, state, config):
++        """Build the normal ALAS commission model from one typed Unity row."""
++        self = cls.__new__(cls)
++        self.config = config
++        self.name = state.name
++        self.duration = timedelta(seconds=state.duration_seconds)
++        self.expire = timedelta(seconds=0)
++        self.status = state.status.value
++        self.valid = True
++        self.semantic_signature = state.signature
++        self.genre = self.commission_name_parse(self.name)
++        if not self.genre:
++            self.valid = False
++        self.suffix_image = None
++        self.suffix_hash = ''
++        self.repeat_count = 1
++        self.create_time = datetime.now()
++        self.category_str = 'unknown'
++        self.genre_str = 'unknown'
++        self.duration_hour = 'unknown'
++        self.duration_hm = 'unknown'
++        if self.valid:
++            self.category_str, self.genre_str = self.genre.split('_', 1)
++            self.duration_hour = str(
++                int(self.duration.total_seconds() / 36) / 100).strip('.0')
++            self.duration_hm = str(self.duration).rsplit(':', 1)[0]
++
++        bounds = state.button.bounds
++        if bounds is None:
++            self.valid = False
++            area = (0, 0, 0, 0)
++        else:
++            area = tuple(int(round(value)) for value in (
++                bounds.left, bounds.top, bounds.right, bounds.bottom))
++        self.area = area
++        self.y = area[3]
++        self.image = None
++        self.button = Button(
++            area=area,
++            color=(),
++            button=area,
++            name=f'COMMISSION_ROW_{state.index}',
++        )
++        self.button.semantic_commission_signature = state.signature
++        self.semantic_level = state.level
++        self.semantic_type_sprite = state.type_sprite
++        return self
++
+     def __init__(self, image, y, config):
+         self.config = config
+         self.y = y
+@@ -342,6 +391,11 @@ class Commission:
+         """
+         if not isinstance(other, Commission):
+             return False
++        if hasattr(self, 'semantic_signature') or hasattr(other, 'semantic_signature'):
++            return (
++                getattr(self, 'semantic_signature', None)
++                == getattr(other, 'semantic_signature', None)
++            )
+         threshold = timedelta(seconds=120)
+         if not self.valid or not other.valid:
+             return False
+@@ -514,6 +568,11 @@ class Commission:
+         Returns:
+             bool:
+         """
++        # Typed Unity rows carry no screenshot. Event commissions need a
++        # separate reviewed semantic classifier; never fall back to pixels.
++        if getattr(self, 'semantic_signature', None) is not None:
++            return False
++
+         # Event commission in Vacation Lane, with pink area on the left.
+         # area = area_offset((5, 5, 30, 30), self.area[0:2])
+         # return color_similar(color1=get_color(self.image, area), color2=(239, 166, 231))
 diff --git a/module/tactical/tactical_class.py b/module/tactical/tactical_class.py
 index 8046ad1..f7f42ef 100644
 --- a/module/tactical/tactical_class.py

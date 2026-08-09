@@ -13,6 +13,9 @@ class AlasIntegrationPatchTests(unittest.TestCase):
     def test_reward_hook_brackets_instead_of_replacing_alas_state_machine(self):
         self.assertIn("semantic_adapter.begin_mission_reward", self.patch_text)
         self.assertIn("semantic_adapter.end_mission_reward", self.patch_text)
+        self.assertIn("semantic_adapter.mission_reward_active", self.patch_text)
+        self.assertIn("semantic_adapter.mission_claim_allowed", self.patch_text)
+        self.assertIn("Semantic mode uses typed text, skip early_ocr_import", self.patch_text)
         self.assertIn("+        try:", self.patch_text)
         self.assertIn("+        finally:", self.patch_text)
         self.assertIn("+                self._reward_mission_all()", self.patch_text)
@@ -56,8 +59,13 @@ class AlasIntegrationPatchTests(unittest.TestCase):
 
     def test_commission_hook_brackets_instead_of_replacing_alas_state_machine(self):
         self.assertIn("diff --git a/module/commission/commission.py", self.patch_text)
+        self.assertIn("diff --git a/module/commission/project.py", self.patch_text)
         self.assertIn("semantic_adapter.begin_commission()", self.patch_text)
         self.assertIn("semantic_adapter.end_commission()", self.patch_text)
+        self.assertIn("Commission.from_semantic", self.patch_text)
+        self.assertIn("semantic_adapter.commission_start_allowed()", self.patch_text)
+        self.assertIn("semantic_adapter.commission_start_proof()", self.patch_text)
+        self.assertIn("semantic_adapter.close_started_commission_detail()", self.patch_text)
         self.assertIn("+            self.commission_receive()", self.patch_text)
         self.assertIn("+            self.commission_start()", self.patch_text)
 

@@ -1,3 +1,4 @@
+import time
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -47,6 +48,17 @@ class FakeOracle:
         self.tactical_slot_values = []
         self.tactical_remaining_values = ()
         self.tactical_prompt_text = None
+        self.commission_detail_value = SimpleNamespace(
+            signature=("日常资源开发III", 15, 3600),
+            selected_ship_count=0,
+            oil_cost=0,
+        )
+        self.commission_transition_value = SimpleNamespace(
+            name="日常资源开发III",
+            before_duration_seconds=3600,
+            after_duration_seconds=3595,
+            after_status_sprite="tag_ongoing",
+        )
         self.build_pool_value = BuildPool.LIGHT
         self.build_cost_value = SimpleNamespace(
             cubes_owned=10,
@@ -218,6 +230,49 @@ class FakeOracle:
             SimpleNamespace(path="root/AwardInfoUI(Clone)/items/close"),
         )
 
+    def commission_rows(self):
+        return ()
+
+    def commission_is_empty(self):
+        return False
+
+    def commission_detail_state(self):
+        return self.commission_detail_value
+
+    def click_commission_row(self, signature):
+        self.click_calls.append("commission/row/{0}".format(signature[0]))
+        return ActionReceipt(
+            semantic_id="commission/row/{0}".format(signature[0]),
+            generation=10,
+            point=Point(640, 190),
+            bounds=Bounds(100, 100, 1180, 250),
+            path="root/commission/row/{0}".format(signature[0]),
+        )
+
+    def click_commission_recommend(self, signature):
+        self.click_calls.append("commission/detail/recommend")
+        return ActionReceipt(
+            semantic_id="commission/detail/recommend",
+            generation=11,
+            point=Point(935, 363),
+            bounds=Bounds(855, 316, 1015, 410),
+            path="root/commission/detail/recommend",
+        )
+
+    def click_commission_start(self, signature):
+        self.click_calls.append("commission/detail/start")
+        return ActionReceipt(
+            semantic_id="commission/detail/start",
+            generation=12,
+            point=Point(1092, 363),
+            bounds=Bounds(1012, 316, 1172, 410),
+            path="root/commission/detail/start",
+        )
+
+    def commission_start_transition(self, signature):
+        self.last_commission_transition_signature = tuple(signature)
+        return self.commission_transition_value
+
 
 class FakePackageBridge:
     def __init__(self):
@@ -330,6 +385,17 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         with self.assertRaises(AlasSemanticUnmapped):
             adapter.click(NamedButton("BACK_ARROW"))
         self.assertEqual(oracle.click_calls, [])
+
+    def test_goto_main_from_mission_uses_exact_task_back(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.exists_values["task/page/back"] = True
+        oracle.enabled_values["task/page/back"] = True
+
+        self.assertTrue(adapter.appear(NamedButton("GOTO_MAIN")))
+        receipt = adapter.click(NamedButton("GOTO_MAIN"))
+
+        self.assertEqual(receipt.semantic_id, "task/page/back")
+        self.assertEqual(oracle.click_calls, ["task/page/back"])
 
     def test_research_menu_entries_use_exact_typed_buttons(self):
         adapter, _, _ = self.make_adapter()
@@ -512,10 +578,142 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         oracle.exists_values["reward/page/back"] = True
 
         self.assertFalse(adapter.appear(NamedButton("OIL_MAXED")))
+        self.assertFalse(adapter.appear(NamedButton("GUILD_POPUP_CONFIRM")))
+        self.assertFalse(adapter.appear(NamedButton("GUILD_POPUP_CANCEL")))
 
         oracle.exists_values.clear()
         with self.assertRaises(AlasSemanticUnmapped):
             adapter.appear(NamedButton("OIL_MAXED"))
+        with self.assertRaises(AlasSemanticUnmapped):
+            adapter.appear(NamedButton("GUILD_POPUP_CONFIRM"))
+
+    def test_commission_page_transition_has_bounded_passive_probe_grace(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_commission()
+        adapter.click(NamedButton("REWARD_GOTO_COMMISSION"))
+
+        self.assertFalse(adapter.appear(NamedButton("EXERCISE_CHECK")))
+
+        adapter._commission_context.passive_transition_until = time.monotonic() - 1
+        with self.assertRaises(AlasSemanticUnmapped):
+            adapter.appear(NamedButton("EXERCISE_CHECK"))
+
+    def test_commission_start_uses_exact_row_and_independent_one_input_budget(self):
+        oracle = FakeOracle()
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            commission_start_budget=1,
+        )
+        adapter.begin_commission()
+        signature = (
+            1,
+            "日常资源开发III",
+            15,
+            3600,
+            "pending",
+            "faxiankuangmai",
+        )
+        row = NamedButton("COMMISSION_ROW_1")
+        row.semantic_commission_signature = signature
+
+        adapter.click(row)
+        self.assertTrue(adapter.appear(NamedButton("COMMISSION_ADVICE")))
+        adapter.click(NamedButton("COMMISSION_ADVICE"))
+        oracle.commission_detail_value = SimpleNamespace(
+            signature=("日常资源开发III", 15, 3600),
+            selected_ship_count=6,
+            oil_cost=0,
+        )
+        self.assertTrue(adapter.appear(NamedButton("COMMISSION_START")))
+        first = adapter.click(NamedButton("COMMISSION_START"))
+        duplicate = adapter.click(NamedButton("COMMISSION_START"))
+
+        self.assertEqual(first, duplicate)
+        self.assertFalse(adapter.commission_start_allowed())
+        self.assertEqual(
+            oracle.click_calls,
+            [
+                "commission/row/1",
+                "commission/detail/recommend",
+                "commission/detail/start",
+            ],
+        )
+
+    def test_commission_start_rejects_nonzero_oil_even_with_budget(self):
+        oracle = FakeOracle()
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            commission_start_budget=1,
+        )
+        adapter.begin_commission()
+        signature = (
+            1,
+            "日常资源开发III",
+            15,
+            3600,
+            "pending",
+            "faxiankuangmai",
+        )
+        row = NamedButton("COMMISSION_ROW_1")
+        row.semantic_commission_signature = signature
+        adapter.click(row)
+        oracle.commission_detail_value = SimpleNamespace(
+            signature=("日常资源开发III", 15, 3600),
+            selected_ship_count=6,
+            oil_cost=10,
+        )
+
+        self.assertFalse(adapter.appear(NamedButton("COMMISSION_START")))
+        with self.assertRaises(SemanticGateClosed):
+            adapter.click(NamedButton("COMMISSION_START"))
+        self.assertEqual(oracle.click_calls, ["commission/row/1"])
+
+    def test_commission_start_proof_precedes_exact_detail_close(self):
+        oracle = FakeOracle()
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            commission_start_budget=1,
+        )
+        adapter.begin_commission()
+        signature = (
+            1,
+            "日常资源开发III",
+            15,
+            3600,
+            "pending",
+            "faxiankuangmai",
+        )
+        row = NamedButton("COMMISSION_ROW_1")
+        row.semantic_commission_signature = signature
+        adapter.click(row)
+        oracle.commission_detail_value = SimpleNamespace(
+            signature=("日常资源开发III", 15, 3600),
+            selected_ship_count=6,
+            oil_cost=0,
+        )
+        adapter.click(NamedButton("COMMISSION_START"))
+
+        proof = adapter.commission_start_proof()
+        receipt = adapter.close_started_commission_detail()
+
+        self.assertEqual(proof.after_status_sprite, "tag_ongoing")
+        self.assertEqual(
+            oracle.last_commission_transition_signature,
+            signature,
+        )
+        self.assertEqual(receipt.semantic_id, "commission/detail/back")
+        self.assertEqual(
+            oracle.wait_calls[-1],
+            ("reward/page/back", 12.0, receipt.generation),
+        )
+
+    def test_commission_start_defaults_closed(self):
+        adapter, _, _ = self.make_adapter()
+        adapter.begin_commission()
+        self.assertFalse(adapter.commission_start_allowed())
 
     def test_unmapped_resource_fails_before_identity_or_input(self):
         adapter, oracle, gate_calls = self.make_adapter()
@@ -648,6 +846,7 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         adapter, oracle, _ = self.make_adapter()
         oracle.mission_disposition = MissionDisposition.CLAIMABLE_ALL
         adapter.begin_mission_reward(daily=True, weekly=False)
+        self.assertFalse(adapter.mission_claim_allowed())
         self.assertFalse(adapter.appear(NamedButton("MISSION_MULTI")))
         self.assertTrue(adapter.appear(NamedButton("MISSION_MULTI")))
 
@@ -655,6 +854,14 @@ class AlasSemanticAdapterTests(unittest.TestCase):
             adapter.click(NamedButton("MISSION_MULTI"))
 
         self.assertNotIn("task/claim/all", oracle.click_calls)
+
+        opted_in = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            allow_mission_claim_once=True,
+        )
+        opted_in.begin_mission_reward(daily=True, weekly=False)
+        self.assertTrue(opted_in.mission_claim_allowed())
 
     def test_alas_owned_reward_popup_alias_uses_exact_semantic_close(self):
         adapter, oracle, _ = self.make_adapter()
@@ -750,6 +957,70 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         with self.assertRaises(AlasSemanticUnmapped):
             adapter.appear(NamedButton("UNRELATED_PAGE_CHECK"))
         self.assertGreaterEqual(len(gate_calls), 1)
+
+    def test_reward_surface_keeps_passive_alas_page_scan_fail_closed(self):
+        adapter, oracle, _ = self.make_adapter()
+
+        self.assertFalse(adapter.mission_reward_active())
+        adapter.begin_mission_reward(daily=True, weekly=False)
+        self.assertTrue(adapter.mission_reward_active())
+        oracle.exists_values["reward/page/back"] = True
+
+        self.assertFalse(adapter.appear(NamedButton("FLEET_CHECK")))
+
+        adapter.end_mission_reward()
+        self.assertFalse(adapter.mission_reward_active())
+        with self.assertRaises(AlasSemanticUnmapped):
+            adapter.appear(NamedButton("FLEET_CHECK"))
+
+    def test_render_transition_staleness_has_bounded_presence_grace(self):
+        adapter, oracle, _ = self.make_adapter()
+
+        def stale(_semantic_id):
+            raise SemanticGateClosed("observer snapshot is stale")
+
+        oracle.enabled = stale
+        self.assertFalse(adapter.appear(NamedButton("REWARD_CHECK")))
+        adapter._observer_stale_since = time.monotonic() - 6.0
+        with self.assertRaisesRegex(SemanticGateClosed, "snapshot is stale"):
+            adapter.appear(NamedButton("REWARD_CHECK"))
+
+    def test_reviewed_mission_transition_has_bounded_passive_scan_grace(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.exists_values["task/page/back"] = True
+        oracle.enabled_values["task/page/back"] = True
+        adapter.begin_mission_reward(daily=True, weekly=False)
+
+        adapter.click(NamedButton("GOTO_MAIN"))
+        oracle.exists_values.clear()
+        oracle.enabled_values.clear()
+
+        self.assertFalse(adapter.appear(NamedButton("EXERCISE_CHECK")))
+        adapter._mission_context.passive_transition_until = time.monotonic() - 1.0
+        with self.assertRaises(AlasSemanticUnmapped):
+            adapter.appear(NamedButton("EXERCISE_CHECK"))
+
+    def test_mission_entry_alias_cannot_double_click_during_transition(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.enabled_values["main/task"] = True
+        adapter.begin_mission_reward(daily=True, weekly=False)
+
+        adapter.click(NamedButton("MAIN_GOTO_MISSION"))
+        duplicate = adapter.click(NamedButton("MAIN_GOTO_MISSION_WHITE"))
+
+        self.assertFalse(adapter.appear(NamedButton("MAIN_GOTO_MISSION_WHITE")))
+        self.assertEqual(oracle.click_calls, ["main/task"])
+        self.assertEqual(duplicate.semantic_id, "main/task")
+
+    def test_reward_summary_entry_alias_is_idempotent(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_mission_reward(daily=True, weekly=False)
+
+        first = adapter.click(NamedButton("MAIN_GOTO_REWARD"))
+        duplicate = adapter.click(NamedButton("MAIN_GOTO_REWARD_WHITE"))
+
+        self.assertEqual(first, duplicate)
+        self.assertEqual(oracle.click_calls, ["main/more"])
 
     def test_mission_no_claim_round_trip_enters_and_exits(self):
         adapter, oracle, gate_calls = self.make_adapter()
@@ -924,6 +1195,23 @@ class AlasSemanticAdapterTests(unittest.TestCase):
             session = AlasSemanticSession.from_environment("emulator-test")
 
         self.assertTrue(session.allow_commission_rewards)
+
+    def test_environment_factory_parses_canonical_commission_start_budget(self):
+        environment = {
+            "ALAS_SEMANTIC_MODE": "1",
+            "ALAS_SEMANTIC_DRIVER_REVISION": (
+                "be80ce591a481c12d60c50d6040d40c035b40a2b"
+            ),
+            "ALAS_SEMANTIC_COMMISSION_START_BUDGET": "1",
+        }
+        with patch.dict("os.environ", environment, clear=True):
+            session = AlasSemanticSession.from_environment("emulator-test")
+        self.assertEqual(session.commission_start_budget, 1)
+
+        environment["ALAS_SEMANTIC_COMMISSION_START_BUDGET"] = "01"
+        with patch.dict("os.environ", environment, clear=True):
+            with self.assertRaises(SemanticGateClosed):
+                AlasSemanticSession.from_environment("emulator-test")
 
 
 class ScriptedAdbBridge(AdbObserverBridge):
