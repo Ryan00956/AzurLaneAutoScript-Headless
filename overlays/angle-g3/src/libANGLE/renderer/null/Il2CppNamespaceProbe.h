@@ -12,7 +12,7 @@
 namespace rx::alas {
 
 constexpr size_t kIl2CppAllowlistSize = 32;
-constexpr size_t kMaxObserverButtons = 64;
+constexpr size_t kMaxObserverButtons = 128;
 constexpr size_t kMaxObserverToggles = 64;
 constexpr size_t kMaxObserverTexts = 192;
 constexpr size_t kMaxObserverImages = 256;

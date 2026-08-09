@@ -165,7 +165,9 @@ class FakeBackend:
     def __init__(self, buttons):
         self.snapshot = make_snapshot()
         self.buttons = make_buttons(buttons)
+        self.buttons_sequence = []
         self.ui = make_ui([])
+        self.ui_sequence = []
         self.foreground = COMPONENT
         self.taps = []
         self.on_tap = None
@@ -174,8 +176,12 @@ class FakeBackend:
         if request_line == "GET /v1/snapshot\n":
             return copy.deepcopy(self.snapshot)
         if request_line == "GET /v1/buttons\n":
+            if self.buttons_sequence:
+                return copy.deepcopy(self.buttons_sequence.pop(0))
             return copy.deepcopy(self.buttons)
         if request_line == "GET /v1/ui\n":
+            if self.ui_sequence:
+                return copy.deepcopy(self.ui_sequence.pop(0))
             return copy.deepcopy(self.ui)
         raise AssertionError("unexpected request")
 
@@ -729,6 +735,53 @@ class SemanticOracleTests(unittest.TestCase):
         backend.ui["texts"][0]["text"] = "是否购买资源？"
         self.assertFalse(oracle.enabled("tactical/continue/cancel"))
 
+    def test_network_reconnect_confirm_requires_exact_networkdown_prompt(self):
+        popup = "root/Overlay/UIMain/Msgbox(Clone)/window/"
+        backend = FakeBackend(
+            [
+                make_button(
+                    "custom_button_2(Clone)",
+                    popup + "button_container/custom_button_2(Clone)",
+                ),
+                make_button(
+                    "custom_button_1(Clone)",
+                    popup + "button_container/custom_button_1(Clone)",
+                ),
+                make_button(
+                    "back_btn",
+                    "root/UICamera/Canvas/UIMain/EventUI(Clone)/blur_panel/"
+                    "adapt/top/back_btn",
+                    raycast_top=False,
+                ),
+            ]
+        )
+        backend.ui = make_ui(
+            [
+                make_text(
+                    "服务器连接失败，是否重新连接？\n[NetworkDown]",
+                    popup + "msg_panel/content",
+                ),
+                make_text(
+                    "取 消",
+                    popup + "button_container/custom_button_2(Clone)/pic",
+                ),
+                make_text(
+                    "确 定",
+                    popup + "button_container/custom_button_1(Clone)/pic",
+                ),
+            ]
+        )
+        oracle = make_oracle(backend)
+
+        self.assertTrue(oracle.enabled("overlay/network-reconnect/cancel"))
+        self.assertTrue(oracle.enabled("overlay/network-reconnect/confirm"))
+        receipt = oracle.click("overlay/network-reconnect/confirm")
+        self.assertEqual(receipt.semantic_id, "overlay/network-reconnect/confirm")
+        self.assertEqual(backend.taps, [(640, 360)])
+
+        backend.ui["texts"][0]["text"] = "是否购买资源？"
+        self.assertFalse(oracle.enabled("overlay/network-reconnect/confirm"))
+
     def test_reward_summary_counter_requires_exact_typed_page_identity(self):
         backend = FakeBackend(
             [
@@ -754,6 +807,34 @@ class SemanticOracleTests(unittest.TestCase):
         self.assertEqual(
             make_oracle(backend).reward_summary_count("commission", "finished"),
             3,
+        )
+
+    def test_reward_summary_retries_a_transitional_counter_frame(self):
+        backend = FakeBackend(
+            [
+                make_button(
+                    "CommissionInfoUI4Mellow(Clone)",
+                    "root/Overlay/UIMain/CommissionInfoUI4Mellow(Clone)",
+                )
+            ]
+        )
+        backend.ui_sequence = [
+            make_ui([], generation=10),
+            make_ui(
+                [
+                    make_text(
+                        "1",
+                        "root/CommissionInfoUI4Mellow(Clone)/frame/main/content/"
+                        "event/frame/counter/finished/Text",
+                    )
+                ],
+                generation=11,
+            ),
+        ]
+
+        self.assertEqual(
+            make_oracle(backend).reward_summary_count("commission", "finished"),
+            1,
         )
 
     def test_reward_summary_zero_requires_exact_section_frame(self):
@@ -850,6 +931,40 @@ class SemanticOracleTests(unittest.TestCase):
             rows[0].signature,
             (0, "高阶自主训练", 50, 10 * 60 * 60, "pending", "jianduixunlian"),
         )
+
+    def test_commission_rows_retry_a_transitional_missing_image(self):
+        page = "root/UICamera/Canvas/UIMain/EventUI(Clone)"
+        row = page + "/scrollRect$/content/0"
+        backend = FakeBackend(
+            [
+                make_button("back_btn", page + "/blur_panel/adapt/top/back_btn"),
+                make_button("bgNormal$", row + "/bgNormal$", 640, 190),
+            ]
+        )
+        texts = [
+            make_text("高阶自主训练", row + "/labelName$"),
+            make_text("50", row + "/level/labelLv$"),
+            make_text("10:00:00", row + "/labelTime$/Text"),
+        ]
+        incomplete = make_ui(
+            texts,
+            images=[make_image(row + "/iconState$/0", "kongxian_bg")],
+            generation=10,
+        )
+        complete = make_ui(
+            texts,
+            images=[
+                make_image(row + "/iconState$/0", "kongxian_bg"),
+                make_image(row + "/iconType$", "jianduixunlian"),
+            ],
+            generation=11,
+        )
+        backend.ui_sequence = [incomplete, complete]
+
+        rows = make_oracle(backend).commission_rows()
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].type_sprite, "jianduixunlian")
 
     def test_commission_row_click_revalidates_exact_typed_signature(self):
         page = "root/UICamera/Canvas/UIMain/EventUI(Clone)"
@@ -1096,6 +1211,27 @@ class SemanticOracleTests(unittest.TestCase):
 
         self.assertTrue(make_oracle(backend).commission_is_empty())
 
+    def test_commission_rows_accept_only_the_explicit_empty_marker(self):
+        page = "root/UICamera/Canvas/UIMain/EventUI(Clone)"
+        backend = FakeBackend(
+            [make_button("back_btn", page + "/blur_panel/adapt/top/back_btn")]
+        )
+        oracle = make_oracle(backend)
+
+        with self.assertRaises(SemanticGateClosed):
+            oracle.commission_rows()
+
+        backend.ui = make_ui(
+            [
+                make_text(
+                    "暂无可以进行的委托",
+                    page + "/empty/Text",
+                    {"left": 100, "top": 278, "right": 1200, "bottom": 441},
+                )
+            ]
+        )
+        self.assertEqual(oracle.commission_rows(), ())
+
     def test_commission_absence_is_not_empty(self):
         page = "root/UICamera/Canvas/UIMain/EventUI(Clone)"
         backend = FakeBackend(
@@ -1125,6 +1261,23 @@ class SemanticOracleTests(unittest.TestCase):
 
         self.assertEqual(receipt.path.split("/")[-1], "settings")
         self.assertEqual(backend.taps, [(1221, 36)])
+
+    def test_enabled_retries_a_truncated_button_transition_frame(self):
+        button = make_button(
+            "settings",
+            "UICamera/Canvas/UIOrigin/Main/frame/top/btns/settings",
+            1221,
+            36,
+        )
+        backend = FakeBackend([button])
+        incomplete = make_buttons([button], generation=10)
+        incomplete["truncated"] = True
+        backend.buttons_sequence = [
+            incomplete,
+            make_buttons([button], generation=11),
+        ]
+
+        self.assertTrue(make_oracle(backend).enabled("main/settings"))
 
     def test_unknown_mapping_fails_closed_without_input(self):
         backend = FakeBackend([])
@@ -1672,6 +1825,22 @@ class SemanticOracleTests(unittest.TestCase):
 
         self.assertEqual(receipt.semantic_id, "commission/nav/daily")
         self.assertEqual(backend.taps, [(50, 150)])
+
+    def test_image_state_retries_a_truncated_transition_frame(self):
+        backend = FakeBackend([])
+        image = make_image(
+            "root/EventUI(Clone)/blur_panel/adapt/left_length/frame/scroll_rect/"
+            "tagRoot/daily_btn/selected/Image",
+            "toggle_meiri_sel 1",
+        )
+        incomplete = make_ui([], images=[image], generation=10)
+        incomplete["image_truncated"] = True
+        backend.ui_sequence = [
+            incomplete,
+            make_ui([], images=[image], generation=11),
+        ]
+
+        self.assertTrue(make_oracle(backend).image_selected("commission/nav/daily"))
 
     def test_typed_text_record_truncation_is_scoped_to_the_record(self):
         backend = FakeBackend([])

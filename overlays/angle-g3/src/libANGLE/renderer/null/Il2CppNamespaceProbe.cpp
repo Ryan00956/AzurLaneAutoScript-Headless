@@ -411,10 +411,11 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
                "NewNavalTacticsUI(Clone)/adpter/frame/btnBack")) {
     return true;
   }
-  if (name == "custom_button_2(Clone)" &&
+  if ((name == "custom_button_1(Clone)" ||
+       name == "custom_button_2(Clone)") &&
       EndsWith(path,
                "Msgbox(Clone)/window/button_container/"
-               "custom_button_2(Clone)")) {
+               + std::string(name))) {
     return true;
   }
   if ((name == "back_button" &&

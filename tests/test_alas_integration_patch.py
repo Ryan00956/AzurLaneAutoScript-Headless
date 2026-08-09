@@ -66,6 +66,9 @@ class AlasIntegrationPatchTests(unittest.TestCase):
         self.assertIn("semantic_adapter.commission_start_allowed()", self.patch_text)
         self.assertIn("semantic_adapter.commission_start_proof()", self.patch_text)
         self.assertIn("semantic_adapter.close_started_commission_detail()", self.patch_text)
+        self.assertIn("semantic_adapter.commission_reward_pending()", self.patch_text)
+        self.assertIn("semantic_adapter.confirm_commission_reward()", self.patch_text)
+        self.assertIn("skip mode reset", self.patch_text)
         self.assertIn("+            self.commission_receive()", self.patch_text)
         self.assertIn("+            self.commission_start()", self.patch_text)
 

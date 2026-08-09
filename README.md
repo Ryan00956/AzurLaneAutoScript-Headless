@@ -32,7 +32,8 @@ bounded typed UI layer and mission-sidebar closure are documented in the
 [G6 semantic UI report](docs/g6-semantic-ui-report.md). The broader typed
 reward/task surfaces and read-only campaign slice are documented in the
 [G7 adaptation report](docs/g7-task-campaign-adaptation-report.md). The real
-ALAS reward double run and one-budget commission start are documented in the
+ALAS reward double run, bounded commission starts, and recovered one-budget
+commission reward are documented in the
 [G8 validation report](docs/g8-alas-reward-commission-validation-report.md).
 
 G1, G2, G3, and the formal G4 harmless closed loop passed. G4 includes
@@ -41,12 +42,13 @@ and RectTransform bounds. G5a passed the real ALAS mission-reward no-claim
 branch. G5b then passed one controlled `GetAllButton` claim: three claimable
 rows became zero, the exact `AwardInfoUI` close target was verified, five
 unfinished rows remained stable, and main returned. Automatic mission claiming
-requires a second explicit environment opt-in. Commission now has one live
-qualified mutation slice: an independent integer budget admitted exactly one
-zero-oil start and a zero-budget second pass recognized the running countdown
-without starting another. Tactical training, research, construction, dorm, and
-the visible campaign chapter remain bounded typed/read-only or safe-return
-slices.
+requires a second explicit environment opt-in. Commission now has bounded live
+mutation slices: independent integer budgets admitted two separate zero-oil
+starts and one finished reward. The reward's original command failed closed on
+observer capacity; an enlarged observer then proved counter zero and a complete
+zero-budget replay without duplicate input. Tactical training, research,
+construction, dorm, and the visible campaign chapter remain bounded
+typed/read-only or safe-return slices.
 Lua/game-state coverage, stage selection, sortie, battle state, weekly-only
 end-to-end coverage, and full unattended ALAS task coverage remain open.
 
@@ -149,15 +151,17 @@ The staged ALAS integration overlay targets upstream commit
 `81ccf63b4540f00241628c82a58c02c7a2bb11af`; see
 [integration instructions](integration/alas/README.md). The reviewed mission
 inputs now feed ALAS's original reward state machine rather than replacing it.
-Claiming remains disabled by default; one `GetAllButton` claim per ALAS
+Claiming remains disabled by default; one `GetAllButton` mission claim per ALAS
 invocation is available only through the separate controlled-claim opt-in. The
 observer now also exposes typed Toggle, Text, TextMesh Pro, and Image records
 through `GET /v1/ui`. Exact task-sidebar selected sprites and top-raycast input
 have a live adapter-level pass. Reward summary counts, commission rows,
 tactical slots, research cards, construction pool/cost, dorm summary, and
 visible campaign labels use typed state rather than OCR. A real patched ALAS
-checkout also passed reward twice with zero claims, a commission dry run, and a
-zero-budget idempotency pass. One budgeted zero-oil start has live typed
-post-state proof; its corrected post-start clean-exit path still needs a fresh
-positive-budget rerun. Complete unattended ALAS execution awaits task-by-task
-live qualification.
+checkout also passed reward twice with zero claims, a commission dry run, two
+separately budgeted zero-oil starts, and a zero-budget idempotency pass. One
+commission reward was admitted from an exact `1` counter; after a fail-closed
+64-record observer-capacity fault, the 128-record build proved exact counter
+`0` and completed a zero-budget recovery replay. This remains a recovery-
+qualified claim rather than a clean first-attempt in-context proof. Complete
+unattended ALAS execution awaits task-by-task live qualification.

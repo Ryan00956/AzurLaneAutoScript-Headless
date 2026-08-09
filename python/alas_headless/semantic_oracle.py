@@ -320,6 +320,15 @@ class CommissionStartProof:
     generation: int
 
 
+@dataclass(frozen=True)
+class CommissionRewardProof:
+    before_finished_count: int
+    after_finished_count: int
+    claim_generation: int
+    close_semantic_ids: Tuple[str, ...]
+    generation: int
+
+
 class BuildPool(str, Enum):
     LIGHT = "light"
     HEAVY = "heavy"
@@ -517,6 +526,16 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
         "tactical/continue/cancel",
         "custom_button_2(Clone)",
         "Msgbox(Clone)/window/button_container/custom_button_2(Clone)",
+    ),
+    SemanticTarget(
+        "overlay/network-reconnect/cancel",
+        "custom_button_2(Clone)",
+        "Msgbox(Clone)/window/button_container/custom_button_2(Clone)",
+    ),
+    SemanticTarget(
+        "overlay/network-reconnect/confirm",
+        "custom_button_1(Clone)",
+        "Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
     ),
     *tuple(
         SemanticTarget(
@@ -942,7 +961,11 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
     BlockerRule(
         "tactical-continue",
         "/Msgbox(Clone)/",
-        ("tactical/continue/cancel",),
+        (
+            "tactical/continue/cancel",
+            "overlay/network-reconnect/cancel",
+            "overlay/network-reconnect/confirm",
+        ),
     ),
     BlockerRule(
         "tactical-page",
@@ -1214,6 +1237,35 @@ class SemanticOracle:
         self._monotonic = monotonic
         self._sleep = sleep
         self._last_generation: Optional[int] = None
+
+    def _retry_transition_read(
+        self,
+        reader: Callable[[], Any],
+        *,
+        attempts: int = 4,
+        interval_seconds: float = 0.25,
+    ) -> Any:
+        """Retry a read-only typed view while a Unity transition settles.
+
+        A generation can briefly expose a newly active Button tree before all
+        Images on that page have settled. Retrying the complete typed read does
+        not relax a gate: the final attempt must still satisfy every original
+        exactness check. The helper never injects input, and callers that act
+        re-read the actionable Button immediately before the tap.
+        """
+
+        if attempts < 1:
+            raise ValueError("transition read attempts must be positive")
+        last_error: Optional[SemanticGateClosed] = None
+        for attempt in range(attempts):
+            try:
+                return reader()
+            except SemanticGateClosed as exc:
+                last_error = exc
+                if attempt + 1 < attempts:
+                    self._sleep(interval_seconds)
+        assert last_error is not None
+        raise last_error
 
     @staticmethod
     def _index_targets(
@@ -1869,6 +1921,13 @@ class SemanticOracle:
     def reward_summary_count(self, section: str, counter: str) -> int:
         """Read one exact non-negative counter from the reward side panel."""
 
+        return self._retry_transition_read(
+            lambda: self._reward_summary_count_once(section, counter)
+        )
+
+    def _reward_summary_count_once(self, section: str, counter: str) -> int:
+        """Read one exact reward-summary generation."""
+
         section_names = {
             "commission": "event",
             "tactical": "class",
@@ -1964,6 +2023,11 @@ class SemanticOracle:
         that the scrollable commission list has been exhausted.
         """
 
+        return self._retry_transition_read(self._commission_rows_once)
+
+    def _commission_rows_once(self) -> Tuple[CommissionRowState, ...]:
+        """Read one exact commission-list generation."""
+
         button_state = self.read_state()
         page_back = self._unique(button_state, "commission/page/back")
         if not page_back.actionable or self._blocking_rules(
@@ -1989,6 +2053,13 @@ class SemanticOracle:
                 )
             indexed_buttons[index] = button
             row_roots[index] = button.path[: -len("/bgNormal$")]
+
+        if not indexed_buttons:
+            if self.commission_is_empty():
+                return ()
+            raise SemanticGateClosed(
+                "commission page has neither indexed rows nor the exact empty marker"
+            )
 
         ui_state = self.read_ui_state()
         if ui_state.image_truncated or ui_state.method_mask & 0x8 == 0:
@@ -3151,6 +3222,11 @@ class SemanticOracle:
         )
 
     def image_state(self, semantic_id: str) -> ImageState:
+        return self._retry_transition_read(
+            lambda: self._image_state_once(semantic_id)
+        )
+
+    def _image_state_once(self, semantic_id: str) -> ImageState:
         state = self.read_ui_state()
         if state.image_truncated or state.method_mask & 0x8 == 0:
             raise SemanticGateClosed("typed Unity Image snapshot is incomplete")
@@ -3254,6 +3330,14 @@ class SemanticOracle:
     def _blocking_rules(
         self, state: OracleState, semantic_id: str
     ) -> Tuple[BlockerRule, ...]:
+        if semantic_id in (
+            "overlay/network-reconnect/cancel",
+            "overlay/network-reconnect/confirm",
+        ):
+            # A proven topmost NetworkDown Msgbox intentionally crosses page
+            # ownership. Its exact text/labels and top raycast are still
+            # required before either button can be considered actionable.
+            return ()
         return tuple(
             rule
             for rule in self._blockers
@@ -3261,15 +3345,15 @@ class SemanticOracle:
             and any(rule.path_fragment in button.path for button in state.buttons)
         )
 
-    def _tactical_continue_prompt_text(
+    def _msgbox_prompt_parts(
         self, state: OracleState
-    ) -> Optional[str]:
+    ) -> Optional[Tuple[str, str, str]]:
         ui_state = self.read_ui_state()
         if (
             ui_state.generation < state.generation
             or ui_state.generation > state.generation + 2
         ):
-            raise SemanticGateClosed("tactical prompt snapshots are not coherent")
+            raise SemanticGateClosed("Msgbox snapshots are not coherent")
 
         def exact_text(suffix: str) -> Optional[str]:
             matches = tuple(
@@ -3282,7 +3366,7 @@ class SemanticOracle:
                 and text.bounds is not None
             )
             if len(matches) > 1:
-                raise SemanticGateClosed("tactical prompt text is ambiguous")
+                raise SemanticGateClosed("Msgbox text is ambiguous")
             return matches[0].text if matches else None
 
         content = exact_text("Msgbox(Clone)/window/msg_panel/content")
@@ -3294,18 +3378,44 @@ class SemanticOracle:
         )
         if content is None or cancel is None or confirm is None:
             return None
-        plain = re.sub(r"<[^>]*>", "", content).strip()
+        return (
+            re.sub(r"<[^>]*>", "", content).strip(),
+            "".join(cancel.split()),
+            "".join(confirm.split()),
+        )
+
+    def _tactical_continue_prompt_text(
+        self, state: OracleState
+    ) -> Optional[str]:
+        parts = self._msgbox_prompt_parts(state)
+        if parts is None:
+            return None
+        plain, cancel, confirm = parts
         if (
             re.fullmatch(
                 r"「[^」]+」学习完成，「[^」]+」技能获得[1-9][0-9]*点经验"
                 r"是否继续学习该技能？",
                 plain,
             )
-            and "".join(cancel.split()) == "取消"
-            and "".join(confirm.split()) == "确定"
+            and cancel == "取消"
+            and confirm == "确定"
         ):
             return plain
         return None
+
+    def _network_reconnect_prompt_matches(self, state: OracleState) -> bool:
+        parts = self._msgbox_prompt_parts(state)
+        if parts is None:
+            return False
+        plain, cancel, confirm = parts
+        return bool(
+            re.fullmatch(
+                r"服务器连接失败，是否重新连接？\s*\[NetworkDown\]",
+                plain,
+            )
+            and cancel == "取消"
+            and confirm == "确定"
+        )
 
     def _tactical_continue_prompt_matches(self, state: OracleState) -> bool:
         return self._tactical_continue_prompt_text(state) is not None
@@ -3324,13 +3434,24 @@ class SemanticOracle:
         return self._tactical_continue_prompt_text(state)
 
     def exists(self, semantic_id: str) -> bool:
+        return self._retry_transition_read(lambda: self._exists_once(semantic_id))
+
+    def _exists_once(self, semantic_id: str) -> bool:
         state = self.read_state()
         matches = self._matches(state, semantic_id)
         if semantic_id == "tactical/continue/cancel":
             return bool(matches and self._tactical_continue_prompt_matches(state))
+        if semantic_id in (
+            "overlay/network-reconnect/cancel",
+            "overlay/network-reconnect/confirm",
+        ):
+            return bool(matches and self._network_reconnect_prompt_matches(state))
         return bool(matches)
 
     def enabled(self, semantic_id: str) -> bool:
+        return self._retry_transition_read(lambda: self._enabled_once(semantic_id))
+
+    def _enabled_once(self, semantic_id: str) -> bool:
         state = self.read_state()
         matches = self._matches(state, semantic_id)
         if len(matches) > 1:
@@ -3338,6 +3459,14 @@ class SemanticOracle:
         if (
             semantic_id == "tactical/continue/cancel"
             and not self._tactical_continue_prompt_matches(state)
+        ):
+            return False
+        if (
+            semantic_id in (
+                "overlay/network-reconnect/cancel",
+                "overlay/network-reconnect/confirm",
+            )
+            and not self._network_reconnect_prompt_matches(state)
         ):
             return False
         return bool(
@@ -3498,6 +3627,14 @@ class SemanticOracle:
             and not self._tactical_continue_prompt_matches(state)
         ):
             raise SemanticGateClosed("tactical continue prompt identity is not proven")
+        if (
+            semantic_id in (
+                "overlay/network-reconnect/cancel",
+                "overlay/network-reconnect/confirm",
+            )
+            and not self._network_reconnect_prompt_matches(state)
+        ):
+            raise SemanticGateClosed("network reconnect prompt identity is not proven")
         if not target.actionable or target.point is None or target.bounds is None:
             raise SemanticGateClosed("semantic target is not actionable")
         if not (

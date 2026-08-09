@@ -4,7 +4,7 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-09
 
-### G8 real ALAS reward and commission slice: scoped partial pass
+### G8 real ALAS reward and commission slice: bounded recovery pass
 
 - A clean checkout of pinned upstream ALAS commit
   `81ccf63b4540f00241628c82a58c02c7a2bb11af` completed the real `Reward`
@@ -13,22 +13,36 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 - The real `Commission` command completed once with start budget zero. ALAS
   scanned typed rows, applied its existing `cube` preset, selected three daily
   candidates, and stopped before row input.
-- With `ALAS_SEMANTIC_COMMISSION_START_BUDGET=1`, ALAS selected
-  `高阶战术研发II`, revalidated level 50, 7200 seconds, six assigned ships, and
-  oil cost zero, then injected exactly one start input.
-- Typed post-state proved the same commission at `7124` seconds with the exact
-  `tag_ongoing` marker and `取消` action label. A second run with budget zero
-  parsed it as running at `01:53:44`, scheduled `2026-08-09 16:52:07`, and
-  started nothing else.
-- The positive-budget command discovered that the pinned game remains on a
-  running detail view after start and did not return cleanly. The adapter now
-  recognizes that exact post-state and returns through reviewed navigation;
-  unit, syntax, and pinned-patch checks pass, but a fresh positive-budget clean
-  exit was not forced by starting a second commission.
-- Commission reward receipt was disabled throughout. Larger budgets,
-  nonzero-oil rows, scrolling, cancellation, and unattended repeated starts
-  remain unqualified. See the
+- Two separately bounded start invocations selected `高阶战术研发II` and
+  `高阶战术研发I`. Each revalidated the exact typed row/detail identity, assigned
+  ships, zero oil cost, and one remaining budget unit before one input. Their
+  post-states were proved with the matching identity, decreasing countdown,
+  exact `tag_ongoing` marker, and `取消` action label. No third start was made.
+- The second positive run returned from the proven detail to the list, then a
+  redundant ALAS tab reset encountered a transient truncated Image snapshot.
+  Complete transition reads now receive a bounded retry, and the pinned patch
+  skips that reset once the independent start budget is exhausted.
+- When `高阶战术研发I` finished, a separate integer reward budget of one admitted
+  the exact commission finish input only after the typed finished counter was
+  read as `1` twice, including immediately before the click. ALAS then closed
+  the reviewed ship-EXP and award popups.
+- That original reward command did not finish its proof: the combined reward
+  and award view filled the observer's 64-Button buffer and correctly failed
+  closed as truncated. The native capacity was raised to 128 and rebuilt. After
+  a `-force-gfx-st` restart, the snapshot was complete at 58/128, the exact
+  finished counter was `0`, and a full reward/start-budget-zero `Commission`
+  replay returned successfully without a second claim or a third start.
+- The remaining running commission was parsed as `1/4` and scheduled for
+  `2026-08-09 16:52:07`. This is a recovery-qualified live claim, not a claim
+  whose original command produced an in-context `CommissionRewardProof`.
+- Exact `[NetworkDown]` confirm/cancel semantics are build- and unit-validated,
+  but no live reconnect input was injected. Larger budgets, nonzero-oil rows,
+  cancellation, and unattended repeated starts remain unqualified. See the
   [G8 validation report](g8-alas-reward-commission-validation-report.md).
+- Final observer APK SHA-256:
+  `111ac661e3ba7d9ff0eebeeb4c803f22226092318b0b43161cfe8506a76c8d1d`.
+  The controller suite passes `139/139`; Python compilation, native build,
+  diff whitespace, and clean pinned-patch application checks pass.
 
 ### G7 typed task surfaces and read-only campaign: passed in reviewed scope
 

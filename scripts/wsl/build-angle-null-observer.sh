@@ -105,6 +105,11 @@ if ! grep -Fq 'custom_button_2(Clone)' \
   echo "Tactical continue-cancel allowlist is missing" >&2
   exit 1
 fi
+if ! grep -Fq 'custom_button_1(Clone)' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Network reconnect-confirm allowlist is missing" >&2
+  exit 1
+fi
 if ! grep -Fq 'LevelMainScene(Clone)/top/top_chapter/back_button' \
     "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
   echo "Campaign-menu back-button allowlist is missing" >&2
@@ -133,6 +138,11 @@ fi
 if ! grep -Fq 'kIl2CppAllowlistSize = 32' \
     "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.h"; then
   echo "32-symbol raycast observer allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'kMaxObserverButtons = 128' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.h"; then
+  echo "128-record Button capacity is missing" >&2
   exit 1
 fi
 if ! grep -Fq 'TaskScene(Clone)/blur_panel/adapt/top/GetAllButton' \

@@ -328,7 +328,7 @@ index 6d9e42f..25a9dcc 100644
 +            if semantic_adapter is not None:
 +                semantic_adapter.end_mail()
 diff --git a/module/commission/commission.py b/module/commission/commission.py
-index 195d84a..7fb64e1 100644
+index 195d84a..c273042 100644
 --- a/module/commission/commission.py
 +++ b/module/commission/commission.py
 @@ -89,6 +89,13 @@ class RewardCommission(UI, InfoHandler):
@@ -407,7 +407,7 @@ index 195d84a..7fb64e1 100644
                  self.device.click(COMMISSION_ADVICE)
                  count += 1
                  self.interval_reset(COMMISSION_ADVICE)
-@@ -476,6 +499,13 @@ class RewardCommission(UI, InfoHandler):
+@@ -476,19 +499,51 @@ class RewardCommission(UI, InfoHandler):
          logger.hr('Commission run', level=1)
          if self.daily_choose:
              for comm in self.daily_choose:
@@ -421,7 +421,17 @@ index 195d84a..7fb64e1 100644
                  self._commission_ensure_mode('daily')
                  self._commission_swipe_to_top()
                  self.handle_info_bar()
-@@ -484,6 +514,13 @@ class RewardCommission(UI, InfoHandler):
+                 if self._commission_find_and_start(comm, is_urgent=False):
+                     comm.convert_to_running()
++                    if (
++                        semantic_adapter is not None
++                        and not semantic_adapter.commission_start_allowed()
++                    ):
++                        logger.info(
++                            'Semantic commission start budget exhausted after '
++                            'proven start; skip mode reset'
++                        )
++                        break
                  self._commission_mode_reset()
          if self.urgent_choose:
              for comm in self.urgent_choose:
@@ -435,7 +445,21 @@ index 195d84a..7fb64e1 100644
                  self._commission_ensure_mode('urgent')
                  self._commission_swipe_to_top()
                  self.handle_info_bar()
-@@ -606,34 +643,41 @@ class RewardCommission(UI, InfoHandler):
+                 if self._commission_find_and_start(comm, is_urgent=True):
+                     comm.convert_to_running()
++                    if (
++                        semantic_adapter is not None
++                        and not semantic_adapter.commission_start_allowed()
++                    ):
++                        logger.info(
++                            'Semantic commission start budget exhausted after '
++                            'proven start; skip mode reset'
++                        )
++                        break
+                 self._commission_mode_reset()
+         if not self.daily_choose and not self.urgent_choose:
+             logger.info('No commission chose')
+@@ -606,34 +661,63 @@ class RewardCommission(UI, InfoHandler):
              in: Any
              out: page_commission
          """
@@ -475,7 +499,29 @@ index 195d84a..7fb64e1 100644
 +            semantic_adapter.begin_commission()
 +        try:
 +            self.ui_ensure(page_reward)
++            if (
++                semantic_adapter is not None
++                and semantic_adapter.commission_reward_pending()
++                and not semantic_adapter.commission_reward_allowed()
++            ):
++                logger.info(
++                    'Semantic commission reward pending; reward budget is closed '
++                    'or the finished count is not exactly one'
++                )
++                return
 +            self.commission_receive()
++            if (
++                semantic_adapter is not None
++                and semantic_adapter.commission_reward_claimed()
++            ):
++                proof = semantic_adapter.confirm_commission_reward()
++                logger.attr(
++                    'SemanticCommissionReward',
++                    f'{proof.before_finished_count} -> '
++                    f'{proof.after_finished_count}, '
++                    f'close={list(proof.close_semantic_ids)}',
++                )
++                self.ui_ensure(page_commission)
 +
 +            # info_bar appears when get ship in Launch Ceremony commissions
 +            # This is a game bug, the info_bar shows get ship, will appear over and over again, until you click get_ship.

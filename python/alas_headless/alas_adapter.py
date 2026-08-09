@@ -22,6 +22,7 @@ from .semantic_oracle import (
     BuildPool,
     CampaignPageState,
     CommissionDetailState,
+    CommissionRewardProof,
     CommissionRowState,
     CommissionStartProof,
     DormState,
@@ -99,6 +100,9 @@ DEFAULT_ALAS_BUTTON_TARGETS: Mapping[str, str] = {
     "REWARD_GOTO_TACTICAL_WHITE": "reward/tactical/go",
     "LOGIN_ANNOUNCE": "overlay/bulletin/close",
     "LOGIN_ANNOUNCE_2": "overlay/bulletin/close",
+    "POPUP_CANCEL": "overlay/network-reconnect/cancel",
+    "POPUP_CONFIRM": "overlay/network-reconnect/confirm",
+    "POPUP_CONFIRM_UI_ADDITIONAL": "overlay/network-reconnect/confirm",
 }
 
 
@@ -304,7 +308,13 @@ class _MailFlowContext:
 
 @dataclass
 class _CommissionFlowContext:
+    flow_kind: str = "commission"
     rewards_allowed: bool = False
+    reward_budget: int = 0
+    reward_detected_count: Optional[int] = None
+    reward_claim_receipt: Optional[ActionReceipt] = None
+    reward_close_receipts: List[ActionReceipt] = field(default_factory=list)
+    reward_proof: Optional[CommissionRewardProof] = None
     start_budget: int = 0
     selected_signature: Optional[Tuple[Union[int, str], ...]] = None
     selected_at: float = 0.0
@@ -342,7 +352,8 @@ class AlasSemanticAdapter:
         mappings: Mapping[str, str] = DEFAULT_ALAS_BUTTON_TARGETS,
         allow_mission_claim_once: bool = False,
         allow_mail_mutations: bool = False,
-        allow_commission_rewards: bool = False,
+        allow_tactical_rewards: bool = False,
+        commission_reward_budget: int = 0,
         commission_start_budget: int = 0,
     ) -> None:
         if package_gate is None:
@@ -357,13 +368,20 @@ class AlasSemanticAdapter:
             raise ValueError("ALAS semantic mappings must be non-empty")
         self._allow_mission_claim_once = bool(allow_mission_claim_once)
         self._allow_mail_mutations = bool(allow_mail_mutations)
-        self._allow_commission_rewards = bool(allow_commission_rewards)
-        if (
-            isinstance(commission_start_budget, bool)
-            or not isinstance(commission_start_budget, int)
-            or commission_start_budget < 0
+        self._allow_tactical_rewards = bool(allow_tactical_rewards)
+        for label, budget in (
+            ("commission reward", commission_reward_budget),
+            ("commission start", commission_start_budget),
         ):
-            raise ValueError("commission start budget must be a non-negative integer")
+            if (
+                isinstance(budget, bool)
+                or not isinstance(budget, int)
+                or budget < 0
+            ):
+                raise ValueError(
+                    "{0} budget must be a non-negative integer".format(label)
+                )
+        self._commission_reward_budget = commission_reward_budget
         self._commission_start_budget = commission_start_budget
         self._mission_context: Optional[_MissionFlowContext] = None
         self._mail_context: Optional[_MailFlowContext] = None
@@ -461,8 +479,24 @@ class AlasSemanticAdapter:
         ):
             raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
         self._commission_context = _CommissionFlowContext(
-            rewards_allowed=self._allow_commission_rewards,
+            flow_kind="commission",
+            reward_budget=self._commission_reward_budget,
             start_budget=self._commission_start_budget,
+        )
+
+    def begin_tactical(self) -> None:
+        """Open the shared reward/tactical context without commission budgets."""
+
+        self._package_gate()
+        if (
+            self._commission_context is not None
+            or self._mail_context is not None
+            or self._mission_context is not None
+        ):
+            raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
+        self._commission_context = _CommissionFlowContext(
+            flow_kind="tactical",
+            rewards_allowed=self._allow_tactical_rewards,
         )
 
     def end_commission(self) -> None:
@@ -507,7 +541,11 @@ class AlasSemanticAdapter:
         commission_context = self._commission_context
         if commission_context is not None and receipt.semantic_id in (
             "reward/page/back",
+            "reward/commission/finish",
             "reward/commission/go",
+            "reward/ship-exp/close",
+            "reward/award-info/close",
+            "reward/award-info1/close",
             "commission/page/back",
             "commission/detail/back",
         ):
@@ -965,6 +1003,90 @@ class AlasSemanticAdapter:
         self._require_commission_context()
         return self.oracle.commission_is_empty()
 
+    def commission_reward_pending(self) -> bool:
+        """Detect a finished commission only from the typed reward summary."""
+
+        context = self._require_commission_context()
+        if context.flow_kind != "commission":
+            raise SemanticGateClosed(
+                "commission reward state used outside commission flow"
+            )
+        self._package_gate()
+        if not self.oracle.exists("reward/commission/finish"):
+            context.reward_detected_count = None
+            return False
+        if not self.oracle.enabled("reward/commission/finish"):
+            raise SemanticGateClosed("commission reward finish input is blocked")
+        count = self.oracle.reward_summary_count("commission", "finished")
+        if count <= 0:
+            raise SemanticGateClosed(
+                "commission reward button contradicts the finished counter"
+            )
+        context.reward_detected_count = count
+        return True
+
+    def commission_reward_allowed(self) -> bool:
+        context = self._require_commission_context()
+        return (
+            context.flow_kind == "commission"
+            and context.reward_budget > 0
+            and context.reward_detected_count == 1
+            and context.reward_claim_receipt is None
+        )
+
+    def commission_reward_claimed(self) -> bool:
+        context = self._require_commission_context()
+        return context.reward_claim_receipt is not None
+
+    def confirm_commission_reward(self) -> CommissionRewardProof:
+        """Prove one finish input drained the exact finished counter to zero."""
+
+        context = self._require_commission_context()
+        if context.flow_kind != "commission":
+            raise SemanticGateClosed(
+                "commission reward proof used outside commission flow"
+            )
+        if context.reward_proof is not None:
+            return context.reward_proof
+        if context.reward_claim_receipt is None:
+            raise SemanticGateClosed("commission reward input was not recorded")
+        if context.reward_detected_count != 1:
+            raise SemanticGateClosed(
+                "controlled commission reward requires exactly one finished row"
+            )
+        if not context.reward_close_receipts:
+            raise SemanticGateClosed(
+                "commission reward popup chain has no reviewed close input"
+            )
+        self._package_gate()
+        if not self.oracle.enabled("commission/page/back"):
+            raise SemanticGateClosed(
+                "commission page is absent after reward popup closure"
+            )
+        back = self.oracle.click("commission/page/back")
+        context.passive_transition_until = time.monotonic() + 12.0
+        self.oracle.wait_for(
+            "reward/page/back",
+            timeout_seconds=12.0,
+            minimum_generation=back.generation,
+        )
+        after = self.oracle.reward_summary_count("commission", "finished")
+        if after != 0:
+            raise SemanticGateClosed(
+                "commission reward finished counter did not reach zero"
+            )
+        generation = self.oracle.read_state().generation
+        context.reward_proof = CommissionRewardProof(
+            before_finished_count=context.reward_detected_count,
+            after_finished_count=after,
+            claim_generation=context.reward_claim_receipt.generation,
+            close_semantic_ids=tuple(
+                receipt.semantic_id for receipt in context.reward_close_receipts
+            ),
+            generation=generation,
+        )
+        return context.reward_proof
+
     def commission_start_allowed(self) -> bool:
         return self._require_commission_context().start_budget > 0
 
@@ -1021,7 +1143,10 @@ class AlasSemanticAdapter:
         self._package_gate()
         if self._commission_context is None:
             raise SemanticGateClosed("tactical popup used outside ALAS tactical flow")
-        if not self._commission_context.rewards_allowed:
+        if (
+            self._commission_context.flow_kind != "tactical"
+            or not self._commission_context.rewards_allowed
+        ):
             raise SemanticGateClosed(
                 "tactical reward requires the separate explicit opt-in"
             )
@@ -1074,17 +1199,34 @@ class AlasSemanticAdapter:
                     and self._mission_context.entry_receipt is not None
                 ):
                     return self._mission_context.entry_receipt
-            if (
-                self._commission_context is not None
-                and semantic_id in (
-                    "reward/commission/finish",
-                    "reward/tactical/finish",
-                )
-                and not self._commission_context.rewards_allowed
+            if self._commission_context is not None and semantic_id in (
+                "reward/commission/finish",
+                "reward/tactical/finish",
             ):
-                raise SemanticGateClosed(
-                    "commission or tactical reward requires the separate explicit opt-in"
-                )
+                context = self._commission_context
+                if semantic_id == "reward/commission/finish":
+                    if context.flow_kind != "commission":
+                        raise SemanticGateClosed(
+                            "commission reward input used outside commission flow"
+                        )
+                    if context.reward_claim_receipt is not None:
+                        return context.reward_claim_receipt
+                    # Re-read the finished counter immediately before input so
+                    # a second commission completing after the preflight cannot
+                    # turn a one-item budget into a multi-claim action.
+                    self.commission_reward_pending()
+                    if not self.commission_reward_allowed():
+                        raise SemanticGateClosed(
+                            "commission reward requires one finished row and a positive budget"
+                        )
+                    receipt = self.oracle.click(semantic_id)
+                    context.reward_budget -= 1
+                    context.reward_claim_receipt = receipt
+                    return self._record_mission_transition(receipt)
+                if context.flow_kind != "tactical" or not context.rewards_allowed:
+                    raise SemanticGateClosed(
+                        "tactical reward requires the separate explicit opt-in"
+                    )
             receipt = self.oracle.click(semantic_id)
             if semantic_id == "main/task" and self._mission_context is not None:
                 self._mission_context.entry_clicked = True
@@ -1153,20 +1295,45 @@ class AlasSemanticAdapter:
                     )
                 return self.oracle.click(targets[0])
             if name in ("EXP_INFO_S_REWARD", "REWARD_SAVE_CLICK"):
-                if not self._commission_context.rewards_allowed:
+                context = self._commission_context
+                if context.flow_kind == "commission":
+                    if context.reward_claim_receipt is None:
+                        raise SemanticGateClosed(
+                            "commission reward popup requires a budgeted finish input"
+                        )
+                    for recorded in context.reward_close_receipts:
+                        if recorded.semantic_id == "reward/ship-exp/close":
+                            return recorded
+                elif not context.rewards_allowed:
                     raise SemanticGateClosed(
-                        "commission reward requires the separate explicit opt-in"
+                        "tactical reward requires the separate explicit opt-in"
                     )
-                return self.oracle.click("reward/ship-exp/close")
+                receipt = self.oracle.click("reward/ship-exp/close")
+                if context.flow_kind == "commission":
+                    context.reward_close_receipts.append(receipt)
+                return self._record_mission_transition(receipt)
             if name in ("GET_ITEMS_1", "GET_ITEMS_2", "GET_ITEMS_3"):
-                if not self._commission_context.rewards_allowed:
+                context = self._commission_context
+                if context.flow_kind == "commission":
+                    if context.reward_claim_receipt is None:
+                        raise SemanticGateClosed(
+                            "commission reward popup requires a budgeted finish input"
+                        )
+                elif not context.rewards_allowed:
                     raise SemanticGateClosed(
-                        "commission reward requires the separate explicit opt-in"
+                        "tactical reward requires the separate explicit opt-in"
                     )
                 target = self._award_close_target()
                 if target is None:
                     raise SemanticGateClosed("reviewed commission reward popup is absent")
-                return self.oracle.click(target)
+                if context.flow_kind == "commission":
+                    for recorded in context.reward_close_receipts:
+                        if recorded.semantic_id == target:
+                            return recorded
+                receipt = self.oracle.click(target)
+                if context.flow_kind == "commission":
+                    context.reward_close_receipts.append(receipt)
+                return self._record_mission_transition(receipt)
 
         if self._commission_context is not None and commission_row_match is not None:
             signature = getattr(button, "semantic_commission_signature", None)
@@ -1472,7 +1639,8 @@ class AlasSemanticSession:
         ),
         allow_mission_claim_once: bool = False,
         allow_mail_mutations: bool = False,
-        allow_commission_rewards: bool = False,
+        allow_tactical_rewards: bool = False,
+        commission_reward_budget: int = 0,
         commission_start_budget: int = 0,
     ) -> None:
         if not serial:
@@ -1485,13 +1653,20 @@ class AlasSemanticSession:
         self.component = component
         self.allow_mission_claim_once = bool(allow_mission_claim_once)
         self.allow_mail_mutations = bool(allow_mail_mutations)
-        self.allow_commission_rewards = bool(allow_commission_rewards)
-        if (
-            isinstance(commission_start_budget, bool)
-            or not isinstance(commission_start_budget, int)
-            or commission_start_budget < 0
+        self.allow_tactical_rewards = bool(allow_tactical_rewards)
+        for label, budget in (
+            ("commission reward", commission_reward_budget),
+            ("commission start", commission_start_budget),
         ):
-            raise ValueError("commission start budget must be a non-negative integer")
+            if (
+                isinstance(budget, bool)
+                or not isinstance(budget, int)
+                or budget < 0
+            ):
+                raise ValueError(
+                    "{0} budget must be a non-negative integer".format(label)
+                )
+        self.commission_reward_budget = commission_reward_budget
         self.commission_start_budget = commission_start_budget
         self.bridge = AdbObserverBridge(serial, package, adb=adb)
         self.adapter: Optional[AlasSemanticAdapter] = None
@@ -1505,9 +1680,22 @@ class AlasSemanticSession:
         raw_start_budget = os.environ.get(
             "ALAS_SEMANTIC_COMMISSION_START_BUDGET", "0"
         )
-        if re.fullmatch(r"0|[1-9][0-9]*", raw_start_budget) is None:
+        raw_reward_budget = os.environ.get(
+            "ALAS_SEMANTIC_COMMISSION_REWARD_BUDGET", "0"
+        )
+        for label, value in (
+            ("commission reward", raw_reward_budget),
+            ("commission start", raw_start_budget),
+        ):
+            if re.fullmatch(r"0|[1-9][0-9]*", value) is None:
+                raise SemanticGateClosed(
+                    "{0} budget must be a canonical non-negative integer".format(
+                        label
+                    )
+                )
+        if "ALAS_SEMANTIC_ALLOW_COMMISSION_REWARDS" in os.environ:
             raise SemanticGateClosed(
-                "commission start budget must be a canonical non-negative integer"
+                "boolean commission reward opt-in was removed; use the integer budget"
             )
         return cls(
             serial=serial,
@@ -1519,9 +1707,10 @@ class AlasSemanticSession:
             allow_mail_mutations=(
                 os.environ.get("ALAS_SEMANTIC_ALLOW_MAIL_MUTATIONS") == "1"
             ),
-            allow_commission_rewards=(
-                os.environ.get("ALAS_SEMANTIC_ALLOW_COMMISSION_REWARDS") == "1"
+            allow_tactical_rewards=(
+                os.environ.get("ALAS_SEMANTIC_ALLOW_TACTICAL_REWARDS") == "1"
             ),
+            commission_reward_budget=int(raw_reward_budget),
             commission_start_budget=int(raw_start_budget),
         )
 
@@ -1548,7 +1737,8 @@ class AlasSemanticSession:
                 package_gate,
                 allow_mission_claim_once=self.allow_mission_claim_once,
                 allow_mail_mutations=self.allow_mail_mutations,
-                allow_commission_rewards=self.allow_commission_rewards,
+                allow_tactical_rewards=self.allow_tactical_rewards,
+                commission_reward_budget=self.commission_reward_budget,
                 commission_start_budget=self.commission_start_budget,
             )
             return self.adapter
@@ -1641,6 +1831,18 @@ class AlasSemanticSession:
     def commission_is_empty(self) -> bool:
         return self.open().commission_is_empty()
 
+    def commission_reward_pending(self) -> bool:
+        return self.open().commission_reward_pending()
+
+    def commission_reward_allowed(self) -> bool:
+        return self.open().commission_reward_allowed()
+
+    def commission_reward_claimed(self) -> bool:
+        return self.open().commission_reward_claimed()
+
+    def confirm_commission_reward(self) -> CommissionRewardProof:
+        return self.open().confirm_commission_reward()
+
     def commission_start_allowed(self) -> bool:
         return self.open().commission_start_allowed()
 
@@ -1708,7 +1910,7 @@ class AlasSemanticSession:
             self.adapter.end_commission()
 
     def begin_tactical(self) -> None:
-        self.open().begin_commission()
+        self.open().begin_tactical()
 
     def end_tactical(self) -> None:
         if self.adapter is not None:

@@ -30,6 +30,12 @@ Mapped presence/clicks also require the observer's top EventSystem raycast
 result to belong to the mapped Button. Active/interactable state and bounds
 alone are insufficient.
 
+The generic ALAS `POPUP_CONFIRM` path is not broadly enabled. It resolves only
+when the typed Msgbox content exactly matches the pinned Chinese
+`服务器连接失败，是否重新连接？ [NetworkDown]` prompt, both button labels are
+the reviewed cancel/confirm pair, and the chosen confirm Button is the top
+EventSystem raycast target. Other confirmation dialogs remain closed.
+
 The mission input provider is narrower than normal ALAS reward handling. It
 translates ALAS's `MISSION_MULTI`, `MISSION_SINGLE`, `MISSION_UNFINISH`, page,
 reward-popup, and default-navbar observations from typed Unity snapshots. It
@@ -78,10 +84,28 @@ Each commission invocation receives the configured budget and decrements it
 only for an exact start input. The selected row/detail signature, assigned ship
 count, zero oil cost, and typed transition to `tag_ongoing` are required. The
 live qualified value is `1`; larger budgets are parsing-compatible but are not
-live-qualified. Commission reward receipt uses a different opt-in and was not
-enabled in the controlled start validation. Course assignment, research start,
-dorm mutation, construction submission, stage selection, map movement, and
-battle input remain unauthorized.
+live-qualified. Once that single start is proven and its budget is exhausted,
+the patch returns through the reviewed detail back target and skips ALAS's
+otherwise redundant tab reset.
+
+Commission reward receipt uses its own integer budget and remains closed by
+default:
+
+```powershell
+$env:ALAS_SEMANTIC_COMMISSION_REWARD_BUDGET = '1'
+```
+
+The finish input is admitted only when the exact typed commission counter is
+`1`, and that counter is re-read immediately before input. One budget unit is
+consumed on the exact finish click. ALAS retains ownership of its existing
+reward-popup loop; the adapter records only reviewed popup close targets, then
+returns to the reward dashboard and requires the finished counter to become
+`0`. The removed boolean `ALAS_SEMANTIC_ALLOW_COMMISSION_REWARDS` is rejected so
+it cannot accidentally authorize an unbounded claim loop. Tactical reward
+handling is separately scoped by `ALAS_SEMANTIC_ALLOW_TACTICAL_REWARDS=1`.
+
+Course assignment, research start, dorm mutation, construction submission,
+stage selection, map movement, and battle input remain unauthorized.
 
 To stage this against a compatible ALAS checkout:
 
@@ -94,11 +118,15 @@ $env:ALAS_SEMANTIC_DRIVER_REVISION = (Get-Content H:\program\AzurLaneAutoScript-
 ```
 
 Do not enable unattended ALAS operation yet. The ALAS-owned reward flow has a
-fresh live zero-claim double run. Commission has one live zero-oil start proof
-plus a clean zero-budget second pass. The positive-budget command discovered
-the running-detail return shape and did not itself exit cleanly; the corrected
-return path needs a fresh live positive-budget rerun. Raw list scrolling,
-larger budgets, nonzero-oil rows, reward receipt, cancellation, and repeated
-unattended starts are not qualified. Numeric-row claiming, stage selection, map and battle state,
-Lua/game-state access, other reward popups, scroll/drag semantics, and full
-unattended task flows remain fail-closed.
+fresh live zero-claim double run. Commission has two separately bounded live
+zero-oil start proofs and a clean zero-budget replay. One bounded reward input
+was admitted from an exact finished counter of `1`; its original command then
+failed closed when the old 64-record Button buffer truncated the popup state.
+After rebuilding with 128 records, exact counter `0` and a complete
+reward/start-budget-zero ALAS replay proved that the claim succeeded without a
+duplicate. Treat this as recovery-qualified rather than a clean in-context
+`CommissionRewardProof`. Larger budgets, nonzero-oil rows, cancellation, and
+repeated unattended starts are not qualified. Numeric-row claiming, stage
+selection, map and battle state, Lua/game-state access, other reward popups,
+general scroll/drag semantics, and full unattended task flows remain
+fail-closed.
