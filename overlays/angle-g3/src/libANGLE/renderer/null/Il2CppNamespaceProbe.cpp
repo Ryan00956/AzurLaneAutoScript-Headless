@@ -382,11 +382,75 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
       }
     }
   }
+  if ((name == "school_btn" || name == "backyard_btn" ||
+       name == "commander_btn" || name == "dorm_btn") &&
+      EndsWith(path,
+               "MainLiveAreaUI(Clone)/" + std::string(name))) {
+    return true;
+  }
+  if ((name == "return" &&
+       EndsWith(path,
+                "CourtYardUI(Clone)/main/topPanel/btns/topleft/return")) ||
+      (name == "decorate_btn" &&
+       EndsWith(path,
+                "CourtYardUI(Clone)/main/bottomPanel/bottomright/"
+                "decorate_btn")) ||
+      ((name == "train_btn" || name == "feed_btn") &&
+       EndsWith(path,
+                "CourtYardUI(Clone)/main/bottomPanel/bottomleft/" +
+                    std::string(name)))) {
+    return true;
+  }
+  if (name == "confirm_btn" &&
+      EndsWith(path,
+               "BackYardStatisticsUI(Clone)/painting/confirm_btn")) {
+    return true;
+  }
+  if (name == "btnBack" &&
+      EndsWith(path,
+               "NewNavalTacticsUI(Clone)/adpter/frame/btnBack")) {
+    return true;
+  }
+  if (name == "custom_button_2(Clone)" &&
+      EndsWith(path,
+               "Msgbox(Clone)/window/button_container/"
+               "custom_button_2(Clone)")) {
+    return true;
+  }
+  if ((name == "back_button" &&
+       EndsWith(path,
+                "LevelMainScene(Clone)/top/top_chapter/back_button")) ||
+      (name == "enter_main" &&
+       EndsWith(path,
+                "LevelMainScene(Clone)/entrance/enters/enter_main"))) {
+    return true;
+  }
+  if (name == "back" &&
+      EndsWith(path,
+               "SelectTechnologyUI(Clone)/blur_panel/adapt/top/back")) {
+    return true;
+  }
+  if ((name == "technology_btn" || name == "blueprint_btn" ||
+       name == "meta_btn") &&
+      EndsWith(path,
+               "SelectTechnologyUI(Clone)/frame/bg/" + std::string(name))) {
+    return true;
+  }
+  if (name == "back" &&
+      EndsWith(path, "TechnologyUI(Clone)/blur_panel/adapt/top/back")) {
+    return true;
+  }
+  if (name.size() == 1 && name[0] >= '1' && name[0] <= '5' &&
+      EndsWith(path,
+               "TechnologyUI(Clone)/main/base_page/srcoll_rect/content/" +
+                   std::string(name))) {
+    return true;
+  }
   struct Target {
     std::string_view name;
     std::string_view suffix;
   };
-  constexpr std::array<Target, 9> kMainButtons = {
+  constexpr std::array<Target, 11> kMainButtons = {
       Target{"battle", "frame/right/1/battle"},
       Target{"formation", "frame/right/1/formation"},
       Target{"settings", "frame/top/btns/settings"},
@@ -395,6 +459,8 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
       Target{"dock", "frame/bottom/frame/dock"},
       Target{"task", "frame/bottom/frame/task"},
       Target{"build", "frame/bottom/frame/build"},
+      Target{"live", "frame/bottom/frame/live"},
+      Target{"tech", "frame/bottom/frame/tech"},
       Target{"extend", "frame/left/extend"},
   };
   return std::any_of(
@@ -405,6 +471,24 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
 
 bool ShouldEvaluateToggleTopRaycast(std::string_view name,
                                     std::string_view path) {
+  if ((name == "build_btn" || name == "queue_btn") &&
+      EndsWith(path,
+               "Overlay/UIMain/blur_panel/adapt/left_length/frame/tagRoot/" +
+                   std::string(name))) {
+    return true;
+  }
+  if (name == "frame" &&
+      path.find("BuildShipUI(Clone)/BuildShipPoolsPageUI(Clone)/gallery/"
+                "toggle_bg/bg/toggles/") != std::string_view::npos) {
+    constexpr std::array<std::string_view, 3> kBuildPools = {
+        "light", "heavy", "special",
+    };
+    return std::any_of(
+        kBuildPools.begin(), kBuildPools.end(), [&](std::string_view pool) {
+          return EndsWith(path,
+                          "/toggles/" + std::string(pool) + "/frame");
+        });
+  }
   if (name == "all" &&
       EndsWith(path,
                "MailMgrMsgboxUI(Clone)/window/frame/toggle_group/all")) {
@@ -1154,14 +1238,16 @@ UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
     if (button == nullptr) {
       continue;
     }
-    ++result.buttonCount;
     bool active = false;
     bool interactable = false;
     if (!invokeBoolean(getActiveAndEnabled, button, &active) ||
         !invokeBoolean(getInteractable, button, &interactable)) {
-      result.diagnosticStage = 95;
-      return result;
+      // Unity liveness can retain a destroyed component while scenes are
+      // changing.  Omitting it is fail-closed at the semantic target layer;
+      // aborting here would suppress every valid Button in the new scene.
+      continue;
     }
+    ++result.buttonCount;
     result.activeCount += active ? 1u : 0u;
     result.interactableCount += interactable ? 1u : 0u;
 
@@ -1350,9 +1436,46 @@ UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
         record.adbY = 622.0f;
       }
       bool raycastEvaluated = false;
-      const bool raycastMatches =
+      bool raycastMatches =
           topRaycastMatches(transform, Vector2{record.screenX, record.screenY},
                             &raycastEvaluated);
+      const bool needsReviewedPointSearch =
+          path.find("CourtYardUI(Clone)/main/") != std::string_view::npos ||
+          EndsWith(path,
+                   "NewNavalTacticsUI(Clone)/adpter/frame/btnBack");
+      if (!raycastMatches && needsReviewedPointSearch) {
+        // Some reviewed controls overlap broader sibling graphics at their
+        // RectTransform center.  Search a bounded set of in-rect points, but
+        // publish one only after EventSystem proves the exact Button (or one
+        // of its children) is topmost there.
+        constexpr std::array<float, 3> kReviewedRaycastFractions = {
+            0.25f, 0.5f, 0.75f};
+        for (float xFraction : kReviewedRaycastFractions) {
+          for (float yFraction : kReviewedRaycastFractions) {
+            const Vector2 candidate = {
+                record.screenLeft +
+                    (record.screenRight - record.screenLeft) * xFraction,
+                record.screenBottom +
+                    (record.screenTop - record.screenBottom) * yFraction,
+            };
+            bool candidateEvaluated = false;
+            if (topRaycastMatches(transform, candidate, &candidateEvaluated)) {
+              record.screenX = candidate.x;
+              record.screenY = candidate.y;
+              record.adbX = candidate.x;
+              record.adbY =
+                  static_cast<float>(screenHeight) - candidate.y;
+              raycastMatches = true;
+              raycastEvaluated = true;
+              break;
+            }
+            raycastEvaluated = raycastEvaluated || candidateEvaluated;
+          }
+          if (raycastMatches) {
+            break;
+          }
+        }
+      }
       if (raycastEvaluated) {
         record.flags |= 0x800u;
         record.flags |= raycastMatches ? 0x1000u : 0u;

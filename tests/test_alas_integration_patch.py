@@ -61,6 +61,26 @@ class AlasIntegrationPatchTests(unittest.TestCase):
         self.assertIn("+            self.commission_receive()", self.patch_text)
         self.assertIn("+            self.commission_start()", self.patch_text)
 
+    def test_research_pixel_helpers_route_to_typed_project_model(self):
+        self.assertIn("diff --git a/module/research/project.py", self.patch_text)
+        self.assertIn("semantic_session.research_finished_index()", self.patch_text)
+        self.assertIn("semantic_session.research_series()", self.patch_text)
+        self.assertIn("semantic_session.research_statuses()", self.patch_text)
+
+    def test_tactical_state_machine_uses_typed_countdowns_and_safe_cancel(self):
+        self.assertIn("diff --git a/module/tactical/tactical_class.py", self.patch_text)
+        self.assertIn("semantic_adapter.begin_tactical()", self.patch_text)
+        self.assertIn("semantic_adapter.end_tactical()", self.patch_text)
+        self.assertIn("semantic_session.tactical_remaining_seconds()", self.patch_text)
+        self.assertIn(
+            "semantic_session.cancel_tactical_continue_if_present()",
+            self.patch_text,
+        )
+
+    def test_dorm_scheduler_uses_typed_occupied_slot_count(self):
+        self.assertIn("diff --git a/module/dorm/dorm.py", self.patch_text)
+        self.assertIn("semantic_session.dorm_state().occupied_slots", self.patch_text)
+
 
 if __name__ == "__main__":
     unittest.main()

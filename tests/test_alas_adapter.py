@@ -9,10 +9,12 @@ from alas_headless import (
     MissionClaimableDetected,
     AndroidPackageFingerprint,
     Bounds,
+    BuildPool,
     MissionDisposition,
     PINNED_CN_GAME_FINGERPRINT,
     PinnedPackageGate,
     Point,
+    ResearchProjectStatus,
     SemanticGateClosed,
 )
 from alas_headless.semantic_oracle import ActionReceipt, AdbObserverBridge
@@ -41,6 +43,31 @@ class FakeOracle:
         self.image_selected_values = {"task/nav/all": True}
         self.toggle_selected_values = {}
         self.mail_empty = False
+        self.research_project_values = []
+        self.tactical_slot_values = []
+        self.tactical_remaining_values = ()
+        self.tactical_prompt_text = None
+        self.build_pool_value = BuildPool.LIGHT
+        self.build_cost_value = SimpleNamespace(
+            cubes_owned=10,
+            cubes_per_build=1,
+            coins_per_build=600,
+        )
+        self.dorm_state_value = SimpleNamespace(
+            occupied_slots=2,
+            total_slots=6,
+            food=20000,
+            food_capacity=40000,
+            comfort=300,
+            floor=1,
+            food_countdown_seconds=3600,
+        )
+        self.campaign_menu_value = False
+        self.campaign_page_value = False
+        self.campaign_state_value = SimpleNamespace(
+            chapter_name="第一章",
+            stages=(),
+        )
 
     def enabled(self, semantic_id):
         self.enabled_calls.append(semantic_id)
@@ -103,6 +130,36 @@ class FakeOracle:
 
     def mail_is_empty(self):
         return self.mail_empty
+
+    def research_projects(self):
+        return tuple(self.research_project_values)
+
+    def build_selected_pool(self):
+        return self.build_pool_value
+
+    def build_costs(self):
+        return self.build_cost_value
+
+    def dorm_state(self):
+        return self.dorm_state_value
+
+    def campaign_menu_is_entry(self):
+        return self.campaign_menu_value
+
+    def campaign_page_is_normal(self):
+        return self.campaign_page_value
+
+    def campaign_page_state(self):
+        return self.campaign_state_value
+
+    def tactical_slots(self):
+        return tuple(self.tactical_slot_values)
+
+    def tactical_remaining_seconds(self):
+        return tuple(self.tactical_remaining_values)
+
+    def tactical_continue_prompt_text(self):
+        return self.tactical_prompt_text
 
     def wait_for(self, semantic_id, timeout_seconds, minimum_generation=None):
         self.wait_calls.append((semantic_id, timeout_seconds, minimum_generation))
@@ -189,6 +246,128 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertEqual(oracle.click_calls, ["main/formation"])
         self.assertEqual(receipt.semantic_id, "main/formation")
         self.assertEqual(len(gate_calls), 2)
+
+    def test_main_dorm_and_research_menus_use_distinct_typed_buttons(self):
+        adapter, _, _ = self.make_adapter()
+
+        self.assertEqual(
+            adapter.semantic_id_for("MAIN_GOTO_DORMMENU"), "main/live"
+        )
+        self.assertEqual(
+            adapter.semantic_id_for("MAIN_GOTO_RESHMENU_WHITE"), "main/tech"
+        )
+        self.assertEqual(
+            adapter.semantic_id_for("DORMMENU_GOTO_DORM"), "dorm-menu/dorm"
+        )
+        self.assertEqual(
+            adapter.semantic_id_for("DORMMENU_GOTO_ACADEMY"),
+            "dorm-menu/academy",
+        )
+
+    def test_build_dorm_and_menu_page_checks_are_presence_only(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.exists_values["build/page/start"] = True
+        oracle.exists_values["dorm-menu/page/root"] = True
+        oracle.exists_values["research-menu/page/back"] = True
+        oracle.exists_values["research/page/back"] = True
+        oracle.exists_values["dorm/page/manage"] = True
+
+        self.assertTrue(adapter.appear(NamedButton("BUILD_CHECK")))
+        self.assertTrue(adapter.appear(NamedButton("DORMMENU_CHECK")))
+        self.assertTrue(adapter.appear(NamedButton("RESHMENU_CHECK")))
+        self.assertTrue(adapter.appear(NamedButton("RESEARCH_CHECK")))
+        self.assertTrue(adapter.appear(NamedButton("DORM_CHECK")))
+        self.assertEqual(
+            adapter.semantic_id_for("DORM_GOTO_MAIN"), "dorm/page/back"
+        )
+        self.assertEqual(
+            adapter.semantic_id_for("DORM_INFO"), "dorm/statistics/confirm"
+        )
+        with self.assertRaises(AlasSemanticUnmapped):
+            adapter.click(NamedButton("BUILD_CHECK"))
+
+    def test_build_and_dorm_typed_state_is_exposed_without_mutation(self):
+        adapter, oracle, _ = self.make_adapter()
+
+        self.assertEqual(adapter.build_selected_pool(), BuildPool.LIGHT)
+        self.assertEqual(adapter.build_costs().cubes_owned, 10)
+        self.assertEqual(adapter.dorm_state().occupied_slots, 2)
+        self.assertEqual(oracle.click_calls, [])
+
+    def test_campaign_menu_uses_presence_check_and_exact_navigation_targets(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.campaign_menu_value = True
+        oracle.enabled_values["campaign-menu/page/back"] = True
+
+        self.assertTrue(adapter.appear(NamedButton("CAMPAIGN_MENU_CHECK")))
+        self.assertEqual(
+            adapter.semantic_id_for("CAMPAIGN_MENU_GOTO_CAMPAIGN"),
+            "campaign-menu/normal",
+        )
+        receipt = adapter.click(NamedButton("GOTO_MAIN"))
+
+        self.assertEqual(receipt.semantic_id, "campaign-menu/page/back")
+        self.assertEqual(oracle.click_calls, ["campaign-menu/page/back"])
+
+    def test_campaign_chapter_check_and_back_require_typed_page_identity(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.campaign_page_value = True
+        oracle.enabled_values["campaign-menu/page/back"] = True
+
+        self.assertTrue(adapter.appear(NamedButton("CAMPAIGN_CHECK")))
+        self.assertEqual(adapter.campaign_page_state().chapter_name, "第一章")
+        with self.assertRaises(AlasSemanticUnmapped):
+            adapter.click(NamedButton("BACK_ARROW"))
+        self.assertEqual(oracle.click_calls, [])
+
+    def test_research_menu_entries_use_exact_typed_buttons(self):
+        adapter, _, _ = self.make_adapter()
+
+        self.assertEqual(
+            adapter.semantic_id_for("RESHMENU_GOTO_RESEARCH"),
+            "research-menu/research",
+        )
+        self.assertEqual(
+            adapter.semantic_id_for("RESHMENU_GOTO_SHIPYARD"),
+            "research-menu/shipyard",
+        )
+        self.assertEqual(
+            adapter.semantic_id_for("ENTRANCE_3"), "research/project/3"
+        )
+
+    def test_research_ocr_companions_use_typed_project_model(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.research_project_values = [
+            SimpleNamespace(
+                slot=1,
+                series=9,
+                status=ResearchProjectStatus.DETAIL,
+            ),
+            SimpleNamespace(
+                slot=2,
+                series=8,
+                status=ResearchProjectStatus.RUNNING,
+            ),
+        ]
+
+        self.assertEqual(adapter.research_series(), [9, 8])
+        self.assertEqual(adapter.research_statuses(), ["detail", "running"])
+        self.assertIsNone(adapter.research_finished_index())
+
+    def test_tactical_countdown_and_safe_continue_cancel_use_typed_state(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.tactical_slot_values = [SimpleNamespace(slot=1)]
+        oracle.tactical_remaining_values = (3723, 90)
+        oracle.tactical_prompt_text = "「舰船」学习完成，「技能」技能获得450点经验是否继续学习该技能？"
+        adapter._allow_commission_rewards = True
+        adapter.begin_commission()
+
+        self.assertEqual(len(adapter.tactical_slots()), 1)
+        self.assertEqual(adapter.tactical_remaining_seconds(), (3723, 90))
+        self.assertTrue(adapter.cancel_tactical_continue_if_present())
+        self.assertFalse(adapter.cancel_tactical_continue_if_present())
+        self.assertEqual(oracle.click_calls, ["tactical/continue/cancel"])
+        adapter.end_commission()
 
     def test_mail_page_identity_and_manage_use_exact_semantic_targets(self):
         adapter, _, _ = self.make_adapter()

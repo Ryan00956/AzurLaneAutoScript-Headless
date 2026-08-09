@@ -282,6 +282,83 @@ class CommissionRowState:
     button: ButtonState
 
 
+class BuildPool(str, Enum):
+    LIGHT = "light"
+    HEAVY = "heavy"
+    SPECIAL = "special"
+
+
+@dataclass(frozen=True)
+class BuildCostState:
+    cubes_owned: int
+    cubes_per_build: int
+    coins_per_build: int
+
+
+@dataclass(frozen=True)
+class DormState:
+    occupied_slots: int
+    total_slots: int
+    food: int
+    food_capacity: int
+    comfort: int
+    floor: int
+    food_countdown_seconds: Optional[int]
+
+
+@dataclass(frozen=True)
+class CampaignStageState:
+    stage_id: int
+    stage_code: str
+    title: str
+    button: ButtonState
+
+
+@dataclass(frozen=True)
+class CampaignPageState:
+    chapter_name: str
+    stages: Tuple[CampaignStageState, ...]
+
+
+class ResearchProjectStatus(str, Enum):
+    DETAIL = "detail"
+    RUNNING = "running"
+    WAITING = "waiting"
+    FINISHED = "finished"
+
+
+@dataclass(frozen=True)
+class ResearchProjectState:
+    slot: int
+    unity_index: int
+    code: str
+    subtitle: str
+    series: int
+    status: ResearchProjectStatus
+    duration_seconds: int
+    button: ButtonState
+
+
+class TacticalSlotStatus(str, Enum):
+    RUNNING = "running"
+    FINISHED = "finished"
+
+
+@dataclass(frozen=True)
+class TacticalSlotState:
+    slot: int
+    ship_id: int
+    ship_name: str
+    ship_level: int
+    skill_name: str
+    skill_level: int
+    exp_current: int
+    exp_total: int
+    status: TacticalSlotStatus
+    remaining_seconds: Optional[int]
+    button: ButtonState
+
+
 DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
     SemanticTarget(
         "login/enter",
@@ -296,6 +373,117 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
     SemanticTarget("main/dock", "dock", "frame/bottom/frame/dock"),
     SemanticTarget("main/task", "task", "frame/bottom/frame/task"),
     SemanticTarget("main/build", "build", "frame/bottom/frame/build"),
+    SemanticTarget("main/live", "live", "frame/bottom/frame/live"),
+    SemanticTarget("main/tech", "tech", "frame/bottom/frame/tech"),
+    SemanticTarget(
+        "dorm-menu/page/root",
+        "MainLiveAreaUI(Clone)",
+        "Overlay/UIMain/MainLiveAreaUI(Clone)",
+    ),
+    SemanticTarget(
+        "dorm-menu/academy",
+        "school_btn",
+        "MainLiveAreaUI(Clone)/school_btn",
+    ),
+    SemanticTarget(
+        "dorm-menu/dorm",
+        "backyard_btn",
+        "MainLiveAreaUI(Clone)/backyard_btn",
+    ),
+    SemanticTarget(
+        "dorm-menu/meowfficer",
+        "commander_btn",
+        "MainLiveAreaUI(Clone)/commander_btn",
+    ),
+    SemanticTarget(
+        "dorm-menu/private-quarters",
+        "dorm_btn",
+        "MainLiveAreaUI(Clone)/dorm_btn",
+    ),
+    SemanticTarget(
+        "dorm/page/back",
+        "return",
+        "CourtYardUI(Clone)/main/topPanel/btns/topleft/return",
+    ),
+    SemanticTarget(
+        "dorm/page/manage",
+        "decorate_btn",
+        "CourtYardUI(Clone)/main/bottomPanel/bottomright/decorate_btn",
+    ),
+    SemanticTarget(
+        "dorm/train",
+        "train_btn",
+        "CourtYardUI(Clone)/main/bottomPanel/bottomleft/train_btn",
+    ),
+    SemanticTarget(
+        "dorm/feed",
+        "feed_btn",
+        "CourtYardUI(Clone)/main/bottomPanel/bottomleft/feed_btn",
+    ),
+    SemanticTarget(
+        "dorm/statistics/confirm",
+        "confirm_btn",
+        "BackYardStatisticsUI(Clone)/painting/confirm_btn",
+    ),
+    SemanticTarget(
+        "build/page/start",
+        "start_btn",
+        "BuildShipUI(Clone)/BuildShipPoolsPageUI(Clone)/gallery/start_btn",
+    ),
+    SemanticTarget(
+        "campaign-menu/page/back",
+        "back_button",
+        "LevelMainScene(Clone)/top/top_chapter/back_button",
+    ),
+    SemanticTarget(
+        "campaign-menu/normal",
+        "enter_main",
+        "LevelMainScene(Clone)/entrance/enters/enter_main",
+    ),
+    SemanticTarget(
+        "research-menu/page/back",
+        "back",
+        "SelectTechnologyUI(Clone)/blur_panel/adapt/top/back",
+    ),
+    SemanticTarget(
+        "research-menu/research",
+        "technology_btn",
+        "SelectTechnologyUI(Clone)/frame/bg/technology_btn",
+    ),
+    SemanticTarget(
+        "research-menu/shipyard",
+        "blueprint_btn",
+        "SelectTechnologyUI(Clone)/frame/bg/blueprint_btn",
+    ),
+    SemanticTarget(
+        "research-menu/meta",
+        "meta_btn",
+        "SelectTechnologyUI(Clone)/frame/bg/meta_btn",
+    ),
+    SemanticTarget(
+        "research/page/back",
+        "back",
+        "TechnologyUI(Clone)/blur_panel/adapt/top/back",
+    ),
+    SemanticTarget(
+        "tactical/page/back",
+        "btnBack",
+        "NewNavalTacticsUI(Clone)/adpter/frame/btnBack",
+    ),
+    SemanticTarget(
+        "tactical/continue/cancel",
+        "custom_button_2(Clone)",
+        "Msgbox(Clone)/window/button_container/custom_button_2(Clone)",
+    ),
+    *tuple(
+        SemanticTarget(
+            "research/project/" + str(slot),
+            str(unity_index),
+            "TechnologyUI(Clone)/main/base_page/srcoll_rect/content/"
+            + str(unity_index),
+        )
+        for slot, unity_index in ((1, 2), (2, 1), (3, 5), (4, 4), (5, 3))
+    ),
     SemanticTarget("main/more", "extend", "frame/left/extend"),
     SemanticTarget(
         "reward/page/back",
@@ -455,6 +643,34 @@ DEFAULT_IMAGE_TARGETS: Tuple[SemanticImageTarget, ...] = tuple(
 
 DEFAULT_TOGGLE_TARGETS: Tuple[SemanticToggleTarget, ...] = (
     SemanticToggleTarget(
+        "build/nav/pools",
+        "build_btn",
+        "Overlay/UIMain/blur_panel/adapt/left_length/frame/tagRoot/build_btn",
+    ),
+    SemanticToggleTarget(
+        "build/nav/queue",
+        "queue_btn",
+        "Overlay/UIMain/blur_panel/adapt/left_length/frame/tagRoot/queue_btn",
+    ),
+    SemanticToggleTarget(
+        "build/pool/light",
+        "frame",
+        "BuildShipUI(Clone)/BuildShipPoolsPageUI(Clone)/gallery/toggle_bg/bg/"
+        "toggles/light/frame",
+    ),
+    SemanticToggleTarget(
+        "build/pool/heavy",
+        "frame",
+        "BuildShipUI(Clone)/BuildShipPoolsPageUI(Clone)/gallery/toggle_bg/bg/"
+        "toggles/heavy/frame",
+    ),
+    SemanticToggleTarget(
+        "build/pool/special",
+        "frame",
+        "BuildShipUI(Clone)/BuildShipPoolsPageUI(Clone)/gallery/toggle_bg/bg/"
+        "toggles/special/frame",
+    ),
+    SemanticToggleTarget(
         "mail/manage/all",
         "all",
         "MailMgrMsgboxUI(Clone)/window/frame/toggle_group/all",
@@ -567,6 +783,86 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
             "commission/page/back",
             "commission/nav/daily",
             "commission/nav/urgent",
+        ),
+    ),
+    BlockerRule(
+        "build-page",
+        "/BuildShipUI(Clone)/",
+        (
+            "build/nav/pools",
+            "build/nav/queue",
+            "build/pool/light",
+            "build/pool/heavy",
+            "build/pool/special",
+        ),
+    ),
+    BlockerRule(
+        "campaign-menu",
+        "/LevelMainScene(Clone)/",
+        (
+            "campaign-menu/page/back",
+            "campaign-menu/normal",
+        ),
+    ),
+    BlockerRule(
+        "dorm-menu",
+        "/MainLiveAreaUI(Clone)/",
+        (
+            "dorm-menu/academy",
+            "dorm-menu/dorm",
+            "dorm-menu/meowfficer",
+            "dorm-menu/private-quarters",
+        ),
+    ),
+    BlockerRule(
+        "dorm-statistics",
+        "/BackYardStatisticsUI(Clone)/",
+        ("dorm/statistics/confirm",),
+    ),
+    BlockerRule(
+        "dorm-page",
+        "/CourtYardUI(Clone)/",
+        (
+            "dorm/page/back",
+            "dorm/page/manage",
+            "dorm/train",
+            "dorm/feed",
+            "dorm/statistics/confirm",
+        ),
+    ),
+    BlockerRule(
+        "research-menu",
+        "/SelectTechnologyUI(Clone)/",
+        (
+            "research-menu/page/back",
+            "research-menu/research",
+            "research-menu/shipyard",
+            "research-menu/meta",
+        ),
+    ),
+    BlockerRule(
+        "research-page",
+        "/TechnologyUI(Clone)/",
+        (
+            "research/page/back",
+            "research/project/1",
+            "research/project/2",
+            "research/project/3",
+            "research/project/4",
+            "research/project/5",
+        ),
+    ),
+    BlockerRule(
+        "tactical-continue",
+        "/Msgbox(Clone)/",
+        ("tactical/continue/cancel",),
+    ),
+    BlockerRule(
+        "tactical-page",
+        "/NewNavalTacticsUI(Clone)/",
+        (
+            "tactical/page/back",
+            "tactical/continue/cancel",
         ),
     ),
 )
@@ -1522,9 +1818,56 @@ class SemanticOracle:
             and not item.truncated
             and item.bounds is not None
         )
-        if len(matches) != 1 or re.fullmatch(r"[0-9]+", matches[0].text) is None:
-            raise SemanticGateClosed("reward summary counter is absent or malformed")
-        return int(matches[0].text)
+        if len(matches) > 1:
+            raise SemanticGateClosed("reward summary counter is ambiguous")
+        if matches:
+            if re.fullmatch(r"[0-9]+", matches[0].text) is None:
+                raise SemanticGateClosed("reward summary counter is malformed")
+            return int(matches[0].text)
+
+        # The pinned page omits both the label Image and Text for zero-valued
+        # counters.  Treat that closed-world omission as zero only after the
+        # exact section frame and a complete Image snapshot are proven.
+        if ui_state.image_truncated or ui_state.method_mask & 0x8 == 0:
+            raise SemanticGateClosed("typed reward Image snapshot is incomplete")
+        section_path = (
+            "CommissionInfoUI4Mellow(Clone)/frame/main/content/"
+            + section_names[section]
+            + "/frame"
+        )
+        frame_sprites = {
+            "commission": "frame_event",
+            "tactical": "frame_class",
+            "research": "frame_tech",
+        }
+        frames = tuple(
+            image
+            for image in ui_state.images
+            if image.path.endswith(section_path)
+            and image.sprite == frame_sprites[section]
+            and image.active_in_hierarchy
+            and image.active_and_enabled
+            and not image.truncated
+            and image.bounds is not None
+        )
+        label_sprites = {
+            "finished": "label_finish",
+            "ongoing": "label_ongoing",
+            "leisure": "label_freedom",
+        }
+        labels = tuple(
+            image
+            for image in ui_state.images
+            if image.path.endswith(suffix[: -len("/Text")])
+            and image.sprite == label_sprites[counter]
+            and image.active_in_hierarchy
+            and image.active_and_enabled
+            and not image.truncated
+            and image.bounds is not None
+        )
+        if len(frames) != 1 or labels:
+            raise SemanticGateClosed("reward summary zero counter is not proven")
+        return 0
 
     def commission_rows(self) -> Tuple[CommissionRowState, ...]:
         """Read visible commission rows without inferring hidden or unknown state.
@@ -1701,6 +2044,506 @@ class SemanticOracle:
                     "commission page reports rows and empty together"
                 )
         return bool(matches)
+
+    def build_selected_pool(self) -> BuildPool:
+        """Return the selected construction pool from exact Unity Toggles."""
+
+        button_state = self.read_state()
+        page_markers = tuple(
+            button
+            for button in button_state.buttons
+            if button.name == "start_btn"
+            and button.path.endswith(
+                "BuildShipUI(Clone)/BuildShipPoolsPageUI(Clone)/gallery/start_btn"
+            )
+            and button.active_in_hierarchy
+            and button.active_and_enabled
+        )
+        if len(page_markers) != 1:
+            raise SemanticGateClosed("construction page identity is not proven")
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("construction snapshots are not coherent")
+        selected = []
+        for pool in BuildPool:
+            matches = self._toggle_matches(ui_state, "build/pool/" + pool.value)
+            if len(matches) != 1:
+                raise SemanticGateClosed(
+                    "construction pool Toggle is absent or ambiguous: " + pool.value
+                )
+            if matches[0].checked:
+                selected.append(pool)
+        if len(selected) != 1:
+            raise SemanticGateClosed("construction pool selection is inconsistent")
+        return selected[0]
+
+    def build_costs(self) -> BuildCostState:
+        """Read owned cubes and per-build costs without enabling construction."""
+
+        self.build_selected_pool()
+        state = self.read_ui_state()
+        base = "BuildShipUI(Clone)/BuildShipPoolsPageUI(Clone)/gallery/"
+        suffixes = {
+            "owned": base + "res_items/item/Text",
+            "cubes": base + "item_bg/item/Text",
+            "coins": base + "item_bg/gold/Text",
+        }
+        values: Dict[str, int] = {}
+        for key, suffix in suffixes.items():
+            matches = tuple(
+                item
+                for item in state.texts
+                if item.path.endswith(suffix)
+                and item.active_in_hierarchy
+                and item.active_and_enabled
+                and not item.truncated
+                and item.bounds is not None
+                and re.fullmatch(r"[0-9]+", item.text.strip()) is not None
+            )
+            if len(matches) != 1:
+                raise SemanticGateClosed(
+                    "construction resource text is absent or ambiguous: " + key
+                )
+            values[key] = int(matches[0].text.strip())
+        if values["cubes"] <= 0 or values["coins"] <= 0:
+            raise SemanticGateClosed("construction cost is invalid")
+        return BuildCostState(
+            cubes_owned=values["owned"],
+            cubes_per_build=values["cubes"],
+            coins_per_build=values["coins"],
+        )
+
+    def campaign_menu_is_entry(self) -> bool:
+        """Identify the campaign entrance without conflating the chapter page."""
+
+        if not self.exists("campaign-menu/normal"):
+            return False
+        state = self.read_ui_state()
+        chapter_titles = tuple(
+            item
+            for item in state.texts
+            if item.path.endswith(
+                "LevelMainScene(Clone)/top/top_chapter/title_chapter/name"
+            )
+            and item.active_in_hierarchy
+            and item.active_and_enabled
+            and item.bounds is not None
+        )
+        if chapter_titles:
+            raise SemanticGateClosed(
+                "campaign entrance and chapter title are visible together"
+            )
+        return True
+
+    def campaign_page_state(self) -> CampaignPageState:
+        """Read the visible chapter and stage labels without enabling a stage click."""
+
+        button_state = self.read_state()
+        back = self._unique(button_state, "campaign-menu/page/back")
+        if not back.actionable or self._blocking_rules(
+            button_state, "campaign-menu/page/back"
+        ):
+            raise SemanticGateClosed("campaign page identity is not proven")
+        if self.exists("campaign-menu/normal"):
+            raise SemanticGateClosed("campaign entrance is not a chapter page")
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("campaign snapshots are not coherent")
+
+        title_path = "LevelMainScene(Clone)/top/top_chapter/title_chapter/name"
+        chapter_titles = tuple(
+            item
+            for item in ui_state.texts
+            if item.path.endswith(title_path)
+            and item.active_in_hierarchy
+            and item.active_and_enabled
+            and not item.truncated
+            and item.bounds is not None
+            and item.text.strip()
+        )
+        if len(chapter_titles) != 1:
+            raise SemanticGateClosed("campaign chapter title is absent or ambiguous")
+
+        prefix = "LevelMainScene(Clone)/float/levels/items/Chapter_"
+        stage_buttons = []
+        for button in button_state.buttons:
+            marker = button.path.find(prefix)
+            if marker < 0 or button.name != "Chapter_" + button.path.rsplit("Chapter_", 1)[-1]:
+                continue
+            suffix = button.path[marker + len(prefix) :]
+            if not suffix.isdigit() or not button.path.endswith("Chapter_" + suffix):
+                continue
+            if (
+                not button.active_in_hierarchy
+                or not button.active_and_enabled
+                or button.bounds is None
+            ):
+                continue
+            stage_buttons.append((int(suffix), button))
+        stage_buttons.sort(key=lambda item: item[0])
+        if not stage_buttons or len({item[0] for item in stage_buttons}) != len(
+            stage_buttons
+        ):
+            raise SemanticGateClosed("campaign stage buttons are absent or ambiguous")
+
+        stages = []
+        for stage_id, button in stage_buttons:
+            root = button.path + "/main/info/bk/title_form/"
+            fields: Dict[str, TextState] = {}
+            for field in ("title_index", "title"):
+                matches = tuple(
+                    item
+                    for item in ui_state.texts
+                    if item.path == root + field
+                    and item.active_in_hierarchy
+                    and item.active_and_enabled
+                    and not item.truncated
+                    and item.bounds is not None
+                )
+                if len(matches) != 1:
+                    raise SemanticGateClosed(
+                        "campaign stage text is absent or ambiguous: " + field
+                    )
+                fields[field] = matches[0]
+            code_match = re.fullmatch(
+                r"([0-9]+)[\-–—]([0-9]+)", fields["title_index"].text.strip()
+            )
+            title = fields["title"].text.strip()
+            if code_match is None or not title:
+                raise SemanticGateClosed("campaign stage text is malformed")
+            chapter, stage = map(int, code_match.groups())
+            if stage_id != chapter * 100 + stage:
+                raise SemanticGateClosed("campaign stage identity is inconsistent")
+            stages.append(
+                CampaignStageState(
+                    stage_id=stage_id,
+                    stage_code="{0}-{1}".format(chapter, stage),
+                    title=title,
+                    button=button,
+                )
+            )
+        return CampaignPageState(
+            chapter_name=chapter_titles[0].text.strip(),
+            stages=tuple(stages),
+        )
+
+    def campaign_page_is_normal(self) -> bool:
+        if self.campaign_menu_is_entry():
+            return False
+        try:
+            self.campaign_page_state()
+        except SemanticTargetMissing:
+            return False
+        return True
+
+    def dorm_state(self) -> DormState:
+        """Read the dorm summary without opening a mutating sub-page."""
+
+        button_state = self.read_state()
+        page = self._unique(button_state, "dorm/page/manage")
+        if not page.actionable or self._blocking_rules(
+            button_state, "dorm/page/manage"
+        ):
+            raise SemanticGateClosed("dorm page identity is not proven")
+
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("dorm snapshots are not coherent")
+
+        root = "CourtYardUI(Clone)/main/"
+        suffixes = {
+            "slots": root + "bottomPanel/bottomleft/train_btn/Text",
+            "food": root + "bottomPanel/bottomleft/feed_btn/Text",
+            "comfort": root + "topPanel/btns/topright/comfortable/Text",
+            "floor": root + "topPanel/btns/topright/switch/Text",
+            "countdown": root + "bottomPanel/bottomleft/feed_btn/time",
+        }
+        values: Dict[str, str] = {}
+        for key, suffix in suffixes.items():
+            matches = tuple(
+                item
+                for item in ui_state.texts
+                if item.path.endswith(suffix)
+                and item.active_in_hierarchy
+                and item.active_and_enabled
+                and not item.truncated
+                and item.bounds is not None
+            )
+            if len(matches) != 1:
+                raise SemanticGateClosed(
+                    "dorm text is absent or ambiguous: " + key
+                )
+            values[key] = matches[0].text.strip()
+
+        slots = re.fullmatch(r"([0-9]{1,2})/([1-9][0-9]?)", values["slots"])
+        food = re.fullmatch(r"([0-9]+)/([1-9][0-9]*)", values["food"])
+        floor = re.fullmatch(r"([1-9][0-9]*)F", values["floor"])
+        if (
+            slots is None
+            or food is None
+            or floor is None
+            or re.fullmatch(r"[0-9]+", values["comfort"]) is None
+        ):
+            raise SemanticGateClosed("dorm summary is malformed")
+
+        occupied_slots, total_slots = map(int, slots.groups())
+        current_food, food_capacity = map(int, food.groups())
+        if occupied_slots > total_slots or current_food > food_capacity:
+            raise SemanticGateClosed("dorm summary is inconsistent")
+        countdown = (
+            None
+            if not values["countdown"]
+            else self.parse_countdown_seconds(values["countdown"])
+        )
+        return DormState(
+            occupied_slots=occupied_slots,
+            total_slots=total_slots,
+            food=current_food,
+            food_capacity=food_capacity,
+            comfort=int(values["comfort"]),
+            floor=int(floor.group(1)),
+            food_countdown_seconds=countdown,
+        )
+
+    def research_projects(self) -> Tuple[ResearchProjectState, ...]:
+        """Read the five visible research cards from typed Unity state."""
+
+        button_state = self.read_state()
+        back = self._unique(button_state, "research/page/back")
+        if not back.actionable or self._blocking_rules(
+            button_state, "research/page/back"
+        ):
+            raise SemanticGateClosed("research page identity is not proven")
+        indexed = []
+        pattern = re.compile(
+            r"(?:^|/)TechnologyUI\(Clone\)/main/base_page/srcoll_rect/"
+            r"content/([1-5])$"
+        )
+        for button in button_state.buttons:
+            match = pattern.search(button.path)
+            if (
+                match is not None
+                and button.name == match.group(1)
+                and button.actionable
+                and button.point is not None
+                and 0 <= button.point.x < self.fingerprint.width
+                and 0 <= button.point.y < self.fingerprint.height
+            ):
+                indexed.append((int(match.group(1)), button))
+        if len(indexed) != 5 or len({item[0] for item in indexed}) != 5:
+            raise SemanticGateClosed("research project Buttons are incomplete")
+        indexed.sort(key=lambda item: (item[1].point.x, item[0]))
+
+        ui_state = self.read_ui_state()
+        if ui_state.image_truncated or ui_state.method_mask & 0x8 == 0:
+            raise SemanticGateClosed("typed research Image snapshot is incomplete")
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("research snapshots are not coherent")
+
+        def text_at(path: str) -> str:
+            matches = tuple(
+                item
+                for item in ui_state.texts
+                if item.path == path
+                and item.active_in_hierarchy
+                and item.active_and_enabled
+                and not item.truncated
+                and item.bounds is not None
+            )
+            if len(matches) != 1:
+                raise SemanticGateClosed(
+                    "research project text is absent or ambiguous: " + path
+                )
+            return matches[0].text.strip()
+
+        status_texts = {
+            "查看详情": ResearchProjectStatus.DETAIL,
+            "进行中": ResearchProjectStatus.RUNNING,
+        }
+        projects = []
+        for slot, (unity_index, button) in enumerate(indexed, start=1):
+            root = button.path + "/frame/"
+            code = text_at(root + "name_bg/Text")
+            subtitle = text_at(root + "sub_name")
+            marker = re.sub(r"<[^>]*>", "", text_at(root + "marks/Text")).strip()
+            try:
+                status = status_texts[marker]
+            except KeyError as exc:
+                raise SemanticGateClosed(
+                    "research project status is not reviewed: " + marker
+                ) from exc
+            duration = self.parse_countdown_seconds(text_at(root + "marks/time"))
+            version_path = root + "top/label/version"
+            versions = tuple(
+                image
+                for image in ui_state.images
+                if image.path == version_path
+                and image.active_in_hierarchy
+                and image.active_and_enabled
+                and not image.truncated
+                and image.bounds is not None
+            )
+            if len(versions) != 1:
+                raise SemanticGateClosed("research project series is ambiguous")
+            version = re.fullmatch(r"version_([1-9][0-9]*)", versions[0].sprite)
+            if version is None or not code:
+                raise SemanticGateClosed("research project identity is malformed")
+            projects.append(
+                ResearchProjectState(
+                    slot=slot,
+                    unity_index=unity_index,
+                    code=code,
+                    subtitle=subtitle,
+                    series=int(version.group(1)),
+                    status=status,
+                    duration_seconds=duration,
+                    button=button,
+                )
+            )
+        return tuple(projects)
+
+    def tactical_slots(self) -> Tuple[TacticalSlotState, ...]:
+        """Read populated tactical-class slots from typed Unity controls."""
+
+        button_state = self.read_state()
+        page = self._unique(button_state, "tactical/page/back")
+        if not page.active_in_hierarchy or not page.active_and_enabled:
+            raise SemanticGateClosed("tactical page identity is not proven")
+
+        prefix = (
+            "NewNavalTacticsUI(Clone)/adpter/"
+            "NewNavalTacticsStudentsPage(Clone)/"
+        )
+        ship_buttons = tuple(
+            button
+            for button in button_state.buttons
+            if re.fullmatch(r"[1-9][0-9]{5}", button.name) is not None
+            and prefix in button.path
+            and button.path.endswith("/" + button.name)
+            and button.active_in_hierarchy
+            and button.active_and_enabled
+            and button.bounds is not None
+            and button.bounds.right > 0
+            and button.bounds.bottom > 0
+            and button.bounds.left < self.fingerprint.width
+            and button.bounds.top < self.fingerprint.height
+        )
+        if len(ship_buttons) > 4 or len({button.name for button in ship_buttons}) != len(
+            ship_buttons
+        ):
+            raise SemanticGateClosed("tactical slot identity is ambiguous")
+        ship_buttons = tuple(sorted(ship_buttons, key=lambda button: button.bounds.left))
+
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("tactical snapshots are not coherent")
+
+        def text_in_slot(button: ButtonState, suffix: str) -> str:
+            assert button.bounds is not None
+            matches = tuple(
+                text
+                for text in ui_state.texts
+                if text.path.endswith(suffix)
+                and prefix in text.path
+                and text.active_in_hierarchy
+                and text.active_and_enabled
+                and not text.truncated
+                and text.bounds is not None
+                and button.bounds.left
+                <= (text.bounds.left + text.bounds.right) / 2.0
+                <= button.bounds.right
+            )
+            if len(matches) != 1:
+                raise SemanticGateClosed(
+                    "tactical slot text is absent or ambiguous: " + suffix
+                )
+            return matches[0].text.strip()
+
+        slots = []
+        for slot, button in enumerate(ship_buttons, start=1):
+            ship_name = text_in_slot(button, "/content/info/name_mask/name")
+            ship_level_text = text_in_slot(button, "/content/dockyard/lv/Text")
+            skill_name = text_in_slot(button, "/skill/name_Text")
+            skill_level_text = text_in_slot(button, "/skill/level")
+            progress_text = text_in_slot(button, "/skill/next")
+            timer_text = text_in_slot(button, "/timer_Text")
+            progress = re.fullmatch(r"([0-9]+)/([1-9][0-9]*)", progress_text)
+            if (
+                not ship_name
+                or not skill_name
+                or re.fullmatch(r"[1-9][0-9]{0,2}", ship_level_text) is None
+                or re.fullmatch(r"[1-9][0-9]?", skill_level_text) is None
+                or progress is None
+            ):
+                raise SemanticGateClosed("tactical slot summary is malformed")
+            exp_current, exp_total = map(int, progress.groups())
+            if exp_current > exp_total:
+                raise SemanticGateClosed("tactical skill progress is inconsistent")
+            if timer_text:
+                status = TacticalSlotStatus.RUNNING
+                remaining_seconds: Optional[int] = self.parse_countdown_seconds(
+                    timer_text
+                )
+            else:
+                # On the reviewed page a populated slot retains its cancel
+                # control and publishes an empty timer only after completion.
+                cancel_buttons = tuple(
+                    candidate
+                    for candidate in button_state.buttons
+                    if candidate.name == "cancel_btn"
+                    and candidate.path.startswith(button.path.rsplit("/", 1)[0] + "/")
+                    and candidate.active_in_hierarchy
+                    and candidate.active_and_enabled
+                    and candidate.bounds is not None
+                    and button.bounds.left
+                    <= (candidate.bounds.left + candidate.bounds.right) / 2.0
+                    <= button.bounds.right
+                )
+                if len(cancel_buttons) != 1:
+                    raise SemanticGateClosed(
+                        "finished tactical slot marker is absent or ambiguous"
+                    )
+                status = TacticalSlotStatus.FINISHED
+                remaining_seconds = None
+            slots.append(
+                TacticalSlotState(
+                    slot=slot,
+                    ship_id=int(button.name),
+                    ship_name=ship_name,
+                    ship_level=int(ship_level_text),
+                    skill_name=skill_name,
+                    skill_level=int(skill_level_text),
+                    exp_current=exp_current,
+                    exp_total=exp_total,
+                    status=status,
+                    remaining_seconds=remaining_seconds,
+                    button=button,
+                )
+            )
+        return tuple(slots)
+
+    def tactical_remaining_seconds(self) -> Tuple[int, ...]:
+        return tuple(
+            slot.remaining_seconds
+            for slot in self.tactical_slots()
+            if slot.status == TacticalSlotStatus.RUNNING
+            and slot.remaining_seconds is not None
+        )
 
     def _mapping(self, semantic_id: str) -> SemanticTarget:
         try:
@@ -1952,14 +2795,85 @@ class SemanticOracle:
             and any(rule.path_fragment in button.path for button in state.buttons)
         )
 
+    def _tactical_continue_prompt_text(
+        self, state: OracleState
+    ) -> Optional[str]:
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.generation < state.generation
+            or ui_state.generation > state.generation + 2
+        ):
+            raise SemanticGateClosed("tactical prompt snapshots are not coherent")
+
+        def exact_text(suffix: str) -> Optional[str]:
+            matches = tuple(
+                text
+                for text in ui_state.texts
+                if text.path.endswith(suffix)
+                and text.active_in_hierarchy
+                and text.active_and_enabled
+                and not text.truncated
+                and text.bounds is not None
+            )
+            if len(matches) > 1:
+                raise SemanticGateClosed("tactical prompt text is ambiguous")
+            return matches[0].text if matches else None
+
+        content = exact_text("Msgbox(Clone)/window/msg_panel/content")
+        cancel = exact_text(
+            "Msgbox(Clone)/window/button_container/custom_button_2(Clone)/pic"
+        )
+        confirm = exact_text(
+            "Msgbox(Clone)/window/button_container/custom_button_1(Clone)/pic"
+        )
+        if content is None or cancel is None or confirm is None:
+            return None
+        plain = re.sub(r"<[^>]*>", "", content).strip()
+        if (
+            re.fullmatch(
+                r"「[^」]+」学习完成，「[^」]+」技能获得[1-9][0-9]*点经验"
+                r"是否继续学习该技能？",
+                plain,
+            )
+            and "".join(cancel.split()) == "取消"
+            and "".join(confirm.split()) == "确定"
+        ):
+            return plain
+        return None
+
+    def _tactical_continue_prompt_matches(self, state: OracleState) -> bool:
+        return self._tactical_continue_prompt_text(state) is not None
+
+    def tactical_continue_prompt_text(self) -> Optional[str]:
+        state = self.read_state()
+        matches = self._matches(state, "tactical/continue/cancel")
+        if len(matches) > 1:
+            raise SemanticGateClosed("tactical prompt cancel target is ambiguous")
+        if (
+            not matches
+            or not matches[0].actionable
+            or self._blocking_rules(state, "tactical/continue/cancel")
+        ):
+            return None
+        return self._tactical_continue_prompt_text(state)
+
     def exists(self, semantic_id: str) -> bool:
-        return bool(self._matches(self.read_state(), semantic_id))
+        state = self.read_state()
+        matches = self._matches(state, semantic_id)
+        if semantic_id == "tactical/continue/cancel":
+            return bool(matches and self._tactical_continue_prompt_matches(state))
+        return bool(matches)
 
     def enabled(self, semantic_id: str) -> bool:
         state = self.read_state()
         matches = self._matches(state, semantic_id)
         if len(matches) > 1:
             raise SemanticGateClosed("semantic target mapping is ambiguous")
+        if (
+            semantic_id == "tactical/continue/cancel"
+            and not self._tactical_continue_prompt_matches(state)
+        ):
+            return False
         return bool(
             matches
             and matches[0].actionable
@@ -2113,6 +3027,11 @@ class SemanticOracle:
     def click(self, semantic_id: str) -> ActionReceipt:
         state = self.read_state()
         target = self._unique(state, semantic_id)
+        if (
+            semantic_id == "tactical/continue/cancel"
+            and not self._tactical_continue_prompt_matches(state)
+        ):
+            raise SemanticGateClosed("tactical continue prompt identity is not proven")
         if not target.actionable or target.point is None or target.bounds is None:
             raise SemanticGateClosed("semantic target is not actionable")
         if not (

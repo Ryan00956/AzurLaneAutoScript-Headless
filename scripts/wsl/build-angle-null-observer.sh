@@ -55,6 +55,66 @@ if ! grep -Fq 'Target{"extend", "frame/left/extend"}' \
   echo "Main drawer raycast allowlist is missing" >&2
   exit 1
 fi
+if ! grep -Fq 'Target{"live", "frame/bottom/frame/live"}' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Dorm-menu main Button allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'kBuildPools' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Construction pool Toggle allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'name == "school_btn"' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Dorm-menu Button allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'SelectTechnologyUI(Clone)/frame/bg/' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Research-menu Button allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'TechnologyUI(Clone)/main/base_page/srcoll_rect/content/' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Research project Button allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'Unity liveness can retain a destroyed component' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Destroyed Unity Button tolerance is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'kReviewedRaycastFractions' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Dorm Button bounded raycast search is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'BackYardStatisticsUI(Clone)/painting/confirm_btn' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Dorm statistics confirm allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'NewNavalTacticsUI(Clone)/adpter/frame/btnBack' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Tactical page back allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'custom_button_2(Clone)' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Tactical continue-cancel allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'LevelMainScene(Clone)/top/top_chapter/back_button' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Campaign-menu back-button allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'LevelMainScene(Clone)/entrance/enters/enter_main' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Campaign-menu normal-entry allowlist is missing" >&2
+  exit 1
+fi
 if ! grep -Fq 'CommissionInfoUI4Mellow(Clone)/frame/main/content/event/' \
     "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
   echo "Reward-page semantic entries are missing" >&2

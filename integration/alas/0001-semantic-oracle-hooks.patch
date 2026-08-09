@@ -344,3 +344,122 @@ index 195d84a..2a7d996 100644
 +        finally:
 +            if semantic_adapter is not None:
 +                semantic_adapter.end_commission()
+diff --git a/module/tactical/tactical_class.py b/module/tactical/tactical_class.py
+index 8046ad1..f7f42ef 100644
+--- a/module/tactical/tactical_class.py
++++ b/module/tactical/tactical_class.py
+@@ -1,4 +1,4 @@
+-from datetime import datetime
++from datetime import datetime, timedelta
+ 
+ import module.config.server as server
+ from module.base.button import Button, ButtonGrid
+@@ -383,6 +383,17 @@ class RewardTacticalClass(Dock):
+         Get the future finish time.
+         """
+         logger.hr('Tactical get finish')
++        from alas_headless import current_semantic_session
++        semantic_session = current_semantic_session()
++        if semantic_session is not None:
++            now = datetime.now()
++            remains = semantic_session.tactical_remaining_seconds()
++            self.tactical_finish = [
++                (now + timedelta(seconds=remain)).replace(microsecond=0)
++                for remain in remains if remain
++            ]
++            logger.info(f'Tactical finish: {[str(f) for f in self.tactical_finish]}')
++            return self.tactical_finish
+         grids = ButtonGrid(
+             origin=(421, 596), delta=(223, 0), button_shape=(139, 27), grid_shape=(4, 1), name='TACTICAL_REMAIN')
+ 
+@@ -483,5 +494,9 @@ class RewardTacticalClass(Dock):
+             if self.ui_main_appear_then_click(page_reward, interval=3):
+                 continue
++            from alas_headless import current_semantic_session
++            semantic_session = current_semantic_session()
++            if semantic_session is not None and semantic_session.cancel_tactical_continue_if_present():
++                continue
+             if self.handle_popup_confirm('TACTICAL'):
+                 self.interval_reset([BOOK_EMPTY_POPUP])
+                 continue
+@@ -737,9 +752,15 @@ class RewardTacticalClass(Dock):
+             in: Any
+             out: page_tactical
+         """
+-        self.ui_ensure(page_reward)
+-
+-        self.tactical_class_receive()
++        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
++        if semantic_adapter is not None:
++            semantic_adapter.begin_tactical()
++        try:
++            self.ui_ensure(page_reward)
++            self.tactical_class_receive()
++        finally:
++            if semantic_adapter is not None:
++                semantic_adapter.end_tactical()
+ 
+         if self.tactical_finish:
+             self.config.task_delay(target=self.tactical_finish)
+diff --git a/module/research/project.py b/module/research/project.py
+index c7b54dc..a7bc576 100644
+--- a/module/research/project.py
++++ b/module/research/project.py
+@@ -147,6 +147,10 @@ def get_research_finished(image):
+     Returns:
+         int: Index of the finished project, 0 to 4. Return None if no project finished.
+     """
++    from alas_headless import current_semantic_session
++    semantic_session = current_semantic_session()
++    if semantic_session is not None:
++        return semantic_session.research_finished_index()
+     for index in [2, 1, 3, 0, 4]:
+         button = RESEARCH_STATUS[index]
+         color = get_color(image, button.area)
+diff --git a/module/research/series.py b/module/research/series.py
+index 89e534c..d399d42 100644
+--- a/module/research/series.py
++++ b/module/research/series.py
+@@ -46,6 +46,10 @@ def get_research_series_3(image, series_button=RESEARCH_SERIES):
+     Returns:
+         list[int]:
+     """
++    from alas_headless import current_semantic_session
++    semantic_session = current_semantic_session()
++    if semantic_session is not None:
++        return semantic_session.research_series()
+     return [
+         match_series(crop(image, area_pad(button.area, pad=-10), copy=False), scaling)
+         for scaling, button in zip(RESEARCH_SCALING, series_button)
+diff --git a/module/research/ui.py b/module/research/ui.py
+index 3f652c1..dea1bd5 100644
+--- a/module/research/ui.py
++++ b/module/research/ui.py
+@@ -99,6 +99,12 @@ class ResearchUI(UI):
+         Returns:
+             list[str]: List of project status
+         """
++        from alas_headless import current_semantic_session
++        semantic_session = current_semantic_session()
++        if semantic_session is not None:
++            out = semantic_session.research_statuses()
++            logger.info(f'Research status: {out}')
++            return out
+         out = []
+         for index, status, scaling in zip(range(5), RESEARCH_STATUS, RESEARCH_SCALING):
+             info = status.crop((0, -40, 200, 0))
+diff --git a/module/dorm/dorm.py b/module/dorm/dorm.py
+index 53f341d..ebf55d4 100644
+--- a/module/dorm/dorm.py
++++ b/module/dorm/dorm.py
+@@ -548,6 +548,10 @@ class Dorm(DormFeed, DormCollect, BuyFurniture):
+         Pages:
+             in: page_dorm
+         """
++        from alas_headless import current_semantic_session
++        semantic_session = current_semantic_session()
++        if semantic_session is not None:
++            return semantic_session.dorm_state().occupied_slots
+         timeout = Timer(2, count=4).start()
+         current = 0
+         for _ in self.loop():
