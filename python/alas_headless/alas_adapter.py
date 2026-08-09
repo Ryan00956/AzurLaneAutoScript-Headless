@@ -52,7 +52,40 @@ DEFAULT_ALAS_BUTTON_TARGETS: Mapping[str, str] = {
     "MAIN_GOTO_SHOP_WHITE": "main/shop",
     "MAIL_ENTER": "main/mail",
     "MAIL_ENTER_WHITE": "main/mail",
+    "MISSION_CHECK": "task/page/back",
+    "LOGIN_ANNOUNCE": "overlay/bulletin/close",
+    "LOGIN_ANNOUNCE_2": "overlay/bulletin/close",
 }
+
+
+MISSION_VIRTUAL_RESOURCES = frozenset(
+    {
+        "MISSION_NOTICE",
+        "MISSION_NOTICE_WHITE",
+        "MISSION_MULTI",
+        "MISSION_SINGLE",
+        "MISSION_EMPTY",
+        "MISSION_UNFINISH",
+        "MISSION_WEEKLY_RED_DOT",
+        "GET_ITEMS_1",
+        "GET_ITEMS_2",
+        "GET_SHIP",
+        "GUILD_POPUP_CONFIRM",
+        "GUILD_POPUP_CANCEL",
+    }
+)
+MISSION_CLICK_RESOURCES = frozenset(
+    {
+        "MISSION_MULTI",
+        "MISSION_SINGLE",
+        "GET_ITEMS_1",
+        "GET_ITEMS_2",
+        "GUILD_POPUP_CANCEL",
+    }
+)
+MISSION_NAVBAR_PATTERN = re.compile(r"^REWARD_SIDE_NAVBAR_0_([0-5])$")
+MISSION_NAVBAR_ACTIVE_COLOR = (247, 255, 173)
+MISSION_NAVBAR_INACTIVE_COLOR = (140, 162, 181)
 
 
 class AlasSemanticUnmapped(SemanticGateClosed):
@@ -108,6 +141,18 @@ class MissionClaimReceipt:
 
 
 @dataclass
+class _MissionFlowContext:
+    daily: bool
+    weekly: bool
+    claim_budget: int
+    entry_clicked: bool = False
+    last_signature: Optional[Tuple[Any, ...]] = None
+    last_generation: int = -1
+    stable_generations: int = 0
+    stable_state: Optional[MissionPageState] = None
+
+
+@dataclass
 class PinnedPackageGate:
     """Cache one independent ADB verification of the installed package."""
 
@@ -132,6 +177,7 @@ class AlasSemanticAdapter:
         oracle: SemanticOracle,
         package_gate: Callable[[], None],
         mappings: Mapping[str, str] = DEFAULT_ALAS_BUTTON_TARGETS,
+        allow_mission_claim_once: bool = False,
     ) -> None:
         if package_gate is None:
             raise ValueError("semantic ALAS mode requires a package identity gate")
@@ -143,6 +189,8 @@ class AlasSemanticAdapter:
             for name, semantic_id in self._mappings.items()
         ):
             raise ValueError("ALAS semantic mappings must be non-empty")
+        self._allow_mission_claim_once = bool(allow_mission_claim_once)
+        self._mission_context: Optional[_MissionFlowContext] = None
 
     @staticmethod
     def _button_name(button: Any) -> str:
@@ -165,11 +213,143 @@ class AlasSemanticAdapter:
             name = self._button_name(button)
         except AlasSemanticUnmapped:
             return False
-        return name in self._mappings
+        return bool(
+            name in self._mappings
+            or name in MISSION_VIRTUAL_RESOURCES
+            or MISSION_NAVBAR_PATTERN.fullmatch(name)
+        )
+
+    def begin_mission_reward(self, daily: bool, weekly: bool) -> None:
+        """Open one ALAS-owned mission state-machine invocation."""
+
+        self._package_gate()
+        if self._mission_context is not None:
+            raise SemanticGateClosed("nested ALAS mission flow is not allowed")
+        self._mission_context = _MissionFlowContext(
+            daily=bool(daily),
+            weekly=bool(weekly),
+            claim_budget=(1 if self._allow_mission_claim_once else 0),
+        )
+
+    def end_mission_reward(self) -> None:
+        """Close the ALAS-owned mission invocation and discard all cached state."""
+
+        self._mission_context = None
+
+    def _require_mission_context(self) -> _MissionFlowContext:
+        if self._mission_context is None:
+            raise SemanticGateClosed("mission resource used outside ALAS mission flow")
+        return self._mission_context
+
+    def _known_mission_surface_exists(self) -> bool:
+        return any(
+            self.oracle.exists(semantic_id)
+            for semantic_id in (
+                "main/task",
+                "task/page/back",
+                "reward/award-info/close",
+                "reward/award-info1/close",
+                "overlay/bulletin/close",
+                "overlay/guild-message/close",
+            )
+        )
+
+    def _stable_mission_state(self) -> Optional[MissionPageState]:
+        context = self._require_mission_context()
+        candidate = self.oracle.mission_page_state()
+
+        if candidate.disposition == MissionDisposition.UNKNOWN:
+            context.last_signature = None
+            context.last_generation = -1
+            context.stable_generations = 0
+            context.stable_state = None
+            return None
+
+        if candidate.signature != context.last_signature:
+            context.last_signature = candidate.signature
+            context.last_generation = candidate.generation
+            context.stable_generations = 1
+            context.stable_state = None
+            return None
+
+        if candidate.generation > context.last_generation:
+            context.last_generation = candidate.generation
+            context.stable_generations += 1
+            if context.stable_generations >= 2:
+                context.stable_state = candidate
+        return context.stable_state
+
+    def _mission_notice_appears(self) -> bool:
+        context = self._require_mission_context()
+        # The current typed observer does not expose the red-dot Image.  A
+        # scheduled daily mission run may safely inspect the proven main task
+        # entry instead.  Weekly-only runs stay closed until tab evidence exists.
+        return bool(context.daily and self.oracle.exists("main/task"))
+
+    def _award_close_target(self) -> Optional[str]:
+        targets = tuple(
+            semantic_id
+            for semantic_id in (
+                "reward/award-info/close",
+                "reward/award-info1/close",
+            )
+            if self.oracle.enabled(semantic_id)
+        )
+        if len(targets) > 1:
+            raise SemanticGateClosed("reward popup close target is ambiguous")
+        return targets[0] if targets else None
+
+    def _mission_resource_appears(self, name: str) -> bool:
+        self._require_mission_context()
+        if name in ("MISSION_NOTICE", "MISSION_NOTICE_WHITE"):
+            return self._mission_notice_appears()
+        if name in ("GET_ITEMS_1", "GET_ITEMS_2"):
+            return self._award_close_target() is not None
+        if name in ("GUILD_POPUP_CONFIRM", "GUILD_POPUP_CANCEL"):
+            return self.oracle.enabled("overlay/guild-message/close")
+        if name == "GET_SHIP":
+            # Ship-reward handling has no reviewed semantic contract in this
+            # slice.  The validated AwardInfo popup is handled before this test.
+            return False
+        if name == "MISSION_WEEKLY_RED_DOT":
+            return False
+
+        state = self._stable_mission_state()
+        if state is None:
+            return False
+        if name == "MISSION_MULTI":
+            return state.disposition == MissionDisposition.CLAIMABLE_ALL
+        if name == "MISSION_SINGLE":
+            return state.disposition == MissionDisposition.CLAIMABLE_ROW
+        if name == "MISSION_UNFINISH":
+            return state.disposition == MissionDisposition.UNFINISHED
+        if name == "MISSION_EMPTY":
+            # Absence of row Buttons is not a reviewed empty-page marker.
+            return False
+        raise AlasSemanticUnmapped(
+            "ALAS mission resource is not semantically mapped: {0}".format(name)
+        )
 
     def appear(self, button: Any) -> bool:
-        semantic_id = self.semantic_id_for(button)
+        name = self._button_name(button)
+        semantic_id = self._mappings.get(name)
+        if semantic_id is None and name not in MISSION_VIRTUAL_RESOURCES:
+            if self._mission_context is None:
+                raise AlasSemanticUnmapped(
+                    "ALAS resource is not semantically mapped: {0}".format(name)
+                )
+            self._package_gate()
+            if self._known_mission_surface_exists():
+                # ALAS scans many page/popup assets.  An independently proven
+                # mission surface lets unknown presence checks be safely false;
+                # unknown clicks remain forbidden.
+                return False
+            raise AlasSemanticUnmapped(
+                "ALAS resource is not semantically mapped: {0}".format(name)
+            )
         self._package_gate()
+        if semantic_id is None:
+            return self._mission_resource_appears(name)
         # enabled() includes active/interactable/bounds and blocker checks.  A
         # Unity object hidden behind an overlay must not count as visible to ALAS.
         return self.oracle.enabled(semantic_id)
@@ -180,9 +360,80 @@ class AlasSemanticAdapter:
         return self.oracle.bounds(semantic_id)
 
     def click(self, button: Any) -> ActionReceipt:
-        semantic_id = self.semantic_id_for(button)
+        name = self._button_name(button)
+        semantic_id = self._mappings.get(name)
+        if semantic_id is None and name not in MISSION_CLICK_RESOURCES:
+            raise AlasSemanticUnmapped(
+                "ALAS resource is not semantically mapped for input: {0}".format(name)
+            )
         self._package_gate()
-        return self.oracle.click(semantic_id)
+        if semantic_id is not None:
+            receipt = self.oracle.click(semantic_id)
+            if semantic_id == "main/task" and self._mission_context is not None:
+                self._mission_context.entry_clicked = True
+            return receipt
+
+        context = self._require_mission_context()
+        if name == "MISSION_MULTI":
+            state = self._stable_mission_state()
+            if (
+                state is None
+                or state.disposition != MissionDisposition.CLAIMABLE_ALL
+                or state.claim_all is None
+            ):
+                raise SemanticGateClosed("stable mission claim-all is absent")
+            if context.claim_budget <= 0:
+                raise SemanticGateClosed(
+                    "mission claim input requires the separate one-claim opt-in"
+                )
+            context.claim_budget -= 1
+            return self.oracle.click("task/claim/all")
+        if name == "MISSION_SINGLE":
+            raise SemanticGateClosed("numeric-row mission claiming is not validated")
+        if name in ("GET_ITEMS_1", "GET_ITEMS_2"):
+            target = self._award_close_target()
+            if target is None:
+                raise SemanticGateClosed("reviewed reward popup close is absent")
+            return self.oracle.click(target)
+        if name == "GUILD_POPUP_CANCEL":
+            if not self.oracle.enabled("overlay/guild-message/close"):
+                raise SemanticGateClosed("reviewed guild-message close is absent")
+            return self.oracle.click("overlay/guild-message/close")
+        raise AlasSemanticUnmapped(
+            "ALAS resource is not semantically mapped for input: {0}".format(name)
+        )
+
+    def match_template_color(self, button: Any) -> bool:
+        return self.appear(button)
+
+    def image_color_count(
+        self,
+        button: Any,
+        color: Tuple[int, int, int],
+        threshold: int,
+        count: int,
+    ) -> bool:
+        del threshold, count
+        name = self._button_name(button)
+        self._package_gate()
+        if name in ("MISSION_NOTICE_WHITE", "MISSION_WEEKLY_RED_DOT"):
+            return self._mission_resource_appears(name)
+
+        match = MISSION_NAVBAR_PATTERN.fullmatch(name)
+        if match is None:
+            raise AlasSemanticUnmapped(
+                "ALAS color resource is not semantically mapped: {0}".format(name)
+            )
+        context = self._require_mission_context()
+        if not context.entry_clicked or not self.oracle.enabled("task/page/back"):
+            raise SemanticGateClosed("default mission tab identity is not proven")
+        index = int(match.group(1))
+        normalized_color = tuple(color)
+        if normalized_color == MISSION_NAVBAR_ACTIVE_COLOR:
+            return index == 0
+        if normalized_color == MISSION_NAVBAR_INACTIVE_COLOR:
+            return index != 0
+        raise SemanticGateClosed("unexpected mission navbar color contract")
 
     def _enter_mission_page(
         self, timeout_seconds: float
@@ -366,6 +617,7 @@ class AlasSemanticSession:
         component: str = (
             "com.bilibili.azurlane/com.manjuu.azurlane.MainActivity"
         ),
+        allow_mission_claim_once: bool = False,
     ) -> None:
         if not serial:
             raise ValueError("semantic ALAS mode requires an ADB serial")
@@ -375,6 +627,7 @@ class AlasSemanticSession:
         self.driver_revision = driver_revision
         self.package = package
         self.component = component
+        self.allow_mission_claim_once = bool(allow_mission_claim_once)
         self.bridge = AdbObserverBridge(serial, package, adb=adb)
         self.adapter: Optional[AlasSemanticAdapter] = None
 
@@ -384,7 +637,14 @@ class AlasSemanticSession:
             raise SemanticGateClosed("ALAS semantic mode is not explicitly enabled")
         revision = os.environ.get("ALAS_SEMANTIC_DRIVER_REVISION", "").lower()
         adb = os.environ.get("ALAS_SEMANTIC_ADB", "adb")
-        return cls(serial=serial, driver_revision=revision, adb=adb)
+        return cls(
+            serial=serial,
+            driver_revision=revision,
+            adb=adb,
+            allow_mission_claim_once=(
+                os.environ.get("ALAS_SEMANTIC_ALLOW_MISSION_CLAIM_ONCE") == "1"
+            ),
+        )
 
     def open(self) -> AlasSemanticAdapter:
         if self.adapter is not None:
@@ -404,7 +664,11 @@ class AlasSemanticSession:
                     expected_pid=self.bridge.pid,
                 ),
             )
-            self.adapter = AlasSemanticAdapter(oracle, package_gate)
+            self.adapter = AlasSemanticAdapter(
+                oracle,
+                package_gate,
+                allow_mission_claim_once=self.allow_mission_claim_once,
+            )
             return self.adapter
         except Exception:
             self.bridge.close()
@@ -434,16 +698,41 @@ class AlasSemanticSession:
         return self.adapter.semantic_id_for(button)
 
     def appear(self, button: Any) -> bool:
-        self.semantic_id_for(button)
         return self.open().appear(button)
+
+    def match_template_color(self, button: Any) -> bool:
+        return self.open().match_template_color(button)
+
+    def image_color_count(
+        self,
+        button: Any,
+        color: Tuple[int, int, int],
+        threshold: int,
+        count: int,
+    ) -> bool:
+        return self.open().image_color_count(button, color, threshold, count)
 
     def bounds(self, button: Any) -> Bounds:
         self.semantic_id_for(button)
         return self.open().bounds(button)
 
     def click(self, button: Any) -> ActionReceipt:
-        self.semantic_id_for(button)
+        name = AlasSemanticAdapter._button_name(button)
+        if (
+            name not in DEFAULT_ALAS_BUTTON_TARGETS
+            and name not in MISSION_CLICK_RESOURCES
+        ):
+            raise AlasSemanticUnmapped(
+                "ALAS resource is not semantically mapped for input: {0}".format(name)
+            )
         return self.open().click(button)
+
+    def begin_mission_reward(self, daily: bool, weekly: bool) -> None:
+        self.open().begin_mission_reward(daily=daily, weekly=weekly)
+
+    def end_mission_reward(self) -> None:
+        if self.adapter is not None:
+            self.adapter.end_mission_reward()
 
     def run_mission_reward(
         self,

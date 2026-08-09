@@ -192,3 +192,18 @@ G5b proves one default-page `GetAllButton` closure, not complete ALAS reward
 coverage. Numeric-row-only claiming, daily/weekly tab identity and traversal,
 other popup variants, repeated scheduler invocation, and a long unattended
 soak remain separate gates. Every unmapped case continues to fail closed.
+
+## Subsequent ownership refactor
+
+After this evidence bundle was frozen, the integration boundary was changed so
+the production-intended hook no longer replaces `Reward.reward_mission()` with
+the probe state machine. ALAS again owns its original reward loop; typed
+semantic observations feed `appear()`, `match_template_color()`, and
+`image_color_count()`, and semantic clicks feed its normal action calls. The
+probe methods and this report remain the regression oracle for the proven
+primitive closure.
+
+That refactor has unit, syntax, pinned-patch application, and extracted
+`Reward.reward_mission()` lifecycle checks. It has not yet repeated this live
+claim, so this historical G5 pass must not be cited as live validation of the
+new ALAS-owned wiring.

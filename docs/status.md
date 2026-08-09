@@ -4,6 +4,30 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-09
 
+### Post-G5 ALAS state-machine reuse: implemented; live revalidation pending
+
+- The integration patch no longer calls a replacement mission flow from the
+  top of `Reward.reward_mission()`. It brackets an adapter context and leaves
+  ALAS's original notice, navigation, collect, claim, receive, retry, timeout,
+  and daily/weekly ordering in control.
+- ALAS reward observations from `appear()`, `match_template_color()`, and
+  `image_color_count()` now consume typed semantic input. Normal `click()` is
+  translated to reviewed semantic actions; raw coordinate and gesture paths
+  remain rejected.
+- `MISSION_MULTI`, `MISSION_SINGLE`, `MISSION_UNFINISH`, mission-page identity,
+  the default sidebar, and `GET_ITEMS_1`/`GET_ITEMS_2` have explicit adapters.
+  A claimable/unfinished state requires the same signature across two
+  increasing observer generations.
+- The separate environment opt-in now creates a one-claim budget per ALAS
+  `reward_mission()` invocation. The budget is discarded in `finally`, and a
+  missing opt-in refuses the claim before ADB input.
+- Weekly-only execution, weekly-tab selection, numeric-row claiming,
+  ship-reward popups, and empty-page inference remain closed. The current
+  observer has no reviewed mission red-dot or tab-identity record.
+- This refactor has unit coverage and was syntax/lifecycle checked against the
+  clean pinned upstream commit. The G5 live evidence below predates this
+  ownership change, so the ALAS-owned path is not yet a new live pass.
+
 ### G5a/G5b - ALAS mission no-claim and controlled claim-all: passed
 
 - The final observer evaluates the exact task-page back and `GetAllButton`

@@ -137,5 +137,8 @@ python -m unittest discover -s tests -v
 The staged ALAS integration overlay targets upstream commit
 `81ccf63b4540f00241628c82a58c02c7a2bb11af`; see
 [integration instructions](integration/alas/README.md). The reviewed mission
-flow remains no-claim by default; one `GetAllButton` claim per invocation is
-available only through the separate controlled-claim opt-in.
+inputs now feed ALAS's original reward state machine rather than replacing it.
+Claiming remains disabled by default; one `GetAllButton` claim per ALAS
+invocation is available only through the separate controlled-claim opt-in. The
+ownership refactor is unit/pinned-patch validated and still awaits a fresh live
+run.

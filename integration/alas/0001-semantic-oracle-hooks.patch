@@ -1,7 +1,8 @@
 diff --git a/module/base/base.py b/module/base/base.py
+index dfd12a9..b214559 100644
 --- a/module/base/base.py
 +++ b/module/base/base.py
-@@ -247,10 +247,13 @@ class ModuleBase:
+@@ -247,7 +247,10 @@ class ModuleBase:
              if not self.interval_timer[button.name].reached():
                  return False
  
@@ -13,10 +14,34 @@ diff --git a/module/base/base.py b/module/base/base.py
              appear = bool(button)
          elif offset:
              if isinstance(offset, bool):
-                 offset = self.config.BUTTON_OFFSET
-             appear = button.match(self.device.image, offset=offset, similarity=similarity)
+@@ -285,8 +288,12 @@ class ModuleBase:
+             if not self.interval_timer[button.name].reached():
+                 return False
+ 
+-        appear = button.match_template_color(
+-            self.device.image, offset=offset, similarity=similarity, threshold=threshold)
++        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
++        if semantic_adapter is not None:
++            appear = semantic_adapter.match_template_color(button)
++        else:
++            appear = button.match_template_color(
++                self.device.image, offset=offset, similarity=similarity, threshold=threshold)
+ 
+         if appear and interval:
+             self.interval_timer[button.name].reset()
+@@ -373,6 +380,10 @@ class ModuleBase:
+         Returns:
+             bool:
+         """
++        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
++        if semantic_adapter is not None:
++            return semantic_adapter.image_color_count(
++                button, color=color, threshold=threshold, count=count)
+         if isinstance(button, np.ndarray):
+             image = button
          else:
 diff --git a/module/device/control.py b/module/device/control.py
+index 1224c45..8a1cb41 100644
 --- a/module/device/control.py
 +++ b/module/device/control.py
 @@ -17,6 +17,14 @@ class Control(Hermit, Minitouch, Scrcpy, MaaTouch, NemuIpc):
@@ -87,6 +112,7 @@ diff --git a/module/device/control.py b/module/device/control.py
          p1, p2 = ensure_int(p1, p2)
          logger.info(
 diff --git a/module/device/device.py b/module/device/device.py
+index 0d05f34..734f997 100644
 --- a/module/device/device.py
 +++ b/module/device/device.py
 @@ -1,4 +1,5 @@
@@ -114,29 +140,40 @@ diff --git a/module/device/device.py b/module/device/device.py
          if IS_WINDOWS and self.config.EmulatorInfo_Emulator == 'auto':
              _ = self.emulator_instance
 diff --git a/module/reward/reward.py b/module/reward/reward.py
+index 50a7171..9e8db21 100644
 --- a/module/reward/reward.py
 +++ b/module/reward/reward.py
-@@ -1,3 +1,5 @@
-+import os
-+
- from module.base.button import ButtonGrid
- from module.base.decorator import cached_property
- from module.base.timer import Timer
-@@ -231,5 +231,17 @@ class Reward(UI):
+@@ -234,16 +234,23 @@ class Reward(UI):
+         """
          if not daily and not weekly:
              return False
+-        logger.hr('Mission reward')
+-        if not self.reward_mission_notice():
+-            return False
+-
+-        self.ui_goto(page_mission, skip_first_screenshot=True)
+-
+-        if daily:
+-            self._reward_mission_all()
+-        if weekly:
+-            self._reward_mission_weekly()
 +        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
 +        if semantic_adapter is not None:
-+            receipt = semantic_adapter.run_mission_reward(
-+                daily=daily,
-+                weekly=weekly,
-+                allow_claim_once=(
-+                    os.environ.get('ALAS_SEMANTIC_ALLOW_MISSION_CLAIM_ONCE') == '1'
-+                ),
-+            )
-+            logger.attr('SemanticMission', receipt.outcome)
-+            return False
++            semantic_adapter.begin_mission_reward(daily=daily, weekly=weekly)
++        try:
++            logger.hr('Mission reward')
++            if not self.reward_mission_notice():
++                return False
 +
-         logger.hr('Mission reward')
-         if not self.reward_mission_notice():
-             return False
++            self.ui_goto(page_mission, skip_first_screenshot=True)
++
++            if daily:
++                self._reward_mission_all()
++            if weekly:
++                self._reward_mission_weekly()
++        finally:
++            if semantic_adapter is not None:
++                semantic_adapter.end_mission_reward()
+ 
+     @cached_property
+     def _reward_side_navbar(self):

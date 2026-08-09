@@ -96,6 +96,10 @@ Required behavior:
 
 This pass does not enable numeric-row claiming or tab traversal.
 
+The live G5a/G5b evidence predates the later ownership refactor that returns
+control to ALAS's original reward state machine. That new wiring must complete
+a separate live revalidation before it inherits the pass.
+
 ## Stop or pivot conditions
 
 - A critical flow depends on rendered GPU results rather than completion signaling.

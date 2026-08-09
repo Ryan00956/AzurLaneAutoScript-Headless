@@ -32,12 +32,18 @@ class FakeOracle:
         self.wait_any_calls = []
         self.mission_disposition = MissionDisposition.UNFINISHED
         self.mission_dispositions = []
+        self.streaming_mission_dispositions = []
+        self.streaming_generation = 0
         self.enabled_values = {}
+        self.exists_values = {}
         self.enable_main_after_overlay_click = False
 
     def enabled(self, semantic_id):
         self.enabled_calls.append(semantic_id)
         return self.enabled_values.get(semantic_id, True)
+
+    def exists(self, semantic_id):
+        return self.exists_values.get(semantic_id, False)
 
     def bounds(self, semantic_id):
         self.bounds_calls.append(semantic_id)
@@ -71,6 +77,34 @@ class FakeOracle:
             claim_all=(object() if disposition == MissionDisposition.CLAIMABLE_ALL else None),
             claim_rows=((object(),) if disposition == MissionDisposition.CLAIMABLE_ROW else ()),
             unfinished_rows=(object(),),
+        )
+
+    def mission_page_state(self):
+        disposition = (
+            self.streaming_mission_dispositions.pop(0)
+            if self.streaming_mission_dispositions
+            else self.mission_disposition
+        )
+        self.streaming_generation += 1
+        return SimpleNamespace(
+            disposition=disposition,
+            generation=self.streaming_generation,
+            signature=(disposition,),
+            claim_all=(
+                object()
+                if disposition == MissionDisposition.CLAIMABLE_ALL
+                else None
+            ),
+            claim_rows=(
+                (object(),)
+                if disposition == MissionDisposition.CLAIMABLE_ROW
+                else ()
+            ),
+            unfinished_rows=(
+                (object(),)
+                if disposition == MissionDisposition.UNFINISHED
+                else ()
+            ),
         )
 
     def wait_for_any(
@@ -138,6 +172,156 @@ class AlasSemanticAdapterTests(unittest.TestCase):
 
         self.assertEqual(gate_calls, [])
         self.assertEqual(oracle.click_calls, [])
+
+    def test_alas_owned_state_machine_consumes_stable_semantic_inputs(self):
+        oracle = FakeOracle()
+        oracle.enabled_values = {
+            "main/task": True,
+            "task/page/back": True,
+            "reward/award-info/close": False,
+            "reward/award-info1/close": False,
+        }
+        oracle.exists_values["main/task"] = True
+        oracle.mission_disposition = MissionDisposition.CLAIMABLE_ALL
+        gate_calls = []
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: gate_calls.append(True),
+            allow_mission_claim_once=True,
+        )
+
+        adapter.begin_mission_reward(daily=True, weekly=True)
+        self.assertTrue(adapter.appear(NamedButton("MISSION_NOTICE")))
+        adapter.click(NamedButton("MAIN_GOTO_MISSION"))
+        self.assertTrue(
+            adapter.image_color_count(
+                NamedButton("REWARD_SIDE_NAVBAR_0_0"),
+                color=(247, 255, 173),
+                threshold=180,
+                count=100,
+            )
+        )
+        self.assertTrue(
+            adapter.image_color_count(
+                NamedButton("REWARD_SIDE_NAVBAR_0_1"),
+                color=(140, 162, 181),
+                threshold=180,
+                count=50,
+            )
+        )
+        self.assertFalse(adapter.appear(NamedButton("MISSION_MULTI")))
+        self.assertTrue(adapter.appear(NamedButton("MISSION_MULTI")))
+
+        receipt = adapter.click(NamedButton("MISSION_MULTI"))
+
+        self.assertEqual(receipt.semantic_id, "task/claim/all")
+        self.assertEqual(
+            oracle.click_calls,
+            ["main/task", "task/claim/all"],
+        )
+        with self.assertRaises(SemanticGateClosed):
+            adapter.click(NamedButton("MISSION_MULTI"))
+        self.assertEqual(oracle.click_calls.count("task/claim/all"), 1)
+        adapter.end_mission_reward()
+        with self.assertRaises(SemanticGateClosed):
+            adapter.appear(NamedButton("MISSION_NOTICE"))
+        self.assertGreaterEqual(len(gate_calls), 1)
+
+    def test_alas_owned_claim_requires_separate_opt_in(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.mission_disposition = MissionDisposition.CLAIMABLE_ALL
+        adapter.begin_mission_reward(daily=True, weekly=False)
+        self.assertFalse(adapter.appear(NamedButton("MISSION_MULTI")))
+        self.assertTrue(adapter.appear(NamedButton("MISSION_MULTI")))
+
+        with self.assertRaises(SemanticGateClosed):
+            adapter.click(NamedButton("MISSION_MULTI"))
+
+        self.assertNotIn("task/claim/all", oracle.click_calls)
+
+    def test_alas_owned_reward_popup_alias_uses_exact_semantic_close(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.enabled_values = {
+            "reward/award-info/close": True,
+            "reward/award-info1/close": False,
+        }
+        adapter.begin_mission_reward(daily=True, weekly=False)
+
+        self.assertTrue(adapter.appear(NamedButton("GET_ITEMS_1")))
+        receipt = adapter.click(NamedButton("GET_ITEMS_1"))
+
+        self.assertEqual(receipt.semantic_id, "reward/award-info/close")
+        self.assertEqual(oracle.click_calls, ["reward/award-info/close"])
+
+    def test_alas_owned_reward_popup_alias_rejects_ambiguity(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.enabled_values = {
+            "reward/award-info/close": True,
+            "reward/award-info1/close": True,
+        }
+        adapter.begin_mission_reward(daily=True, weekly=False)
+
+        with self.assertRaises(SemanticGateClosed):
+            adapter.appear(NamedButton("GET_ITEMS_1"))
+        self.assertEqual(oracle.click_calls, [])
+
+    def test_alas_owned_guild_popup_cancel_alias_uses_reviewed_close(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.enabled_values = {"overlay/guild-message/close": True}
+        adapter.begin_mission_reward(daily=True, weekly=False)
+
+        self.assertTrue(adapter.appear(NamedButton("GUILD_POPUP_CONFIRM")))
+        self.assertTrue(adapter.appear(NamedButton("GUILD_POPUP_CANCEL")))
+        receipt = adapter.click(NamedButton("GUILD_POPUP_CANCEL"))
+
+        self.assertEqual(receipt.semantic_id, "overlay/guild-message/close")
+        with self.assertRaises(AlasSemanticUnmapped):
+            adapter.click(NamedButton("GUILD_POPUP_CONFIRM"))
+
+    def test_weekly_only_and_numeric_row_paths_remain_closed(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_mission_reward(daily=False, weekly=True)
+
+        self.assertFalse(adapter.appear(NamedButton("MISSION_NOTICE")))
+        self.assertFalse(
+            adapter.image_color_count(
+                NamedButton("MISSION_WEEKLY_RED_DOT"),
+                color=(206, 81, 66),
+                threshold=221,
+                count=20,
+            )
+        )
+        oracle.mission_disposition = MissionDisposition.CLAIMABLE_ROW
+        self.assertFalse(adapter.match_template_color(NamedButton("MISSION_SINGLE")))
+        self.assertTrue(adapter.match_template_color(NamedButton("MISSION_SINGLE")))
+        with self.assertRaises(SemanticGateClosed):
+            adapter.click(NamedButton("MISSION_SINGLE"))
+        self.assertEqual(oracle.click_calls, [])
+
+    def test_default_navbar_requires_exact_mission_entry_click(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.enabled_values["task/page/back"] = True
+        adapter.begin_mission_reward(daily=True, weekly=False)
+
+        with self.assertRaises(SemanticGateClosed):
+            adapter.image_color_count(
+                NamedButton("REWARD_SIDE_NAVBAR_0_0"),
+                color=(247, 255, 173),
+                threshold=180,
+                count=100,
+            )
+
+    def test_unknown_presence_is_false_only_on_proven_mission_surface(self):
+        adapter, oracle, gate_calls = self.make_adapter()
+        adapter.begin_mission_reward(daily=True, weekly=False)
+        oracle.exists_values["main/task"] = True
+
+        self.assertFalse(adapter.appear(NamedButton("UNRELATED_PAGE_CHECK")))
+
+        oracle.exists_values.clear()
+        with self.assertRaises(AlasSemanticUnmapped):
+            adapter.appear(NamedButton("UNRELATED_PAGE_CHECK"))
+        self.assertGreaterEqual(len(gate_calls), 1)
 
     def test_mission_no_claim_round_trip_enters_and_exits(self):
         adapter, oracle, gate_calls = self.make_adapter()
@@ -286,6 +470,19 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         with patch.dict("os.environ", environment, clear=True):
             with self.assertRaises(SemanticGateClosed):
                 AlasSemanticSession.from_environment("emulator-test")
+
+    def test_environment_factory_captures_one_claim_budget_opt_in(self):
+        environment = {
+            "ALAS_SEMANTIC_MODE": "1",
+            "ALAS_SEMANTIC_DRIVER_REVISION": (
+                "be80ce591a481c12d60c50d6040d40c035b40a2b"
+            ),
+            "ALAS_SEMANTIC_ALLOW_MISSION_CLAIM_ONCE": "1",
+        }
+        with patch.dict("os.environ", environment, clear=True):
+            session = AlasSemanticSession.from_environment("emulator-test")
+
+        self.assertTrue(session.allow_mission_claim_once)
 
 
 class ScriptedAdbBridge(AdbObserverBridge):
