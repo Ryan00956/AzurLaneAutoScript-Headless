@@ -69,10 +69,11 @@ full reward runs, numeric-row claiming, ship-reward popups, and empty-page
 inference remain closed.
 
 Additional typed readers cover reward summary counts, commission rows and
-empty state, tactical slots/countdowns, research project cards, construction
-pool/cost, dorm summary, and visible campaign chapter/stage labels. The pinned
-patch feeds tactical countdowns, safe continue-prompt cancellation, research
-status helpers, and dorm occupancy into the original ALAS code.
+empty state, tactical slots/books/skills, research cards/detail/queue,
+construction pool/cost/submit confirmation, dorm summary/feed inventory, and
+visible campaign chapter/stage labels. The pinned patch changes those ALAS
+observation and input ports while leaving ALAS responsible for filtering,
+selection, retry loops, queue filling, popup loops, and scheduling.
 
 Commission start has a separate integer budget and remains closed by default:
 
@@ -116,8 +117,45 @@ returns to the reward dashboard and requires the finished counter to become
 it cannot accidentally authorize an unbounded claim loop. Tactical reward
 handling is separately scoped by `ALAS_SEMANTIC_ALLOW_TACTICAL_REWARDS=1`.
 
-Course assignment, research start, dorm mutation, construction submission,
-stage selection, map movement, and battle input remain unauthorized.
+The following newer mutations are also default-closed integer budgets. Each
+unit admits one exact mutation, not an entire task invocation. These minimal
+examples admit one unit each:
+
+```powershell
+$env:ALAS_SEMANTIC_TACTICAL_ASSIGN_BUDGET = '1'
+$env:ALAS_SEMANTIC_RESEARCH_REWARD_BUDGET = '1'
+$env:ALAS_SEMANTIC_RESEARCH_START_BUDGET = '1'
+$env:ALAS_SEMANTIC_DORM_COLLECT_BUDGET = '1'
+$env:ALAS_SEMANTIC_DORM_FEED_BUDGET = '1'
+$env:ALAS_SEMANTIC_BUILD_SUBMIT_BUDGET = '1'
+```
+
+Tactical assignment reuses ALAS's original ship, skill, book-filter, and
+course-start state machine. The budget is consumed only by the exact final
+course confirmation. Research keeps ALAS's project filter, queue/reward loops,
+and scheduler; visual card positions are dynamically revalidated and the
+start budget is consumed only when the exact resource prompt matches the
+selected project. Dorm keeps ALAS's food filter and count choice, but clicks
+the exact food-card Image rather than the adjacent purchase `+`, and proves
+inventory `-1` plus food `+value` per budget unit. Construction admits only one
+order and cross-checks typed cube/coin costs before the final confirmation.
+ALAS's original side and bottom `Navbar` objects consume exact Toggle state;
+the queue-empty input additionally requires the selected queue tab, capacity
+`2`, and both exact timer fields. A pre-existing nonempty queue is refused
+before the bounded submit instead of being accelerated or collected.
+
+Tactical assignment, a single research start/reward chain, corrected dorm
+food-card input, and final one-order construction submit have live passes.
+Dorm quick collect also has a live exact-click pass. The dorm proof observed
+inventory `17783 -> 17782` and food `0 -> 1000`; the construction proof opened
+the heavy pool with `3662` cubes and `84908` coins, cross-checked a `2` cube +
+`1500` coin cost, submitted one order, and observed the queue countdown. The
+research invocation admitted six reward units (five queued completions and one
+finished card) followed by one exact `G-412` start. Qualified maxima are
+therefore tactical assignment `1`, research reward `6`, research start `1`,
+dorm collect `1`, dorm feed `1`, and construction submit `1`; larger values
+remain unqualified. Stage selection, map movement, and battle input remain
+unauthorized.
 
 To stage this against a compatible ALAS checkout:
 
@@ -138,7 +176,8 @@ in-context `CommissionRewardProof` from exact counter `1 -> 0`, completed the
 reviewed popup chain, and passed a full dual-budget-zero replay. Reward budget
 `1` is therefore live-qualified; larger budgets are not. The five-row daily
 list also passed exact-handle multipage scanning and stable row-index merging.
-Nonzero-oil rows, cancellation, and repeated unattended starts are not
-qualified. Numeric-row claiming, stage selection, map and battle state,
-Lua/game-state access, other reward popups, gestures outside the exact
-commission handle, and full unattended task flows remain fail-closed.
+Nonzero-oil rows, cancellation, repeated unattended starts, and multi-order
+construction are not live-qualified. Numeric-row claiming, stage selection,
+map and battle state, Lua/game-state access, other reward popups, gestures
+outside the exact commission handle, and full unattended task flows remain
+fail-closed.

@@ -311,6 +311,16 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
       EndsWith(path, "MailMgrMsgboxUI(Clone)/window/top/btnBack")) {
     return true;
   }
+  if (name == "confirm_btn" &&
+      EndsWith(path,
+               "NewNavalTacticsSkillsPage(Clone)/frame/confirm_btn")) {
+    return true;
+  }
+  if ((name == "confirm_btn" || name == "cancel_btn") &&
+      EndsWith(path,
+               "NewNavalTacticsLessonPage(Clone)/" + std::string(name))) {
+    return true;
+  }
   if (name == "btn_get" &&
       EndsWith(path,
                "MailMgrMsgboxUI(Clone)/window/button_container/btn_get")) {
@@ -445,10 +455,100 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
       EndsWith(path, "TechnologyUI(Clone)/blur_panel/adapt/top/back")) {
     return true;
   }
+  if (name == "btn_queue" &&
+      EndsWith(path,
+               "TechnologyUI(Clone)/blur_panel/adapt/left/btn_queue")) {
+    return true;
+  }
+  if (name == "btn_award" &&
+      EndsWith(path,
+               "TechnologyUI(Clone)/blur_panel/adapt/right/btn_award")) {
+    return true;
+  }
+  if (name == "selecte_panel" &&
+      EndsWith(path,
+               "TechnologyUI(Clone)/main/base_page/selecte_panel")) {
+    return true;
+  }
+  if ((name == "start_btn" || name == "stop_btn" ||
+       name == "finish_btn" || name == "queue_btn") &&
+      EndsWith(path,
+               "TechnologyUI(Clone)/main/base_page/selecte_panel/"
+               "technology_card/frame/btns/" + std::string(name))) {
+    return true;
+  }
   if (name.size() == 1 && name[0] >= '1' && name[0] <= '5' &&
       EndsWith(path,
                "TechnologyUI(Clone)/main/base_page/srcoll_rect/content/" +
                    std::string(name))) {
+    return true;
+  }
+  if (name == "onekey" &&
+      EndsWith(path, "CourtYardUI(Clone)/main/rightPanel/onekey")) {
+    return true;
+  }
+  if (name == "close" &&
+      EndsWith(path, "BackYardFeedUI(Clone)/close")) {
+    return true;
+  }
+  if (name == "cancel_btn" &&
+      EndsWith(path,
+               "BackYardFeedUI(Clone)/BackYardFeedShopPanel(Clone)/"
+               "frame/cancel_btn")) {
+    return true;
+  }
+  if (name == "start_btn" &&
+      EndsWith(path,
+               "BuildShipUI(Clone)/BuildShipPoolsPageUI(Clone)/gallery/"
+               "start_btn")) {
+    return true;
+  }
+  if ((name == "add" || name == "add(Clone)") &&
+      EndsWith(path,
+               "NewNavalTacticsUI(Clone)/adpter/"
+               "NewNavalTacticsStudentsPage(Clone)/" +
+                   std::string(name))) {
+    return true;
+  }
+  if ((name == "confirm_btn" || name == "cancel_btn" ||
+       name == "close_btn" || name == "minus" || name == "add" ||
+       name == "max") &&
+      EndsWith(path,
+               name == "confirm_btn"
+                   ? "BuildShipMsgBoxUI(Clone)/window/btns/confirm_btn"
+               : name == "cancel_btn"
+                   ? "BuildShipMsgBoxUI(Clone)/window/btns/cancel_btn"
+               : name == "close_btn"
+                   ? "BuildShipMsgBoxUI(Clone)/window/close_btn"
+               : name == "minus"
+                   ? "BuildShipMsgBoxUI(Clone)/window/content/calc_panel/minus"
+               : name == "add"
+                   ? "BuildShipMsgBoxUI(Clone)/window/content/calc_panel/add"
+                   : "BuildShipMsgBoxUI(Clone)/window/content/max")) {
+    return true;
+  }
+  if ((name == "confirm_button" || name == "cancel_button") &&
+      EndsWith(path,
+               "DockyardUI(Clone)/../blur_panel/select_panel/" +
+                   std::string(name))) {
+    return true;
+  }
+  if ((name == "confirm_button" || name == "cancel_button") &&
+      EndsWith(path,
+               "Overlay/UIMain/blur_panel/select_panel/" +
+                   std::string(name))) {
+    return true;
+  }
+  if (name == "back" &&
+      EndsWith(path, "Overlay/UIMain/blur_panel/adapt/top/back")) {
+    return true;
+  }
+  if (path.find("DockyardUI(Clone)/main/ship_container/ships/") !=
+          std::string_view::npos &&
+      EndsWith(path, "/" + std::string(name)) && name.size() >= 6 &&
+      name.size() <= 8 &&
+      std::all_of(name.begin(), name.end(),
+                  [](char value) { return value >= '0' && value <= '9'; })) {
     return true;
   }
   struct Target {
@@ -515,6 +615,31 @@ bool ShouldEvaluateToggleTopRaycast(std::string_view name,
 
 bool ShouldEvaluateImageTopRaycast(std::string_view name,
                                    std::string_view path) {
+  if (name == "icon_bg" &&
+      path.find("BackYardFeedUI(Clone)/frame/food_5000") !=
+          std::string_view::npos) {
+    constexpr std::array<std::string_view, 6> kDormFoods = {
+        "50001", "50002", "50003", "50004", "50005", "50006",
+    };
+    return std::any_of(
+        kDormFoods.begin(), kDormFoods.end(), [&](std::string_view food) {
+          return EndsWith(path,
+                          "/food_" + std::string(food) + "/icon_bg");
+        });
+  }
+  if ((name == "item" || name == "item(Clone)") &&
+      EndsWith(path,
+               "NewNavalTacticsLessonPage(Clone)/items/scorll/content/" +
+                   std::string(name))) {
+    return true;
+  }
+  if ((name == "skill" || name == "skill(Clone)") &&
+      EndsWith(path,
+               "NewNavalTacticsSkillsPage(Clone)/frame/skill_container/"
+               "content/" +
+                   std::string(name))) {
+    return true;
+  }
   if (name != "Image") {
     return false;
   }
@@ -1450,6 +1575,21 @@ UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
                             &raycastEvaluated);
       const bool needsReviewedPointSearch =
           path.find("CourtYardUI(Clone)/main/") != std::string_view::npos ||
+          path.find("BackYardFeedUI(Clone)/") != std::string_view::npos ||
+          path.find("TechnologyUI(Clone)/main/base_page/") !=
+              std::string_view::npos ||
+          path.find("TechnologyUI(Clone)/blur_panel/adapt/left/") !=
+              std::string_view::npos ||
+          path.find("BuildShipUI(Clone)/BuildShipPoolsPageUI(Clone)/") !=
+              std::string_view::npos ||
+          path.find("BuildShipMsgBoxUI(Clone)/") != std::string_view::npos ||
+          path.find("DockyardUI(Clone)/main/ship_container/ships/") !=
+              std::string_view::npos ||
+          path.find("Overlay/UIMain/blur_panel/select_panel/") !=
+              std::string_view::npos ||
+          path.find("NewNavalTacticsUI(Clone)/adpter/"
+                    "NewNavalTacticsStudentsPage(Clone)/") !=
+              std::string_view::npos ||
           EndsWith(path,
                    "NewNavalTacticsUI(Clone)/adpter/frame/btnBack");
       if (!raycastMatches && needsReviewedPointSearch) {

@@ -512,6 +512,49 @@ class SemanticOracleTests(unittest.TestCase):
         with self.assertRaises(SemanticGateClosed):
             make_oracle(backend).build_selected_pool()
 
+    def test_build_queue_uses_selected_tab_capacity_and_exact_two_slot_timers(self):
+        page = "root/Overlay/UIMain/blur_panel/"
+        queue = (
+            "root/UICamera/Canvas/UIMain/BuildShipUI(Clone)/"
+            "BuildShipDetailUI1(Clone)/"
+        )
+        backend = FakeBackend(
+            [make_button("back_btn", page + "adapt/top/back_btn", 58, 53)]
+        )
+        backend.ui = make_ui(
+            [
+                make_text("2", queue + "title/value"),
+                make_text(
+                    "99:99:99",
+                    queue
+                    + "list_single_line/content/project_1/frame/buiding/timer/Text",
+                ),
+                make_text(
+                    "01:29:41",
+                    queue
+                    + "list_single_line/content/project_2/frame/buiding/timer/Text",
+                ),
+            ],
+            toggles=[
+                make_toggle(
+                    page
+                    + "adapt/left_length/frame/tagRoot/queue_btn",
+                    checked=True,
+                )
+            ],
+        )
+        oracle = make_oracle(backend)
+
+        self.assertEqual(oracle.build_queue_timers(), ("99:99:99", "01:29:41"))
+        self.assertFalse(oracle.build_queue_empty())
+
+        backend.ui["texts"][2]["text"] = "99:99:99"
+        self.assertTrue(oracle.build_queue_empty())
+
+        backend.ui["texts"][2]["text"] = "not-a-timer"
+        with self.assertRaises(SemanticGateClosed):
+            oracle.build_queue_timers()
+
     def test_campaign_menu_and_chapter_page_are_distinct_typed_states(self):
         root = "root/UICamera/Canvas/UIMain/LevelMainScene(Clone)/"
         back = make_button(
@@ -670,6 +713,127 @@ class SemanticOracleTests(unittest.TestCase):
         self.assertFalse(oracle.enabled("dorm/page/manage"))
         self.assertTrue(oracle.enabled("dorm/statistics/confirm"))
 
+    def test_dorm_feed_uses_food_card_image_not_purchase_plus(self):
+        dorm = "root/UICamera/Canvas/UIMain/CourtYardUI(Clone)/main/"
+        feed = "root/UICamera/Canvas/UIMain/BackYardFeedUI(Clone)/"
+        backend = FakeBackend(
+            [
+                make_button(
+                    "decorate_btn",
+                    dorm + "bottomPanel/bottomright/decorate_btn",
+                ),
+                make_button("close", feed + "close", 320, 540),
+            ]
+        )
+        texts = [make_text("0/40000", feed + "frame/Text")]
+        images = []
+        for offset, item_id in enumerate(range(50001, 50007)):
+            root = feed + "frame/food_{0}/".format(item_id)
+            texts.extend(
+                [
+                    make_text("食物{0}".format((1, 2, 3, 5, 10, 20)[offset] * 1000), root + "Text"),
+                    make_text(str(10 - offset), root + "icon_bg/count"),
+                ]
+            )
+            image = make_image(
+                root + "icon_bg",
+                "bg2",
+                {
+                    "left": 395 + offset * 128,
+                    "top": 375,
+                    "right": 499 + offset * 128,
+                    "bottom": 480,
+                },
+            )
+            image["raycast_target"] = True
+            image["raycast_top"] = True
+            images.append(image)
+        backend.ui = make_ui(texts, images=images)
+        oracle = make_oracle(backend)
+
+        state = oracle.dorm_feed_state()
+        receipt = oracle.click_dorm_food(50001)
+
+        self.assertEqual(state.items[0].count, 10)
+        self.assertEqual(state.items[0].button.name, "icon_bg")
+        self.assertTrue(receipt.path.endswith("food_50001/icon_bg"))
+        self.assertEqual(backend.taps, [(447, 428)])
+
+    def test_build_submit_dialog_cross_checks_count_and_typed_costs(self):
+        base = (
+            "root/UICamera/Canvas/UIMain/BuildShipUI(Clone)/"
+            "BuildShipPoolsPageUI(Clone)/gallery/"
+        )
+        prep = "root/Overlay/UIMain/BuildShipMsgBoxUI(Clone)/window/"
+        backend = FakeBackend(
+            [
+                make_button("start_btn", base + "start_btn"),
+                make_button("confirm_btn", prep + "btns/confirm_btn"),
+                make_button("cancel_btn", prep + "btns/cancel_btn"),
+            ]
+        )
+        backend.ui = make_ui(
+            [
+                make_text("3662", base + "res_items/item/Text"),
+                make_text("2", base + "item_bg/item/Text"),
+                make_text("1500", base + "item_bg/gold/Text"),
+                make_text("1", prep + "content/calc_panel/Text"),
+                make_text(
+                    "建造「1艘」舰船需要消耗: 「1500物资」和「2个心智魔方」",
+                    prep + "content/Text",
+                ),
+            ],
+            toggles=[
+                make_toggle(
+                    base + "toggle_bg/bg/toggles/" + name + "/frame",
+                    checked=name == "heavy",
+                )
+                for name in ("light", "heavy", "special")
+            ],
+        )
+
+        state = make_oracle(backend).build_submit_state()
+
+        self.assertEqual(state.count, 1)
+        self.assertEqual(state.cubes_owned, 3662)
+        self.assertEqual(state.cubes_required, 2)
+        self.assertEqual(state.coins_required, 1500)
+
+    def test_research_start_confirm_requires_exact_resource_prompt(self):
+        popup = "root/Overlay/UIMain/Msgbox(Clone)/window/"
+        backend = FakeBackend(
+            [
+                make_button(
+                    "custom_button_2(Clone)",
+                    popup + "button_container/custom_button_2(Clone)",
+                ),
+                make_button(
+                    "custom_button_1(Clone)",
+                    popup + "button_container/custom_button_1(Clone)",
+                ),
+            ]
+        )
+        backend.ui = make_ui(
+            [
+                make_text(
+                    "开启该科研项目需要消耗 :物资x1500",
+                    popup + "msg_panel/content",
+                ),
+                make_text("取消", popup + "button_container/custom_button_2(Clone)/pic"),
+                make_text("确定", popup + "button_container/custom_button_1(Clone)/pic"),
+            ]
+        )
+        oracle = make_oracle(backend)
+
+        self.assertEqual(oracle.research_start_prompt_cost(), ("gold", 1500))
+        receipt = oracle.click("research/start/confirm")
+        self.assertEqual(receipt.semantic_id, "research/start/confirm")
+
+        backend.ui["texts"][0]["text"] = "开启该科研项目需要消耗 :钻石x1500"
+        self.assertIsNone(oracle.research_start_prompt_cost())
+        with self.assertRaises(SemanticGateClosed):
+            oracle.click("research/start/confirm")
+
     def test_research_projects_follow_visual_slots_and_typed_status(self):
         page = "root/UICamera/Canvas/UIMain/TechnologyUI(Clone)"
         content = page + "/main/base_page/srcoll_rect/content/"
@@ -719,6 +883,93 @@ class SemanticOracleTests(unittest.TestCase):
         self.assertEqual(projects[2].duration_seconds, 24 * 60 + 43)
         self.assertTrue(all(item.series == 9 for item in projects))
 
+    def test_research_detail_and_queue_expose_typed_alas_inputs(self):
+        selected = (
+            "root/UICamera/Canvas/UIMain/TechnologyUI(Clone)/"
+            "main/base_page/selecte_panel/"
+        )
+        card = selected + "technology_card/frame/"
+        backend = FakeBackend(
+            [
+                make_button("selecte_panel", selected.rstrip("/")),
+                make_button("start_btn", card + "btns/start_btn"),
+                make_button("queue_btn", card + "btns/queue_btn"),
+            ]
+        )
+        backend.ui = make_ui(
+            [
+                make_text("G-412", card + "name_bg/Text"),
+                make_text("基础研究", card + "sub_name"),
+                make_text("01:00:00", selected + "timer/bg/Text"),
+                make_text(
+                    "10000/1500",
+                    selected
+                    + "consume_panel/bg/container/item_tpl/icon_bg/count",
+                ),
+                make_text(
+                    "完成3次军事委托",
+                    selected + "consume_panel/bg/task_panel/slider/Text",
+                ),
+            ],
+            images=[
+                make_image(
+                    selected
+                    + "consume_panel/bg/container/item_tpl/icon_bg/icon",
+                    "gold",
+                )
+            ],
+        )
+        oracle = make_oracle(backend)
+
+        detail = oracle.research_detail_state()
+
+        self.assertEqual(detail.code, "G-412")
+        self.assertEqual(detail.resource_id, "gold")
+        self.assertEqual(detail.resource_required, 1500)
+        self.assertTrue(detail.can_start)
+        self.assertTrue(detail.can_queue)
+
+        page = "root/UICamera/Canvas/UIMain/TechnologyUI(Clone)/"
+        queue = page + "main/queue_page/queue_rect/content/1/frame/"
+        backend.buttons = make_buttons(
+            [
+                make_button("back", page + "blur_panel/adapt/top/back"),
+                make_button(
+                    "btn_award",
+                    page + "blur_panel/adapt/right/btn_award",
+                    x=1279,
+                    y=600,
+                    bounds={
+                        "left": 1190,
+                        "top": 500,
+                        "right": 1280,
+                        "bottom": 650,
+                    },
+                ),
+            ]
+        )
+        backend.ui = make_ui(
+            [
+                make_text("D-319", queue + "name_bg/Text"),
+                make_text("研究完成", queue + "marks/Text"),
+                make_text("00:00:00", queue + "marks/time"),
+            ],
+            images=[
+                make_image(page + "blur_panel/adapt/top/title_queue", "title_queue"),
+                make_image(queue + "top/label/version", "version_6"),
+            ],
+        )
+
+        queue_state = oracle.research_queue_state()
+
+        self.assertTrue(queue_state.reward_claimable)
+        self.assertEqual(queue_state.empty_slots, 4)
+        self.assertEqual(queue_state.entries[0].code, "D-319")
+        self.assertEqual(
+            queue_state.entries[0].status,
+            ResearchProjectStatus.FINISHED,
+        )
+
     def test_tactical_slots_use_typed_progress_and_countdown(self):
         page = "root/UICamera/Canvas/UIMain/NewNavalTacticsUI(Clone)/adpter/"
         students = page + "NewNavalTacticsStudentsPage(Clone)/"
@@ -764,6 +1015,81 @@ class SemanticOracleTests(unittest.TestCase):
         self.assertEqual(slots[0].remaining_seconds, 3723)
         self.assertEqual(slots[1].status, TacticalSlotStatus.FINISHED)
         self.assertIsNone(slots[1].remaining_seconds)
+
+    def test_tactical_skill_and_book_inputs_use_typed_rows(self):
+        skill_page = "root/Overlay/UIMain/NewNavalTacticsSkillsPage(Clone)/frame/"
+        skill_row = skill_page + "skill_container/content/skill"
+        backend = FakeBackend(
+            [make_button("confirm_btn", skill_page + "confirm_btn")]
+        )
+        row_bounds = {"left": 100, "top": 80, "right": 900, "bottom": 260}
+        row = make_image(skill_row, "skill", row_bounds)
+        row["raycast_target"] = True
+        row["raycast_top"] = True
+        backend.ui = make_ui(
+            [
+                make_text("荆棘与坚盾", skill_row + "/name/Text/subText"),
+                make_text("Lv.9", skill_row + "/name/level"),
+                make_text("8400/10000", skill_row + "/next"),
+            ],
+            images=[row],
+        )
+        oracle = make_oracle(backend)
+
+        skills = oracle.tactical_skills()
+        skill_receipt = oracle.click_tactical_skill(0)
+
+        self.assertEqual(skills[0].name, "荆棘与坚盾")
+        self.assertFalse(skills[0].max_level)
+        self.assertEqual(skill_receipt.semantic_id, "tactical/skill/0")
+
+        lesson = "root/Overlay/UIMain/NewNavalTacticsLessonPage(Clone)/"
+        item_path = lesson + "items/scorll/content/item"
+        backend.buttons = make_buttons(
+            [
+                make_button("confirm_btn", lesson + "confirm_btn"),
+                make_button("cancel_btn", lesson + "cancel_btn"),
+            ]
+        )
+        item_bounds = {"left": 300, "top": 180, "right": 500, "bottom": 450}
+        item = make_image(item_path, "item", item_bounds)
+        item["raycast_target"] = True
+        item["raycast_top"] = True
+        backend.ui = make_ui(
+            [
+                make_text(
+                    "3",
+                    item_path + "/icon_bg/count",
+                    {"left": 320, "top": 210, "right": 360, "bottom": 240},
+                ),
+                make_text(
+                    "EXP200%",
+                    item_path + "/addition",
+                    {"left": 350, "top": 400, "right": 460, "bottom": 430},
+                ),
+            ],
+            images=[
+                item,
+                make_image(
+                    item_path + "/icon_bg/icon",
+                    "16024",
+                    {"left": 330, "top": 240, "right": 430, "bottom": 340},
+                ),
+                make_image(
+                    item_path + "/selected",
+                    "selected",
+                    {"left": 310, "top": 190, "right": 490, "bottom": 440},
+                ),
+            ],
+        )
+
+        books = oracle.tactical_books()
+        book_receipt = oracle.click_tactical_book(0)
+
+        self.assertEqual(books[0].item_id, "16024")
+        self.assertEqual((books[0].genre, books[0].tier), (3, 4))
+        self.assertTrue(books[0].exp_bonus)
+        self.assertEqual(book_receipt.semantic_id, "tactical/book/0")
 
     def test_tactical_continue_cancel_requires_exact_prompt_text(self):
         popup = "root/Overlay/UIMain/Msgbox(Clone)/window/"

@@ -47,9 +47,12 @@ mutation slices: independent integer budgets admitted bounded zero-oil starts
 and one clean same-context finished reward proof. The earlier reward's original
 command remains recovery-qualified after an observer-capacity failure. The
 exact commission scrollbar also passed a five-row ALAS multipage scan without
-enabling generic gestures. Tactical training, research,
-construction, dorm, and the visible campaign chapter remain bounded
-typed/read-only or safe-return slices.
+enabling generic gestures. Tactical course assignment and bounded research
+reward/start now have live passes while preserving the original ALAS state
+machines. Dorm collect and corrected food-card input have live passes, as does
+one bounded heavy-pool construction submit with a typed queue countdown. All
+of these mutations remain default-closed and single-invocation qualified. The
+visible campaign chapter remains typed/read-only.
 Lua/game-state coverage, stage selection, sortie, battle state, weekly-only
 end-to-end coverage, and full unattended ALAS task coverage remain open.
 
@@ -157,8 +160,9 @@ invocation is available only through the separate controlled-claim opt-in. The
 observer now also exposes typed Toggle, Text, TextMesh Pro, and Image records
 through `GET /v1/ui`. Exact task-sidebar selected sprites and top-raycast input
 have a live adapter-level pass. Reward summary counts, commission rows,
-tactical slots, research cards, construction pool/cost, dorm summary, and
-visible campaign labels use typed state rather than OCR. A real patched ALAS
+tactical slots/books/skills, research cards/detail/queue, construction
+navigation/pool/cost/queue, dorm summary/feed, and visible campaign labels use
+typed state rather than OCR. A real patched ALAS
 checkout also passed reward twice with zero claims, a commission dry run, two
 separately budgeted zero-oil starts, and zero-budget idempotency passes. The
 first commission reward remains recovery-qualified after a fail-closed

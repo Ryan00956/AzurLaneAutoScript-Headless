@@ -20,6 +20,7 @@ from .semantic_oracle import (
     Bounds,
     BuildCostState,
     BuildPool,
+    BuildSubmitState,
     CampaignPageState,
     CommissionDetailState,
     CommissionRewardProof,
@@ -28,14 +29,21 @@ from .semantic_oracle import (
     CommissionScrollState,
     CommissionStartProof,
     DormState,
+    DormFeedState,
     MissionPageState,
     MissionDisposition,
+    Point,
     SemanticGateClosed,
     SemanticOracle,
     OracleFingerprint,
     ResearchProjectState,
     ResearchProjectStatus,
+    ResearchDetailState,
+    ResearchQueueState,
     TacticalSlotState,
+    TacticalCandidateShipState,
+    TacticalBookState,
+    TacticalSkillState,
 )
 
 
@@ -136,6 +144,23 @@ MISSION_CLICK_RESOURCES = frozenset(
 MISSION_NAVBAR_PATTERN = re.compile(r"^REWARD_SIDE_NAVBAR_0_([0-5])$")
 MISSION_NAVBAR_ACTIVE_COLOR = (247, 255, 173)
 MISSION_NAVBAR_INACTIVE_COLOR = (140, 162, 181)
+BUILD_SIDE_NAVBAR_PATTERN = re.compile(r"^GACHA_SIDE_NAVBAR_0_([0-4])$")
+BUILD_POOL_NAVBAR_PATTERN = re.compile(r"^CONSTRUCT_BOTTOM_NAVBAR_([0-3])_0$")
+BUILD_SIDE_NAVBAR_TARGETS = (
+    "build/nav/pools",
+    "build/nav/queue",
+    "build/nav/support",
+    "build/nav/unseam",
+)
+BUILD_POOL_NAVBAR_TARGETS = {
+    1: "build/pool/light",
+    2: "build/pool/heavy",
+    3: "build/pool/special",
+}
+BUILD_SIDE_NAVBAR_ACTIVE_COLOR = (247, 255, 173)
+BUILD_SIDE_NAVBAR_INACTIVE_COLOR = (140, 162, 181)
+BUILD_POOL_NAVBAR_ACTIVE_COLOR = (247, 227, 148)
+BUILD_POOL_NAVBAR_INACTIVE_COLOR = (189, 231, 247)
 MISSION_NAVBAR_TARGETS = (
     "task/nav/all",
     "task/nav/main",
@@ -232,6 +257,73 @@ PAGE_VIRTUAL_RESOURCES = frozenset(
         "TACTICAL_CHECK",
     }
 )
+RESEARCH_VIRTUAL_RESOURCES = frozenset(
+    {
+        "QUEUE_CHECK",
+        "QUEUE_CLAIM_REWARD",
+        "RESEARCH_COST_CHECKER",
+        "RESEARCH_DETAIL_QUIT",
+        "RESEARCH_GOTO_QUEUE",
+        "RESEARCH_QUEUE_ADD",
+        "RESEARCH_START",
+        "RESEARCH_STOP",
+        "RESEARCH_UNAVAILABLE",
+        "DETAIL_NEXT",
+        "GET_ITEMS_1",
+        "GET_ITEMS_2",
+        "GET_ITEMS_3",
+        "GET_ITEMS_RESEARCH_SAVE",
+        "POPUP_CONFIRM",
+        "BACK_ARROW",
+    }
+)
+RESEARCH_CLICK_RESOURCES = frozenset(
+    {
+        "QUEUE_CLAIM_REWARD",
+        "RESEARCH_DETAIL_QUIT",
+        "RESEARCH_GOTO_QUEUE",
+        "RESEARCH_QUEUE_ADD",
+        "RESEARCH_START",
+        "RESEARCH_STOP",
+        "GET_ITEMS_RESEARCH_SAVE",
+        "POPUP_CONFIRM",
+        "BACK_ARROW",
+    }
+)
+DORM_VIRTUAL_RESOURCES = frozenset(
+    {
+        "DORM_QUICK_COLLECT",
+        "DORM_FEED_CHECK",
+        "DORM_FEED_ENTER",
+        "POPUP_CANCEL",
+    }
+)
+BUILD_VIRTUAL_RESOURCES = frozenset(
+    {
+        "BUILD_SUBMIT_ORDERS",
+        "BUILD_SUBMIT_WW_ORDERS",
+        "BUILD_QUEUE_EMPTY",
+        "BUILD_FINISH_ORDERS",
+        "BUILD_WW_CHECK",
+        "SHOP_MEDAL_CHECK",
+        "BUILD_MINUS",
+        "BUILD_PLUS",
+        "POPUP_CONFIRM",
+        "POPUP_CONFIRM_GACHA_ORDER",
+        "POPUP_CANCEL",
+    }
+)
+TACTICAL_VIRTUAL_RESOURCES = frozenset(
+    {
+        "ADD_NEW_STUDENT",
+        "DOCK_CHECK",
+        "SKILL_CONFIRM",
+        "TACTICAL_CLASS_START",
+        "TACTICAL_CLASS_CANCEL",
+        "POPUP_CONFIRM",
+        "BACK_ARROW",
+    }
+)
 
 
 class AlasSemanticUnmapped(SemanticGateClosed):
@@ -325,6 +417,36 @@ class _CommissionFlowContext:
     start_proof: Optional[CommissionStartProof] = None
     passive_transition_until: float = 0.0
     cancelled_tactical_prompts: Set[str] = field(default_factory=set)
+    assign_budget: int = 0
+
+
+@dataclass
+class _ResearchFlowContext:
+    start_budget: int = 0
+    reward_budget: int = 0
+    selected_slot: Optional[int] = None
+    selected_code: Optional[str] = None
+    start_receipt: Optional[ActionReceipt] = None
+    start_confirm_receipt: Optional[ActionReceipt] = None
+    pending_resource_id: Optional[str] = None
+    pending_resource_required: Optional[int] = None
+    reward_receipts: List[ActionReceipt] = field(default_factory=list)
+    popup_close_receipts: List[ActionReceipt] = field(default_factory=list)
+
+
+@dataclass
+class _DormFlowContext:
+    collect_budget: int = 0
+    feed_budget: int = 0
+
+
+@dataclass
+class _BuildFlowContext:
+    submit_budget: int = 0
+    prep_opened: bool = False
+    warning_confirmed: bool = False
+    coins_owned: Optional[int] = None
+    submit_receipt: Optional[ActionReceipt] = None
 
 
 @dataclass
@@ -355,8 +477,14 @@ class AlasSemanticAdapter:
         allow_mission_claim_once: bool = False,
         allow_mail_mutations: bool = False,
         allow_tactical_rewards: bool = False,
+        tactical_assign_budget: int = 0,
         commission_reward_budget: int = 0,
         commission_start_budget: int = 0,
+        research_reward_budget: int = 0,
+        research_start_budget: int = 0,
+        dorm_collect_budget: int = 0,
+        dorm_feed_budget: int = 0,
+        build_submit_budget: int = 0,
     ) -> None:
         if package_gate is None:
             raise ValueError("semantic ALAS mode requires a package identity gate")
@@ -372,8 +500,14 @@ class AlasSemanticAdapter:
         self._allow_mail_mutations = bool(allow_mail_mutations)
         self._allow_tactical_rewards = bool(allow_tactical_rewards)
         for label, budget in (
+            ("tactical assign", tactical_assign_budget),
             ("commission reward", commission_reward_budget),
             ("commission start", commission_start_budget),
+            ("research reward", research_reward_budget),
+            ("research start", research_start_budget),
+            ("dorm collect", dorm_collect_budget),
+            ("dorm feed", dorm_feed_budget),
+            ("build submit", build_submit_budget),
         ):
             if (
                 isinstance(budget, bool)
@@ -384,10 +518,19 @@ class AlasSemanticAdapter:
                     "{0} budget must be a non-negative integer".format(label)
                 )
         self._commission_reward_budget = commission_reward_budget
+        self._tactical_assign_budget = tactical_assign_budget
         self._commission_start_budget = commission_start_budget
+        self._research_reward_budget = research_reward_budget
+        self._research_start_budget = research_start_budget
+        self._dorm_collect_budget = dorm_collect_budget
+        self._dorm_feed_budget = dorm_feed_budget
+        self._build_submit_budget = build_submit_budget
         self._mission_context: Optional[_MissionFlowContext] = None
         self._mail_context: Optional[_MailFlowContext] = None
         self._commission_context: Optional[_CommissionFlowContext] = None
+        self._research_context: Optional[_ResearchFlowContext] = None
+        self._dorm_context: Optional[_DormFlowContext] = None
+        self._build_context: Optional[_BuildFlowContext] = None
         self._observer_stale_since: Optional[float] = None
 
     @staticmethod
@@ -421,8 +564,14 @@ class AlasSemanticAdapter:
             or name in CAMPAIGN_VIRTUAL_RESOURCES
             or name in CAMPAIGN_CLICK_RESOURCES
             or name in PAGE_VIRTUAL_RESOURCES
+            or name in RESEARCH_VIRTUAL_RESOURCES
+            or name in DORM_VIRTUAL_RESOURCES
+            or name in BUILD_VIRTUAL_RESOURCES
+            or name in TACTICAL_VIRTUAL_RESOURCES
             or MISSION_NAVBAR_PATTERN.fullmatch(name)
             or COMMISSION_ROW_PATTERN.fullmatch(name)
+            or BUILD_SIDE_NAVBAR_PATTERN.fullmatch(name)
+            or BUILD_POOL_NAVBAR_PATTERN.fullmatch(name)
         )
 
     def begin_mission_reward(self, daily: bool, weekly: bool) -> None:
@@ -431,6 +580,15 @@ class AlasSemanticAdapter:
         self._package_gate()
         if self._mission_context is not None:
             raise SemanticGateClosed("nested ALAS mission flow is not allowed")
+        if any(
+            context is not None
+            for context in (
+                self._research_context,
+                self._dorm_context,
+                self._build_context,
+            )
+        ):
+            raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
         self._mission_context = _MissionFlowContext(
             daily=bool(daily),
             weekly=bool(weekly),
@@ -460,6 +618,9 @@ class AlasSemanticAdapter:
         if (
             self._mail_context is not None
             or self._mission_context is not None
+            or self._research_context is not None
+            or self._dorm_context is not None
+            or self._build_context is not None
             or self._commission_context is not None
         ):
             raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
@@ -478,6 +639,9 @@ class AlasSemanticAdapter:
             self._commission_context is not None
             or self._mail_context is not None
             or self._mission_context is not None
+            or self._research_context is not None
+            or self._dorm_context is not None
+            or self._build_context is not None
         ):
             raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
         self._commission_context = _CommissionFlowContext(
@@ -494,12 +658,81 @@ class AlasSemanticAdapter:
             self._commission_context is not None
             or self._mail_context is not None
             or self._mission_context is not None
+            or self._research_context is not None
+            or self._dorm_context is not None
+            or self._build_context is not None
         ):
             raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
         self._commission_context = _CommissionFlowContext(
             flow_kind="tactical",
             rewards_allowed=self._allow_tactical_rewards,
+            assign_budget=self._tactical_assign_budget,
         )
+
+    def begin_research(self) -> None:
+        self._package_gate()
+        if any(
+            context is not None
+            for context in (
+                self._mission_context,
+                self._mail_context,
+                self._commission_context,
+                self._research_context,
+                self._dorm_context,
+                self._build_context,
+            )
+        ):
+            raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
+        self._research_context = _ResearchFlowContext(
+            start_budget=self._research_start_budget,
+            reward_budget=self._research_reward_budget,
+        )
+
+    def end_research(self) -> None:
+        self._research_context = None
+
+    def begin_dorm(self) -> None:
+        self._package_gate()
+        if any(
+            context is not None
+            for context in (
+                self._mission_context,
+                self._mail_context,
+                self._commission_context,
+                self._research_context,
+                self._dorm_context,
+                self._build_context,
+            )
+        ):
+            raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
+        self._dorm_context = _DormFlowContext(
+            collect_budget=self._dorm_collect_budget,
+            feed_budget=self._dorm_feed_budget,
+        )
+
+    def end_dorm(self) -> None:
+        self._dorm_context = None
+
+    def begin_build(self) -> None:
+        self._package_gate()
+        if any(
+            context is not None
+            for context in (
+                self._mission_context,
+                self._mail_context,
+                self._commission_context,
+                self._research_context,
+                self._dorm_context,
+                self._build_context,
+            )
+        ):
+            raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
+        self._build_context = _BuildFlowContext(
+            submit_budget=self._build_submit_budget
+        )
+
+    def end_build(self) -> None:
+        self._build_context = None
 
     def end_commission(self) -> None:
         self._commission_context = None
@@ -710,6 +943,10 @@ class AlasSemanticAdapter:
             and name not in COMMISSION_VIRTUAL_RESOURCES
             and name not in CAMPAIGN_VIRTUAL_RESOURCES
             and name not in PAGE_VIRTUAL_RESOURCES
+            and name not in RESEARCH_VIRTUAL_RESOURCES
+            and name not in DORM_VIRTUAL_RESOURCES
+            and name not in BUILD_VIRTUAL_RESOURCES
+            and name not in TACTICAL_VIRTUAL_RESOURCES
         ):
             if (
                 self._mission_context is None
@@ -759,6 +996,11 @@ class AlasSemanticAdapter:
             if semantic_id == "main/task" and self._mission_context.entry_clicked:
                 return False
         if name in PAGE_VIRTUAL_RESOURCES:
+            if name == "RESEARCH_CHECK" and self._research_context is not None:
+                try:
+                    return len(self.oracle.research_projects()) == 5
+                except SemanticGateClosed:
+                    return False
             target = {
                 "BUILD_CHECK": "build/page/start",
                 "DORMMENU_CHECK": "dorm-menu/page/root",
@@ -768,6 +1010,178 @@ class AlasSemanticAdapter:
                 "TACTICAL_CHECK": "tactical/page/back",
             }[name]
             return self.oracle.exists(target)
+        if name in RESEARCH_VIRTUAL_RESOURCES and self._research_context is not None:
+            if name == "QUEUE_CHECK":
+                try:
+                    self.oracle.research_queue_state()
+                    return True
+                except SemanticGateClosed:
+                    return False
+            if name == "RESEARCH_GOTO_QUEUE":
+                return self.oracle.enabled("research/queue/enter")
+            if name in ("DETAIL_NEXT", "RESEARCH_COST_CHECKER"):
+                try:
+                    self.oracle.research_detail_state()
+                    return True
+                except SemanticGateClosed:
+                    return False
+            if name == "RESEARCH_START":
+                try:
+                    detail = self.oracle.research_detail_state()
+                except SemanticGateClosed:
+                    return False
+                return (
+                    detail.can_start
+                    and self._research_context.start_budget > 0
+                    and self._research_context.start_receipt is None
+                )
+            if name == "POPUP_CONFIRM":
+                context = self._research_context
+                cost = self.oracle.research_start_prompt_cost()
+                return bool(
+                    context.start_receipt is not None
+                    and context.start_confirm_receipt is None
+                    and context.start_budget > 0
+                    and cost is not None
+                    and cost
+                    == (context.pending_resource_id, context.pending_resource_required)
+                )
+            if name == "RESEARCH_UNAVAILABLE":
+                try:
+                    detail = self.oracle.research_detail_state()
+                except SemanticGateClosed:
+                    return False
+                return not detail.can_start
+            if name == "RESEARCH_STOP":
+                try:
+                    return self.oracle.research_detail_state().is_running
+                except SemanticGateClosed:
+                    return False
+            if name == "RESEARCH_QUEUE_ADD":
+                try:
+                    return bool(
+                        self._research_context.start_confirm_receipt is not None
+                        and self.oracle.research_detail_state().can_queue
+                    )
+                except SemanticGateClosed:
+                    return False
+            if name == "RESEARCH_DETAIL_QUIT":
+                return self.oracle.enabled("research/detail/root")
+            if name == "QUEUE_CLAIM_REWARD":
+                try:
+                    queue = self.oracle.research_queue_state()
+                except SemanticGateClosed:
+                    return False
+                return queue.reward_claimable and self._research_context.reward_budget > 0
+            if name in ("GET_ITEMS_1", "GET_ITEMS_2", "GET_ITEMS_3", "GET_ITEMS_RESEARCH_SAVE"):
+                return bool(
+                    self._research_context.reward_receipts
+                    and self._award_close_target() is not None
+                )
+            if name == "BACK_ARROW":
+                return self.oracle.enabled("research/page/back")
+        research_entrance = re.fullmatch(r"ENTRANCE_([1-5])", name)
+        if research_entrance is not None and self._research_context is not None:
+            slot = int(research_entrance.group(1))
+            try:
+                return any(
+                    project.slot == slot and project.button.actionable
+                    for project in self.oracle.research_projects()
+                )
+            except SemanticGateClosed:
+                return False
+        if name in DORM_VIRTUAL_RESOURCES and self._dorm_context is not None:
+            if name == "DORM_QUICK_COLLECT":
+                return (
+                    self._dorm_context.collect_budget > 0
+                    and self.oracle.enabled("dorm/collect")
+                )
+            if name == "DORM_FEED_ENTER":
+                if self.oracle.enabled("dorm/feed/close"):
+                    return True
+                return self.oracle.enabled("dorm/feed")
+            if name == "DORM_FEED_CHECK":
+                try:
+                    self.oracle.dorm_feed_state()
+                    return True
+                except SemanticGateClosed:
+                    return False
+            if name == "POPUP_CANCEL":
+                return self.oracle.enabled("dorm/feed/shop/cancel")
+        if name in BUILD_VIRTUAL_RESOURCES and self._build_context is not None:
+            if name == "BUILD_SUBMIT_ORDERS":
+                return self.oracle.enabled("build/page/start")
+            if name in ("BUILD_SUBMIT_WW_ORDERS", "BUILD_WW_CHECK", "SHOP_MEDAL_CHECK"):
+                return False
+            if name == "BUILD_QUEUE_EMPTY":
+                empty = self.oracle.build_queue_empty()
+                if not empty and self._build_context.submit_receipt is None:
+                    raise SemanticGateClosed(
+                        "construction queue must be empty before a bounded submit"
+                    )
+                return empty
+            if name == "BUILD_FINISH_ORDERS":
+                try:
+                    self.oracle.build_queue_timers()
+                    return True
+                except SemanticGateClosed:
+                    return False
+            if name == "BUILD_MINUS":
+                return self.oracle.enabled("build/prep/minus")
+            if name == "BUILD_PLUS":
+                return self.oracle.enabled("build/prep/add")
+            if name in ("POPUP_CONFIRM", "POPUP_CONFIRM_GACHA_ORDER"):
+                if self.oracle.enabled("build/warning/confirm"):
+                    return not self._build_context.warning_confirmed
+                return bool(
+                    self.oracle.enabled("build/prep/confirm")
+                    and self._build_context.submit_receipt is None
+                )
+            if name == "POPUP_CANCEL":
+                return bool(
+                    self.oracle.enabled("build/warning/cancel")
+                    or self.oracle.enabled("build/prep/cancel")
+                )
+        if (
+            name in TACTICAL_VIRTUAL_RESOURCES
+            and self._commission_context is not None
+            and self._commission_context.flow_kind == "tactical"
+        ):
+            if name == "ADD_NEW_STUDENT":
+                try:
+                    return len(self.oracle.tactical_slots()) < 4
+                except SemanticGateClosed:
+                    return False
+            if name == "DOCK_CHECK":
+                try:
+                    return bool(self.oracle.tactical_candidate_ships())
+                except SemanticGateClosed:
+                    return False
+            if name == "SKILL_CONFIRM":
+                try:
+                    return bool(self.oracle.tactical_skills())
+                except SemanticGateClosed:
+                    return False
+            if name == "BACK_ARROW":
+                return any(
+                    self.oracle.enabled(target)
+                    for target in (
+                        "tactical/dock/back",
+                        "tactical/page/back",
+                    )
+                )
+            if name in ("TACTICAL_CLASS_START", "TACTICAL_CLASS_CANCEL"):
+                target = (
+                    "tactical/book/start"
+                    if name == "TACTICAL_CLASS_START"
+                    else "tactical/book/cancel"
+                )
+                return self.oracle.enabled(target)
+            if name == "POPUP_CONFIRM":
+                return (
+                    self._commission_context.assign_budget > 0
+                    and self.oracle.enabled("tactical/course/confirm")
+                )
         if semantic_id is None and name == "CAMPAIGN_MENU_CHECK":
             return self.oracle.campaign_menu_is_entry()
         if semantic_id is None and name == "CAMPAIGN_CHECK":
@@ -955,6 +1369,20 @@ class AlasSemanticAdapter:
         self._package_gate()
         return self.oracle.research_projects()
 
+    def research_detail_state(self) -> ResearchDetailState:
+        self._package_gate()
+        return self.oracle.research_detail_state()
+
+    def research_queue_state(self) -> ResearchQueueState:
+        self._package_gate()
+        return self.oracle.research_queue_state()
+
+    def research_queue_empty_slots(self) -> int:
+        return self.research_queue_state().empty_slots
+
+    def research_queue_remaining_seconds(self) -> int:
+        return self.research_queue_state().first_remaining_seconds
+
     def build_selected_pool(self) -> BuildPool:
         self._package_gate()
         return self.oracle.build_selected_pool()
@@ -966,6 +1394,59 @@ class AlasSemanticAdapter:
     def dorm_state(self) -> DormState:
         self._package_gate()
         return self.oracle.dorm_state()
+
+    def dorm_feed_state(self) -> DormFeedState:
+        self._package_gate()
+        return self.oracle.dorm_feed_state()
+
+    def dorm_food_counts(self) -> Tuple[int, ...]:
+        return tuple(item.count for item in self.dorm_feed_state().items)
+
+    def dorm_feed_food(self, item_index: int, count: int) -> Tuple[ActionReceipt, ...]:
+        """Apply ALAS' chosen food/count through exact per-item Buttons."""
+
+        if item_index not in range(6):
+            raise ValueError("dorm food index must be 0 through 5")
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise ValueError("dorm feed count must be a non-negative integer")
+        if self._dorm_context is None:
+            raise SemanticGateClosed("dorm feed used outside ALAS dorm flow")
+        context = self._dorm_context
+        if count > context.feed_budget:
+            raise SemanticGateClosed("dorm feed count exceeds the remaining budget")
+        receipts = []
+        for _ in range(count):
+            before = self.oracle.dorm_feed_state()
+            item = before.items[item_index]
+            if item.count <= 0 or before.food + item.value > before.capacity:
+                raise SemanticGateClosed("dorm feed item is unavailable or would overflow")
+            receipt = self.oracle.click_dorm_food(item.item_id)
+            context.feed_budget -= 1
+            receipts.append(receipt)
+            deadline = time.monotonic() + 5.0
+            while True:
+                after = self.oracle.dorm_feed_state()
+                after_item = after.items[item_index]
+                if (
+                    after_item.count == item.count - 1
+                    and after.food == before.food + item.value
+                ):
+                    break
+                if time.monotonic() >= deadline:
+                    raise SemanticGateClosed("dorm feed mutation was not proven")
+                time.sleep(0.25)
+        return tuple(receipts)
+
+    def build_submit_state(self) -> BuildSubmitState:
+        self._package_gate()
+        return self.oracle.build_submit_state()
+
+    def build_coins_owned(self) -> int:
+        if self._build_context is None or self._build_context.coins_owned is None:
+            raise SemanticGateClosed(
+                "main coin count was not captured before Build entry"
+            )
+        return self._build_context.coins_owned
 
     def campaign_page_state(self) -> CampaignPageState:
         self._package_gate()
@@ -994,6 +1475,112 @@ class AlasSemanticAdapter:
     def tactical_remaining_seconds(self) -> Tuple[int, ...]:
         self._package_gate()
         return self.oracle.tactical_remaining_seconds()
+
+    def tactical_candidate_ships(self) -> Tuple[TacticalCandidateShipState, ...]:
+        self._package_gate()
+        return self.oracle.tactical_candidate_ships()
+
+    def tactical_skills(self) -> Tuple[TacticalSkillState, ...]:
+        self._package_gate()
+        return self.oracle.tactical_skills()
+
+    def tactical_select_suitable_ship(
+        self, min_level: int, start_index: int
+    ) -> bool:
+        context = self._require_commission_context()
+        if context.flow_kind != "tactical" or context.assign_budget <= 0:
+            raise SemanticGateClosed("tactical assignment requires a positive budget")
+        if min_level < 1 or start_index < 0:
+            raise ValueError("tactical ship selection bounds are invalid")
+        candidates = self.oracle.tactical_candidate_ships()
+        selected = next(
+            (
+                candidate
+                for candidate in candidates[start_index:]
+                if candidate.level >= min_level
+            ),
+            None,
+        )
+        if selected is None:
+            return False
+        receipt = self.oracle.click_tactical_ship(selected.ship_id)
+        self.oracle.wait_for(
+            "tactical/dock/confirm",
+            timeout_seconds=5.0,
+            minimum_generation=receipt.generation,
+        )
+        confirm = self.oracle.click("tactical/dock/confirm")
+        self.oracle.wait_for(
+            "tactical/skill/confirm",
+            timeout_seconds=8.0,
+            minimum_generation=confirm.generation,
+        )
+        return True
+
+    def tactical_select_first_trainable_skill(self) -> bool:
+        context = self._require_commission_context()
+        if context.flow_kind != "tactical" or context.assign_budget <= 0:
+            raise SemanticGateClosed("tactical assignment requires a positive budget")
+        skill = next(
+            (skill for skill in self.oracle.tactical_skills() if not skill.max_level),
+            None,
+        )
+        if skill is None:
+            return False
+        receipt = self.oracle.click_tactical_skill(skill.position)
+        self.oracle.wait_for(
+            "tactical/skill/confirm",
+            timeout_seconds=5.0,
+            minimum_generation=receipt.generation,
+        )
+        self.oracle.click("tactical/skill/confirm")
+        return True
+
+    def tactical_books(self) -> Tuple[TacticalBookState, ...]:
+        context = self._require_commission_context()
+        if context.flow_kind != "tactical":
+            raise SemanticGateClosed("tactical books require the tactical flow")
+        return self.oracle.tactical_books()
+
+    def tactical_select_book(self, position: int) -> ActionReceipt:
+        context = self._require_commission_context()
+        if context.flow_kind != "tactical" or context.assign_budget <= 0:
+            raise SemanticGateClosed("tactical assignment requires a positive budget")
+        before = self.oracle.tactical_books()
+        matches = tuple(book for book in before if book.position == position)
+        if len(matches) != 1 or matches[0].count <= 0:
+            raise SemanticGateClosed("selected tactical book is unavailable")
+        if matches[0].selected:
+            image = matches[0].image
+            assert image.bounds is not None
+            return ActionReceipt(
+                semantic_id="tactical/book/{0}".format(position),
+                generation=self.oracle.read_state().generation,
+                point=Point(
+                    (image.bounds.left + image.bounds.right) / 2.0,
+                    (image.bounds.top + image.bounds.bottom) / 2.0,
+                ),
+                bounds=image.bounds,
+                path=image.path,
+            )
+        receipt = self.oracle.click_tactical_book(position)
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            try:
+                current = self.oracle.tactical_books()
+            except SemanticGateClosed:
+                time.sleep(0.1)
+                continue
+            if any(book.position == position and book.selected for book in current):
+                return receipt
+            time.sleep(0.1)
+        raise SemanticGateClosed("tactical book selection was not observed")
+
+    def tactical_book_selected(self, position: int) -> bool:
+        return any(
+            book.position == position and book.selected
+            for book in self.tactical_books()
+        )
 
     def commission_rows(self) -> Tuple[CommissionRowState, ...]:
         self._package_gate()
@@ -1179,22 +1766,258 @@ class AlasSemanticAdapter:
         semantic_id = self._mappings.get(name)
         navbar_match = MISSION_NAVBAR_PATTERN.fullmatch(name)
         commission_row_match = COMMISSION_ROW_PATTERN.fullmatch(name)
+        build_side_navbar_match = BUILD_SIDE_NAVBAR_PATTERN.fullmatch(name)
+        build_pool_navbar_match = BUILD_POOL_NAVBAR_PATTERN.fullmatch(name)
         if (
             semantic_id is None
             and name not in MISSION_CLICK_RESOURCES
             and name not in MAIL_CLICK_RESOURCES
             and name not in CAMPAIGN_CLICK_RESOURCES
             and not (
+                self._research_context is not None
+                and name in RESEARCH_CLICK_RESOURCES
+            )
+            and not (
+                self._dorm_context is not None
+                and name in DORM_VIRTUAL_RESOURCES
+            )
+            and not (
+                self._build_context is not None
+                and name in BUILD_VIRTUAL_RESOURCES
+            )
+            and not (
+                self._commission_context is not None
+                and self._commission_context.flow_kind == "tactical"
+                and name in TACTICAL_VIRTUAL_RESOURCES
+            )
+            and not (
                 self._commission_context is not None
                 and name in COMMISSION_CLICK_RESOURCES
             )
             and navbar_match is None
             and commission_row_match is None
+            and not (
+                self._build_context is not None
+                and (
+                    build_side_navbar_match is not None
+                    or build_pool_navbar_match is not None
+                )
+            )
         ):
             raise AlasSemanticUnmapped(
                 "ALAS resource is not semantically mapped for input: {0}".format(name)
             )
         self._package_gate()
+        if self._build_context is not None and build_side_navbar_match is not None:
+            index = int(build_side_navbar_match.group(1))
+            if index not in (0, 1):
+                raise SemanticGateClosed(
+                    "construction side navigation input is outside build/queue"
+                )
+            return self.oracle.click_toggle(BUILD_SIDE_NAVBAR_TARGETS[index])
+        if self._build_context is not None and build_pool_navbar_match is not None:
+            index = int(build_pool_navbar_match.group(1))
+            target = BUILD_POOL_NAVBAR_TARGETS.get(index)
+            if target is None:
+                raise SemanticGateClosed("event construction pool is not qualified")
+            return self.oracle.click_toggle(target)
+        if (
+            self._commission_context is not None
+            and self._commission_context.flow_kind == "tactical"
+            and name in TACTICAL_VIRTUAL_RESOURCES
+        ):
+            context = self._commission_context
+            if name == "ADD_NEW_STUDENT":
+                if context.assign_budget <= 0:
+                    raise SemanticGateClosed(
+                        "tactical assignment requires a positive budget"
+                    )
+                occupied = {slot.slot for slot in self.oracle.tactical_slots()}
+                empty = next((slot for slot in range(1, 5) if slot not in occupied), None)
+                if empty is None:
+                    raise SemanticGateClosed("tactical class has no empty slot")
+                return self.oracle.click_tactical_empty_slot(empty)
+            if name == "BACK_ARROW":
+                targets = tuple(
+                    target
+                    for target in ("tactical/dock/back", "tactical/page/back")
+                    if self.oracle.enabled(target)
+                )
+                if len(targets) != 1:
+                    raise SemanticGateClosed("tactical back target is ambiguous")
+                return self.oracle.click(targets[0])
+            if name == "TACTICAL_CLASS_START":
+                if context.assign_budget <= 0:
+                    raise SemanticGateClosed(
+                        "tactical course start requires a positive budget"
+                    )
+                books = self.oracle.tactical_books()
+                selected = tuple(book for book in books if book.selected)
+                if len(selected) != 1 or selected[0].count <= 0:
+                    raise SemanticGateClosed(
+                        "tactical course start requires one available selected book"
+                    )
+                receipt = self.oracle.click("tactical/book/start")
+                return receipt
+            if name == "TACTICAL_CLASS_CANCEL":
+                return self.oracle.click("tactical/book/cancel")
+            if name == "POPUP_CONFIRM":
+                if context.assign_budget <= 0:
+                    raise SemanticGateClosed(
+                        "tactical course confirmation requires a positive budget"
+                    )
+                receipt = self.oracle.click("tactical/course/confirm")
+                context.assign_budget -= 1
+                return receipt
+            raise AlasSemanticUnmapped(
+                "tactical resource requires a typed workflow helper: {0}".format(name)
+            )
+        if self._research_context is not None and name in RESEARCH_CLICK_RESOURCES:
+            context = self._research_context
+            if name == "RESEARCH_GOTO_QUEUE":
+                return self.oracle.click("research/queue/enter")
+            if name == "RESEARCH_DETAIL_QUIT":
+                return self.oracle.click("research/detail/root")
+            if name == "RESEARCH_START":
+                detail = self.oracle.research_detail_state()
+                if (
+                    context.start_budget <= 0
+                    or context.start_receipt is not None
+                    or not detail.can_start
+                ):
+                    raise SemanticGateClosed(
+                        "research start requires sufficient resources and a positive budget"
+                    )
+                if context.selected_code is not None and detail.code != context.selected_code:
+                    raise SemanticGateClosed("selected research project identity changed")
+                receipt = self.oracle.click("research/detail/start")
+                context.start_receipt = receipt
+                context.start_confirm_receipt = None
+                context.pending_resource_id = detail.resource_id
+                context.pending_resource_required = detail.resource_required
+                return receipt
+            if name == "POPUP_CONFIRM":
+                expected = (
+                    context.pending_resource_id,
+                    context.pending_resource_required,
+                )
+                if (
+                    context.start_receipt is None
+                    or context.start_confirm_receipt is not None
+                    or context.start_budget <= 0
+                    or self.oracle.research_start_prompt_cost() != expected
+                ):
+                    raise SemanticGateClosed(
+                        "research start confirmation does not match the budgeted project"
+                    )
+                receipt = self.oracle.click("research/start/confirm")
+                context.start_budget -= 1
+                context.start_confirm_receipt = receipt
+                return receipt
+            if name == "RESEARCH_QUEUE_ADD":
+                if context.start_confirm_receipt is None:
+                    raise SemanticGateClosed(
+                        "research queue add requires a confirmed budgeted start"
+                    )
+                return self.oracle.click("research/detail/queue")
+            if name == "RESEARCH_STOP":
+                raise SemanticGateClosed("semantic research cancellation is not enabled")
+            if name == "QUEUE_CLAIM_REWARD":
+                queue = self.oracle.research_queue_state()
+                if not queue.reward_claimable or context.reward_budget <= 0:
+                    raise SemanticGateClosed("research reward requires a positive budget")
+                receipt = self.oracle.click("research/queue/claim")
+                context.reward_budget -= 1
+                context.reward_receipts.append(receipt)
+                return receipt
+            if name in (
+                "GET_ITEMS_1",
+                "GET_ITEMS_2",
+                "GET_ITEMS_3",
+                "GET_ITEMS_RESEARCH_SAVE",
+            ):
+                if not context.reward_receipts:
+                    raise SemanticGateClosed(
+                        "research reward popup requires a budgeted queue claim"
+                    )
+                target = self._award_close_target()
+                if target is None:
+                    raise SemanticGateClosed("reviewed research reward popup is absent")
+                receipt = self.oracle.click(target)
+                context.popup_close_receipts.append(receipt)
+                return receipt
+            if name == "BACK_ARROW":
+                return self.oracle.click("research/page/back")
+
+        if self._dorm_context is not None and name in DORM_VIRTUAL_RESOURCES:
+            context = self._dorm_context
+            if name == "DORM_QUICK_COLLECT":
+                if context.collect_budget <= 0:
+                    raise SemanticGateClosed("dorm collect requires a positive budget")
+                receipt = self.oracle.click("dorm/collect")
+                context.collect_budget -= 1
+                return receipt
+            if name == "DORM_FEED_ENTER":
+                if self.oracle.enabled("dorm/feed/close"):
+                    return self.oracle.click("dorm/feed/close")
+                return self.oracle.click("dorm/feed")
+            if name == "POPUP_CANCEL":
+                return self.oracle.click("dorm/feed/shop/cancel")
+            raise AlasSemanticUnmapped(
+                "ALAS dorm resource is observation-only: {0}".format(name)
+            )
+
+        if self._build_context is not None and name in BUILD_VIRTUAL_RESOURCES:
+            context = self._build_context
+            if name == "BUILD_SUBMIT_ORDERS":
+                receipt = self.oracle.click("build/page/start")
+                context.prep_opened = True
+                return receipt
+            if name == "BUILD_MINUS":
+                return self.oracle.click("build/prep/minus")
+            if name == "BUILD_PLUS":
+                return self.oracle.click("build/prep/add")
+            if name in (
+                "BUILD_QUEUE_EMPTY",
+                "BUILD_FINISH_ORDERS",
+                "BUILD_SUBMIT_WW_ORDERS",
+                "BUILD_WW_CHECK",
+                "SHOP_MEDAL_CHECK",
+            ):
+                raise SemanticGateClosed(
+                    "construction observation resource is not an admitted input"
+                )
+            if name == "POPUP_CANCEL":
+                target = (
+                    "build/warning/cancel"
+                    if self.oracle.enabled("build/warning/cancel")
+                    else "build/prep/cancel"
+                )
+                return self.oracle.click(target)
+            if name in ("POPUP_CONFIRM", "POPUP_CONFIRM_GACHA_ORDER"):
+                if self.oracle.enabled("build/warning/confirm"):
+                    if context.warning_confirmed:
+                        raise SemanticGateClosed(
+                            "construction warning was already confirmed once"
+                        )
+                    context.warning_confirmed = True
+                    return self.oracle.click("build/warning/confirm")
+                submit = self.oracle.build_submit_state()
+                if (
+                    context.submit_budget <= 0
+                    or submit.count != 1
+                    or submit.cubes_owned < submit.cubes_required
+                    or context.coins_owned is None
+                    or context.coins_owned < submit.coins_required
+                    or context.submit_receipt is not None
+                ):
+                    raise SemanticGateClosed(
+                        "construction submit requires one build, sufficient resources, and a positive budget"
+                    )
+                receipt = self.oracle.click("build/prep/confirm")
+                context.submit_budget -= 1
+                context.submit_receipt = receipt
+                return receipt
         if semantic_id is None and name == "GOTO_MAIN":
             target = self._goto_main_target()
             if target is None:
@@ -1205,6 +2028,41 @@ class AlasSemanticAdapter:
                 return self.oracle.click("mail/manage/back")
             return self.oracle.click("mail/manage")
         if semantic_id is not None:
+            if self._build_context is not None and semantic_id == "main/build":
+                self._build_context.coins_owned = self.oracle.main_gold()
+            if (
+                self._research_context is not None
+                and semantic_id.startswith("research/project/")
+            ):
+                slot = int(semantic_id.rsplit("/", 1)[1])
+                projects = self.oracle.research_projects()
+                matches = tuple(project for project in projects if project.slot == slot)
+                if len(matches) != 1:
+                    raise SemanticGateClosed("research project slot identity is ambiguous")
+                project = matches[0]
+                if project.status == ResearchProjectStatus.FINISHED:
+                    if self._research_context.reward_budget <= 0:
+                        raise SemanticGateClosed(
+                            "finished research claim requires a positive budget"
+                        )
+                    receipt = self.oracle.click_research_project(slot)
+                    self._research_context.reward_budget -= 1
+                    self._research_context.reward_receipts.append(receipt)
+                    self._research_context.selected_slot = None
+                    self._research_context.selected_code = None
+                    self._research_context.start_receipt = None
+                    self._research_context.start_confirm_receipt = None
+                    self._research_context.pending_resource_id = None
+                    self._research_context.pending_resource_required = None
+                    return receipt
+                receipt = self.oracle.click_research_project(slot)
+                self._research_context.selected_slot = slot
+                self._research_context.selected_code = project.code
+                self._research_context.start_receipt = None
+                self._research_context.start_confirm_receipt = None
+                self._research_context.pending_resource_id = None
+                self._research_context.pending_resource_required = None
+                return receipt
             if self._mission_context is not None:
                 if (
                     semantic_id == "main/more"
@@ -1467,6 +2325,47 @@ class AlasSemanticAdapter:
                 )
             return self.oracle.toggle_selected(mail_toggle)
 
+        build_side_match = BUILD_SIDE_NAVBAR_PATTERN.fullmatch(name)
+        if build_side_match is not None:
+            if self._build_context is None:
+                raise AlasSemanticUnmapped(
+                    "ALAS construction navbar used outside build flow"
+                )
+            index = int(build_side_match.group(1))
+            if index >= len(BUILD_SIDE_NAVBAR_TARGETS):
+                return False
+            selected = self.oracle.toggle_selected(
+                BUILD_SIDE_NAVBAR_TARGETS[index]
+            )
+            normalized_color = tuple(color)
+            if normalized_color == BUILD_SIDE_NAVBAR_ACTIVE_COLOR:
+                return selected
+            if normalized_color == BUILD_SIDE_NAVBAR_INACTIVE_COLOR:
+                return not selected
+            raise SemanticGateClosed(
+                "unexpected construction side-navbar color contract"
+            )
+
+        build_pool_match = BUILD_POOL_NAVBAR_PATTERN.fullmatch(name)
+        if build_pool_match is not None:
+            if self._build_context is None:
+                raise AlasSemanticUnmapped(
+                    "ALAS construction pool navbar used outside build flow"
+                )
+            index = int(build_pool_match.group(1))
+            target = BUILD_POOL_NAVBAR_TARGETS.get(index)
+            if target is None:
+                return False
+            selected = self.oracle.toggle_selected(target)
+            normalized_color = tuple(color)
+            if normalized_color == BUILD_POOL_NAVBAR_ACTIVE_COLOR:
+                return selected
+            if normalized_color == BUILD_POOL_NAVBAR_INACTIVE_COLOR:
+                return not selected
+            raise SemanticGateClosed(
+                "unexpected construction pool-navbar color contract"
+            )
+
         match = MISSION_NAVBAR_PATTERN.fullmatch(name)
         if match is None:
             raise AlasSemanticUnmapped(
@@ -1672,8 +2571,14 @@ class AlasSemanticSession:
         allow_mission_claim_once: bool = False,
         allow_mail_mutations: bool = False,
         allow_tactical_rewards: bool = False,
+        tactical_assign_budget: int = 0,
         commission_reward_budget: int = 0,
         commission_start_budget: int = 0,
+        research_reward_budget: int = 0,
+        research_start_budget: int = 0,
+        dorm_collect_budget: int = 0,
+        dorm_feed_budget: int = 0,
+        build_submit_budget: int = 0,
     ) -> None:
         if not serial:
             raise ValueError("semantic ALAS mode requires an ADB serial")
@@ -1687,8 +2592,14 @@ class AlasSemanticSession:
         self.allow_mail_mutations = bool(allow_mail_mutations)
         self.allow_tactical_rewards = bool(allow_tactical_rewards)
         for label, budget in (
+            ("tactical assign", tactical_assign_budget),
             ("commission reward", commission_reward_budget),
             ("commission start", commission_start_budget),
+            ("research reward", research_reward_budget),
+            ("research start", research_start_budget),
+            ("dorm collect", dorm_collect_budget),
+            ("dorm feed", dorm_feed_budget),
+            ("build submit", build_submit_budget),
         ):
             if (
                 isinstance(budget, bool)
@@ -1699,7 +2610,13 @@ class AlasSemanticSession:
                     "{0} budget must be a non-negative integer".format(label)
                 )
         self.commission_reward_budget = commission_reward_budget
+        self.tactical_assign_budget = tactical_assign_budget
         self.commission_start_budget = commission_start_budget
+        self.research_reward_budget = research_reward_budget
+        self.research_start_budget = research_start_budget
+        self.dorm_collect_budget = dorm_collect_budget
+        self.dorm_feed_budget = dorm_feed_budget
+        self.build_submit_budget = build_submit_budget
         self.bridge = AdbObserverBridge(serial, package, adb=adb)
         self.adapter: Optional[AlasSemanticAdapter] = None
 
@@ -1715,9 +2632,33 @@ class AlasSemanticSession:
         raw_reward_budget = os.environ.get(
             "ALAS_SEMANTIC_COMMISSION_REWARD_BUDGET", "0"
         )
+        raw_tactical_assign_budget = os.environ.get(
+            "ALAS_SEMANTIC_TACTICAL_ASSIGN_BUDGET", "0"
+        )
+        raw_research_reward_budget = os.environ.get(
+            "ALAS_SEMANTIC_RESEARCH_REWARD_BUDGET", "0"
+        )
+        raw_research_start_budget = os.environ.get(
+            "ALAS_SEMANTIC_RESEARCH_START_BUDGET", "0"
+        )
+        raw_dorm_collect_budget = os.environ.get(
+            "ALAS_SEMANTIC_DORM_COLLECT_BUDGET", "0"
+        )
+        raw_dorm_feed_budget = os.environ.get(
+            "ALAS_SEMANTIC_DORM_FEED_BUDGET", "0"
+        )
+        raw_build_submit_budget = os.environ.get(
+            "ALAS_SEMANTIC_BUILD_SUBMIT_BUDGET", "0"
+        )
         for label, value in (
+            ("tactical assign", raw_tactical_assign_budget),
             ("commission reward", raw_reward_budget),
             ("commission start", raw_start_budget),
+            ("research reward", raw_research_reward_budget),
+            ("research start", raw_research_start_budget),
+            ("dorm collect", raw_dorm_collect_budget),
+            ("dorm feed", raw_dorm_feed_budget),
+            ("build submit", raw_build_submit_budget),
         ):
             if re.fullmatch(r"0|[1-9][0-9]*", value) is None:
                 raise SemanticGateClosed(
@@ -1742,8 +2683,14 @@ class AlasSemanticSession:
             allow_tactical_rewards=(
                 os.environ.get("ALAS_SEMANTIC_ALLOW_TACTICAL_REWARDS") == "1"
             ),
+            tactical_assign_budget=int(raw_tactical_assign_budget),
             commission_reward_budget=int(raw_reward_budget),
             commission_start_budget=int(raw_start_budget),
+            research_reward_budget=int(raw_research_reward_budget),
+            research_start_budget=int(raw_research_start_budget),
+            dorm_collect_budget=int(raw_dorm_collect_budget),
+            dorm_feed_budget=int(raw_dorm_feed_budget),
+            build_submit_budget=int(raw_build_submit_budget),
         )
 
     def open(self) -> AlasSemanticAdapter:
@@ -1771,8 +2718,14 @@ class AlasSemanticSession:
                 allow_mission_claim_once=self.allow_mission_claim_once,
                 allow_mail_mutations=self.allow_mail_mutations,
                 allow_tactical_rewards=self.allow_tactical_rewards,
+                tactical_assign_budget=self.tactical_assign_budget,
                 commission_reward_budget=self.commission_reward_budget,
                 commission_start_budget=self.commission_start_budget,
+                research_reward_budget=self.research_reward_budget,
+                research_start_budget=self.research_start_budget,
+                dorm_collect_budget=self.dorm_collect_budget,
+                dorm_feed_budget=self.dorm_feed_budget,
+                build_submit_budget=self.build_submit_budget,
             )
             return self.adapter
         except Exception:
@@ -1831,6 +2784,18 @@ class AlasSemanticSession:
     def research_projects(self) -> Tuple[ResearchProjectState, ...]:
         return self.open().research_projects()
 
+    def research_detail_state(self) -> ResearchDetailState:
+        return self.open().research_detail_state()
+
+    def research_queue_state(self) -> ResearchQueueState:
+        return self.open().research_queue_state()
+
+    def research_queue_empty_slots(self) -> int:
+        return self.open().research_queue_empty_slots()
+
+    def research_queue_remaining_seconds(self) -> int:
+        return self.open().research_queue_remaining_seconds()
+
     def build_selected_pool(self) -> BuildPool:
         return self.open().build_selected_pool()
 
@@ -1839,6 +2804,21 @@ class AlasSemanticSession:
 
     def dorm_state(self) -> DormState:
         return self.open().dorm_state()
+
+    def dorm_feed_state(self) -> DormFeedState:
+        return self.open().dorm_feed_state()
+
+    def dorm_food_counts(self) -> Tuple[int, ...]:
+        return self.open().dorm_food_counts()
+
+    def dorm_feed_food(self, item_index: int, count: int) -> Tuple[ActionReceipt, ...]:
+        return self.open().dorm_feed_food(item_index, count)
+
+    def build_submit_state(self) -> BuildSubmitState:
+        return self.open().build_submit_state()
+
+    def build_coins_owned(self) -> int:
+        return self.open().build_coins_owned()
 
     def campaign_page_state(self) -> CampaignPageState:
         return self.open().campaign_page_state()
@@ -1857,6 +2837,27 @@ class AlasSemanticSession:
 
     def tactical_remaining_seconds(self) -> Tuple[int, ...]:
         return self.open().tactical_remaining_seconds()
+
+    def tactical_candidate_ships(self) -> Tuple[TacticalCandidateShipState, ...]:
+        return self.open().tactical_candidate_ships()
+
+    def tactical_skills(self) -> Tuple[TacticalSkillState, ...]:
+        return self.open().tactical_skills()
+
+    def tactical_books(self) -> Tuple[TacticalBookState, ...]:
+        return self.open().tactical_books()
+
+    def tactical_select_book(self, position: int) -> ActionReceipt:
+        return self.open().tactical_select_book(position)
+
+    def tactical_book_selected(self, position: int) -> bool:
+        return self.open().tactical_book_selected(position)
+
+    def tactical_select_suitable_ship(self, min_level: int, start_index: int) -> bool:
+        return self.open().tactical_select_suitable_ship(min_level, start_index)
+
+    def tactical_select_first_trainable_skill(self) -> bool:
+        return self.open().tactical_select_first_trainable_skill()
 
     def commission_rows(self) -> Tuple[CommissionRowState, ...]:
         return self.open().commission_rows()
@@ -1912,10 +2913,28 @@ class AlasSemanticSession:
             and name not in CAMPAIGN_CLICK_RESOURCES
             and not (
                 self.adapter is not None
+                and name in RESEARCH_CLICK_RESOURCES
+            )
+            and not (
+                self.adapter is not None
+                and name in DORM_VIRTUAL_RESOURCES
+            )
+            and not (
+                self.adapter is not None
+                and name in BUILD_VIRTUAL_RESOURCES
+            )
+            and not (
+                self.adapter is not None
+                and name in TACTICAL_VIRTUAL_RESOURCES
+            )
+            and not (
+                self.adapter is not None
                 and name in COMMISSION_CLICK_RESOURCES
             )
             and MISSION_NAVBAR_PATTERN.fullmatch(name) is None
             and COMMISSION_ROW_PATTERN.fullmatch(name) is None
+            and BUILD_SIDE_NAVBAR_PATTERN.fullmatch(name) is None
+            and BUILD_POOL_NAVBAR_PATTERN.fullmatch(name) is None
         ):
             raise AlasSemanticUnmapped(
                 "ALAS resource is not semantically mapped for input: {0}".format(name)
@@ -1957,6 +2976,27 @@ class AlasSemanticSession:
     def end_tactical(self) -> None:
         if self.adapter is not None:
             self.adapter.end_commission()
+
+    def begin_research(self) -> None:
+        self.open().begin_research()
+
+    def end_research(self) -> None:
+        if self.adapter is not None:
+            self.adapter.end_research()
+
+    def begin_dorm(self) -> None:
+        self.open().begin_dorm()
+
+    def end_dorm(self) -> None:
+        if self.adapter is not None:
+            self.adapter.end_dorm()
+
+    def begin_build(self) -> None:
+        self.open().begin_build()
+
+    def end_build(self) -> None:
+        if self.adapter is not None:
+            self.adapter.end_build()
 
     def run_mission_reward(
         self,

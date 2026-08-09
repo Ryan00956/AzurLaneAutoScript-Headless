@@ -4,6 +4,40 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-09
 
+### G9 five bounded mutation inputs: adapter-qualified; full ALAS replay pending
+
+- The pinned patch now brackets the original Tactical, Research, Dorm, and
+  Gacha `run()` implementations without replacing their state machines. ALAS
+  still owns ship/book/project/food/pool filtering, retry and popup loops,
+  queue filling, and scheduling; semantic mode replaces only reviewed
+  observations, OCR values, and exact input endpoints.
+- The five completed input slices are read-only research selection alignment,
+  one bounded research start, full research queue/reward/scheduling I/O,
+  tactical course assignment, and dorm collect/feed plus one construction
+  submit. Every mutating slice is default-closed behind an integer budget.
+- Live adapter passes assigned `Hipper` with skill `荆棘与坚盾` and a matching
+  T4 book; claimed five queued research completions and one finished card,
+  then started exact project `G-412` after matching its `1500`-coin prompt.
+- Dorm quick collect used its exact control. Feed input targets the food-card
+  `icon_bg`, not the adjacent purchase `+`, and proved inventory
+  `17783 -> 17782` plus food `0 -> 1000`.
+- Construction selected the heavy pool, cross-checked `3662` cubes and `84908`
+  coins against the exact one-order `2`-cube/`1500`-coin prompt, and reached a
+  typed queue countdown. A later read-only ALAS primitive check identified the
+  selected queue tab and timers `99:99:99` / `01:19:31`; a fresh bounded
+  context rejected that pre-existing nonempty queue as designed.
+- Observer APK SHA-256 is
+  `bfd782b307de51621dfd8f796962e25ffbc7bbba12b60e8204631c6ba15729fc`.
+  The final G4 package/observer evidence is
+  `evidence/g4-game-init-20260809T114938Z-emulator-5580`. The controller suite
+  passes `162/162`; Python compilation, diff whitespace, native observer build,
+  installation, package fingerprint, and clean application plus compilation
+  of the pinned ALAS patch pass.
+- Complete patched-ALAS command replays for these four task modules remain the
+  next gate. Event/wishing-well construction, multi-order submission,
+  accelerating or collecting an existing queue, stage selection, map/battle
+  input, and Lua state remain closed.
+
 ### G8 real ALAS reward and commission slice: clean bounded pass
 
 - A clean checkout of pinned upstream ALAS commit

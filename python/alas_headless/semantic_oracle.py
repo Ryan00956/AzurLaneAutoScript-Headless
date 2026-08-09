@@ -420,6 +420,78 @@ class ResearchProjectState:
     button: ButtonState
 
 
+@dataclass(frozen=True)
+class ResearchDetailState:
+    code: str
+    subtitle: str
+    duration_seconds: int
+    resource_id: str
+    resource_owned: int
+    resource_required: int
+    requirement: str
+    can_start: bool
+    can_queue: bool
+    is_running: bool
+    is_finished: bool
+
+
+@dataclass(frozen=True)
+class ResearchQueueEntryState:
+    slot: int
+    code: str
+    series: int
+    status: ResearchProjectStatus
+    remaining_seconds: int
+
+
+@dataclass(frozen=True)
+class ResearchQueueState:
+    entries: Tuple[ResearchQueueEntryState, ...]
+    reward_claimable: bool
+
+    @property
+    def empty_slots(self) -> int:
+        return 5 - len(self.entries)
+
+    @property
+    def finished_count(self) -> int:
+        return sum(
+            entry.status == ResearchProjectStatus.FINISHED
+            for entry in self.entries
+        )
+
+    @property
+    def first_remaining_seconds(self) -> int:
+        for entry in self.entries:
+            if entry.status == ResearchProjectStatus.RUNNING:
+                return entry.remaining_seconds
+        return 0
+
+
+@dataclass(frozen=True)
+class DormFoodState:
+    item_id: int
+    value: int
+    count: int
+    button: ButtonState
+
+
+@dataclass(frozen=True)
+class DormFeedState:
+    food: int
+    capacity: int
+    items: Tuple[DormFoodState, ...]
+
+
+@dataclass(frozen=True)
+class BuildSubmitState:
+    count: int
+    cubes_owned: int
+    cubes_required: int
+    coins_required: int
+    confirm: ButtonState
+
+
 class TacticalSlotStatus(str, Enum):
     RUNNING = "running"
     FINISHED = "finished"
@@ -438,6 +510,36 @@ class TacticalSlotState:
     status: TacticalSlotStatus
     remaining_seconds: Optional[int]
     button: ButtonState
+
+
+@dataclass(frozen=True)
+class TacticalCandidateShipState:
+    position: int
+    ship_id: int
+    ship_name: str
+    level: int
+    button: ButtonState
+
+
+@dataclass(frozen=True)
+class TacticalSkillState:
+    position: int
+    name: str
+    level_text: str
+    max_level: bool
+    button: ButtonState
+
+
+@dataclass(frozen=True)
+class TacticalBookState:
+    position: int
+    item_id: str
+    genre: int
+    tier: int
+    exp_bonus: bool
+    count: int
+    selected: bool
+    image: ImageState
 
 
 DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
@@ -502,6 +604,21 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
         "CourtYardUI(Clone)/main/bottomPanel/bottomleft/feed_btn",
     ),
     SemanticTarget(
+        "dorm/collect",
+        "onekey",
+        "CourtYardUI(Clone)/main/rightPanel/onekey",
+    ),
+    SemanticTarget(
+        "dorm/feed/close",
+        "close",
+        "BackYardFeedUI(Clone)/close",
+    ),
+    SemanticTarget(
+        "dorm/feed/shop/cancel",
+        "cancel_btn",
+        "BackYardFeedUI(Clone)/BackYardFeedShopPanel(Clone)/frame/cancel_btn",
+    ),
+    SemanticTarget(
         "dorm/statistics/confirm",
         "confirm_btn",
         "BackYardStatisticsUI(Clone)/painting/confirm_btn",
@@ -510,6 +627,46 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
         "build/page/start",
         "start_btn",
         "BuildShipUI(Clone)/BuildShipPoolsPageUI(Clone)/gallery/start_btn",
+    ),
+    SemanticTarget(
+        "build/warning/cancel",
+        "custom_button_2(Clone)",
+        "Msgbox(Clone)/window/button_container/custom_button_2(Clone)",
+    ),
+    SemanticTarget(
+        "build/warning/confirm",
+        "custom_button_1(Clone)",
+        "Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
+    ),
+    SemanticTarget(
+        "build/prep/confirm",
+        "confirm_btn",
+        "BuildShipMsgBoxUI(Clone)/window/btns/confirm_btn",
+    ),
+    SemanticTarget(
+        "build/prep/cancel",
+        "cancel_btn",
+        "BuildShipMsgBoxUI(Clone)/window/btns/cancel_btn",
+    ),
+    SemanticTarget(
+        "build/prep/close",
+        "close_btn",
+        "BuildShipMsgBoxUI(Clone)/window/close_btn",
+    ),
+    SemanticTarget(
+        "build/prep/minus",
+        "minus",
+        "BuildShipMsgBoxUI(Clone)/window/content/calc_panel/minus",
+    ),
+    SemanticTarget(
+        "build/prep/add",
+        "add",
+        "BuildShipMsgBoxUI(Clone)/window/content/calc_panel/add",
+    ),
+    SemanticTarget(
+        "build/prep/max",
+        "max",
+        "BuildShipMsgBoxUI(Clone)/window/content/max",
     ),
     SemanticTarget(
         "build/page/back",
@@ -552,14 +709,99 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
         "TechnologyUI(Clone)/blur_panel/adapt/top/back",
     ),
     SemanticTarget(
+        "research/queue/enter",
+        "btn_queue",
+        "TechnologyUI(Clone)/blur_panel/adapt/left/btn_queue",
+    ),
+    SemanticTarget(
+        "research/queue/claim",
+        "btn_award",
+        "TechnologyUI(Clone)/blur_panel/adapt/right/btn_award",
+    ),
+    SemanticTarget(
+        "research/detail/root",
+        "selecte_panel",
+        "TechnologyUI(Clone)/main/base_page/selecte_panel",
+    ),
+    SemanticTarget(
+        "research/detail/start",
+        "start_btn",
+        "TechnologyUI(Clone)/main/base_page/selecte_panel/technology_card/frame/btns/start_btn",
+    ),
+    SemanticTarget(
+        "research/detail/stop",
+        "stop_btn",
+        "TechnologyUI(Clone)/main/base_page/selecte_panel/technology_card/frame/btns/stop_btn",
+    ),
+    SemanticTarget(
+        "research/detail/finish",
+        "finish_btn",
+        "TechnologyUI(Clone)/main/base_page/selecte_panel/technology_card/frame/btns/finish_btn",
+    ),
+    SemanticTarget(
+        "research/detail/queue",
+        "queue_btn",
+        "TechnologyUI(Clone)/main/base_page/selecte_panel/technology_card/frame/btns/queue_btn",
+    ),
+    SemanticTarget(
         "tactical/page/back",
         "btnBack",
         "NewNavalTacticsUI(Clone)/adpter/frame/btnBack",
     ),
     SemanticTarget(
+        "tactical/dock/back",
+        "back",
+        "Overlay/UIMain/blur_panel/adapt/top/back",
+    ),
+    SemanticTarget(
+        "tactical/dock/confirm",
+        "confirm_button",
+        "Overlay/UIMain/blur_panel/select_panel/confirm_button",
+    ),
+    SemanticTarget(
+        "tactical/dock/cancel",
+        "cancel_button",
+        "Overlay/UIMain/blur_panel/select_panel/cancel_button",
+    ),
+    SemanticTarget(
+        "tactical/skill/confirm",
+        "confirm_btn",
+        "NewNavalTacticsSkillsPage(Clone)/frame/confirm_btn",
+    ),
+    SemanticTarget(
+        "tactical/book/start",
+        "confirm_btn",
+        "NewNavalTacticsLessonPage(Clone)/confirm_btn",
+    ),
+    SemanticTarget(
+        "tactical/book/cancel",
+        "cancel_btn",
+        "NewNavalTacticsLessonPage(Clone)/cancel_btn",
+    ),
+    SemanticTarget(
         "tactical/continue/cancel",
         "custom_button_2(Clone)",
         "Msgbox(Clone)/window/button_container/custom_button_2(Clone)",
+    ),
+    SemanticTarget(
+        "tactical/course/cancel",
+        "custom_button_2(Clone)",
+        "Msgbox(Clone)/window/button_container/custom_button_2(Clone)",
+    ),
+    SemanticTarget(
+        "tactical/course/confirm",
+        "custom_button_1(Clone)",
+        "Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
+    ),
+    SemanticTarget(
+        "research/start/cancel",
+        "custom_button_2(Clone)",
+        "Msgbox(Clone)/window/button_container/custom_button_2(Clone)",
+    ),
+    SemanticTarget(
+        "research/start/confirm",
+        "custom_button_1(Clone)",
+        "Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
     ),
     SemanticTarget(
         "overlay/network-reconnect/cancel",
@@ -764,6 +1006,16 @@ DEFAULT_TOGGLE_TARGETS: Tuple[SemanticToggleTarget, ...] = (
         "Overlay/UIMain/blur_panel/adapt/left_length/frame/tagRoot/queue_btn",
     ),
     SemanticToggleTarget(
+        "build/nav/support",
+        "support_btn",
+        "Overlay/UIMain/blur_panel/adapt/left_length/frame/tagRoot/support_btn",
+    ),
+    SemanticToggleTarget(
+        "build/nav/unseam",
+        "unseam_btn",
+        "Overlay/UIMain/blur_panel/adapt/left_length/frame/tagRoot/unseam_btn",
+    ),
+    SemanticToggleTarget(
         "build/pool/light",
         "frame",
         "BuildShipUI(Clone)/BuildShipPoolsPageUI(Clone)/gallery/toggle_bg/bg/"
@@ -931,10 +1183,21 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
         (
             "build/nav/pools",
             "build/nav/queue",
+            "build/nav/support",
+            "build/nav/unseam",
             "build/pool/light",
             "build/pool/heavy",
             "build/pool/special",
             "build/page/back",
+            "build/page/start",
+            "build/warning/cancel",
+            "build/warning/confirm",
+            "build/prep/confirm",
+            "build/prep/cancel",
+            "build/prep/close",
+            "build/prep/minus",
+            "build/prep/add",
+            "build/prep/max",
         ),
     ),
     BlockerRule(
@@ -943,6 +1206,18 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
         (
             "campaign-menu/page/back",
             "campaign-menu/normal",
+        ),
+    ),
+    BlockerRule(
+        "build-prep",
+        "/BuildShipMsgBoxUI(Clone)/",
+        (
+            "build/prep/confirm",
+            "build/prep/cancel",
+            "build/prep/close",
+            "build/prep/minus",
+            "build/prep/add",
+            "build/prep/max",
         ),
     ),
     BlockerRule(
@@ -968,7 +1243,35 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
             "dorm/page/manage",
             "dorm/train",
             "dorm/feed",
+            "dorm/collect",
             "dorm/statistics/confirm",
+            "dorm/feed/close",
+            "dorm/feed/item/50001",
+            "dorm/feed/item/50002",
+            "dorm/feed/item/50003",
+            "dorm/feed/item/50004",
+            "dorm/feed/item/50005",
+            "dorm/feed/item/50006",
+            "dorm/feed/shop/cancel",
+            "dorm/feed/shop/cancel",
+        ),
+    ),
+    BlockerRule(
+        "dorm-feed-shop",
+        "/BackYardFeedShopPanel(Clone)/",
+        ("dorm/feed/shop/cancel",),
+    ),
+    BlockerRule(
+        "dorm-feed",
+        "/BackYardFeedUI(Clone)/",
+        (
+            "dorm/feed/close",
+            "dorm/feed/item/50001",
+            "dorm/feed/item/50002",
+            "dorm/feed/item/50003",
+            "dorm/feed/item/50004",
+            "dorm/feed/item/50005",
+            "dorm/feed/item/50006",
         ),
     ),
     BlockerRule(
@@ -991,6 +1294,17 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
             "research/project/3",
             "research/project/4",
             "research/project/5",
+            "research/queue/enter",
+            "research/queue/claim",
+            "research/detail/root",
+            "research/detail/start",
+            "research/detail/stop",
+            "research/detail/finish",
+            "research/detail/queue",
+            "reward/award-info/close",
+            "reward/award-info1/close",
+            "research/start/cancel",
+            "research/start/confirm",
         ),
     ),
     BlockerRule(
@@ -998,8 +1312,45 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
         "/Msgbox(Clone)/",
         (
             "tactical/continue/cancel",
+            "tactical/course/cancel",
+            "tactical/course/confirm",
+            "research/start/cancel",
+            "research/start/confirm",
             "overlay/network-reconnect/cancel",
             "overlay/network-reconnect/confirm",
+            "build/warning/cancel",
+            "build/warning/confirm",
+        ),
+    ),
+    BlockerRule(
+        "tactical-dock",
+        "/DockyardUI(Clone)/",
+        (
+            "tactical/dock/back",
+            "tactical/dock/confirm",
+            "tactical/dock/cancel",
+            "tactical/dock/ship",
+            "tactical/skill/item",
+            "tactical/skill/confirm",
+        ),
+    ),
+    BlockerRule(
+        "tactical-skill",
+        "/NewNavalTacticsSkillsPage(Clone)/",
+        (
+            "tactical/skill/item",
+            "tactical/skill/confirm",
+        ),
+    ),
+    BlockerRule(
+        "tactical-book",
+        "/NewNavalTacticsLessonPage(Clone)/",
+        (
+            "tactical/book/item",
+            "tactical/book/start",
+            "tactical/book/cancel",
+            "tactical/course/cancel",
+            "tactical/course/confirm",
         ),
     ),
     BlockerRule(
@@ -1008,6 +1359,21 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
         (
             "tactical/page/back",
             "tactical/continue/cancel",
+            "tactical/course/cancel",
+            "tactical/course/confirm",
+            "tactical/slot/1",
+            "tactical/slot/2",
+            "tactical/slot/3",
+            "tactical/slot/4",
+            "tactical/dock/back",
+            "tactical/dock/confirm",
+            "tactical/dock/cancel",
+            "tactical/dock/ship",
+            "tactical/skill/item",
+            "tactical/skill/confirm",
+            "tactical/book/item",
+            "tactical/book/start",
+            "tactical/book/cancel",
         ),
     ),
 )
@@ -1722,6 +2088,49 @@ class SemanticOracle:
             images=tuple(self._parse_image(raw) for raw in raw_images),
         )
 
+    def read_text_state(self) -> UiState:
+        """Read a complete text slice while ignoring unrelated UI-type caps."""
+
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("game activity is not top-resumed")
+        ui_snapshot = self._request("GET /v1/ui\n")
+        if not isinstance(ui_snapshot, dict):
+            raise ObserverTransportError("UI observer response is not a mapping")
+        self._validate_identity(ui_snapshot, UI_SCHEMA)
+        if ui_snapshot.get("schema") != 1:
+            raise SemanticGateClosed("UI snapshot schema mismatch")
+        if ui_snapshot.get("text_truncated") is not False:
+            raise SemanticGateClosed("text snapshot is truncated")
+        if self._integer(ui_snapshot.get("error_count"), "UI error_count") != 0:
+            raise SemanticGateClosed("UI snapshot contains extraction errors")
+        raw_texts = ui_snapshot.get("texts")
+        if not isinstance(raw_texts, list) or self._integer(
+            ui_snapshot.get("text_count"), "text_count"
+        ) != len(raw_texts):
+            raise SemanticGateClosed("text record list is malformed")
+        method_mask = self._integer(ui_snapshot.get("method_mask"), "UI method_mask")
+        if method_mask & 0x6 == 0:
+            raise SemanticGateClosed("no typed Unity text accessor is available")
+        generation = self._integer(ui_snapshot.get("generation"), "UI generation")
+        if self._last_generation is not None and generation < self._last_generation:
+            raise SemanticGateClosed("observer generation moved backwards")
+        self._last_generation = generation
+        skipped_count = self._integer(
+            ui_snapshot.get("skipped_count"), "UI skipped_count"
+        )
+        if skipped_count < 0:
+            raise SemanticGateClosed("UI skipped_count is negative")
+        return UiState(
+            generation=generation,
+            method_mask=method_mask,
+            skipped_count=skipped_count,
+            image_truncated=bool(ui_snapshot.get("image_truncated")),
+            snapshot=ui_snapshot,
+            toggles=(),
+            texts=tuple(self._parse_text(raw) for raw in raw_texts),
+            images=(),
+        )
+
     @staticmethod
     def _bounds_overlap(left: Bounds, right: Bounds) -> float:
         width = max(0.0, min(left.right, right.right) - max(left.left, right.left))
@@ -1888,7 +2297,7 @@ class SemanticOracle:
         ):
             raise SemanticGateClosed("mail page identity is not safely actionable")
 
-        ui_state = self.read_ui_state()
+        ui_state = self.read_text_state()
         suffix = (
             "MailUI(Clone)/adapt/main/content/left/left_content/top/count"
         )
@@ -1944,6 +2353,29 @@ class SemanticOracle:
         if len(matches) != 1 or re.fullmatch(r"[1-9]\d{0,2}", matches[0].text) is None:
             raise SemanticGateClosed("main mail unread badge is malformed or ambiguous")
         return int(matches[0].text)
+
+    def main_gold(self) -> int:
+        """Read the exact main-screen coin counter before entering Build."""
+
+        button_state = self.read_state()
+        build = self._unique(button_state, "main/build")
+        if not build.actionable or self._blocking_rules(button_state, "main/build"):
+            raise SemanticGateClosed("main build entry identity is not proven")
+        ui_state = self.read_ui_state()
+        matches = tuple(
+            item
+            for item in ui_state.texts
+            if item.path.endswith(
+                "NewMainMellowTheme(Clone)/frame/top/res/gold/Text"
+            )
+            and item.active_in_hierarchy
+            and item.active_and_enabled
+            and not item.truncated
+            and item.bounds is not None
+        )
+        if len(matches) != 1 or re.fullmatch(r"[0-9]+", matches[0].text.strip()) is None:
+            raise SemanticGateClosed("main coin counter is absent or malformed")
+        return int(matches[0].text.strip())
 
     def main_red_dot(self, semantic_id: str) -> bool:
         """Read a reviewed main-menu ``reddot`` marker without using pixels."""
@@ -2953,6 +3385,131 @@ class SemanticOracle:
             coins_per_build=values["coins"],
         )
 
+    def build_submit_state(self) -> BuildSubmitState:
+        """Read and cross-check the open construction confirmation dialog."""
+
+        button_state = self.read_state()
+        confirm = self._unique(button_state, "build/prep/confirm")
+        cancel = self._unique(button_state, "build/prep/cancel")
+        if (
+            not confirm.actionable
+            or not cancel.actionable
+            or self._blocking_rules(button_state, "build/prep/confirm")
+        ):
+            raise SemanticGateClosed("construction confirmation identity is not proven")
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("construction confirmation snapshots are not coherent")
+
+        def exact_text(path: str) -> str:
+            matches = tuple(
+                item
+                for item in ui_state.texts
+                if item.path.endswith(path)
+                and item.active_in_hierarchy
+                and item.active_and_enabled
+                and not item.truncated
+                and item.bounds is not None
+            )
+            if len(matches) != 1:
+                raise SemanticGateClosed(
+                    "construction confirmation text is absent or ambiguous"
+                )
+            return re.sub(r"<[^>]*>", "", matches[0].text).strip()
+
+        count_text = exact_text(
+            "BuildShipMsgBoxUI(Clone)/window/content/calc_panel/Text"
+        )
+        message = exact_text("BuildShipMsgBoxUI(Clone)/window/content/Text")
+        count_match = re.fullmatch(r"([1-9][0-9]?)", count_text)
+        cost_match = re.fullmatch(
+            r"建造「([1-9][0-9]?)艘」.+需要消耗:\s*"
+            r"「([1-9][0-9]*)物资」和「([1-9][0-9]*)个心智魔方」",
+            message,
+        )
+        if count_match is None or cost_match is None:
+            raise SemanticGateClosed("construction confirmation cost is malformed")
+        count = int(count_match.group(1))
+        message_count, coins, cubes = map(int, cost_match.groups())
+        if message_count != count:
+            raise SemanticGateClosed("construction confirmation count is inconsistent")
+
+        costs = self.build_costs()
+        if (
+            cubes != costs.cubes_per_build * count
+            or coins != costs.coins_per_build * count
+        ):
+            raise SemanticGateClosed("construction confirmation cost changed unexpectedly")
+        return BuildSubmitState(
+            count=count,
+            cubes_owned=costs.cubes_owned,
+            cubes_required=cubes,
+            coins_required=coins,
+            confirm=confirm,
+        )
+
+    def build_queue_timers(self) -> Tuple[str, ...]:
+        """Read the pinned two-slot construction queue without mutating it."""
+
+        button_state = self.read_state()
+        back = self._unique(button_state, "build/page/back")
+        if not back.actionable or self._blocking_rules(
+            button_state, "build/nav/queue"
+        ):
+            raise SemanticGateClosed("construction queue page identity is not proven")
+        if not self.toggle_selected("build/nav/queue"):
+            raise SemanticGateClosed("construction queue tab is not selected")
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("construction queue snapshots are not coherent")
+        capacity = tuple(
+            item
+            for item in ui_state.texts
+            if item.path.endswith("BuildShipDetailUI1(Clone)/title/value")
+            and item.active_in_hierarchy
+            and item.active_and_enabled
+            and not item.truncated
+            and item.bounds is not None
+        )
+        if len(capacity) != 1 or capacity[0].text.strip() != "2":
+            raise SemanticGateClosed("construction queue capacity is unexpected")
+        timer_pattern = re.compile(
+            r"BuildShipDetailUI1\(Clone\)/list_single_line/content/"
+            r"project_([12])/frame/buiding/timer/Text$"
+        )
+        timers: Dict[int, str] = {}
+        for item in ui_state.texts:
+            match = timer_pattern.search(item.path)
+            if (
+                match is None
+                or not item.active_in_hierarchy
+                or not item.active_and_enabled
+                or item.truncated
+                or item.bounds is None
+            ):
+                continue
+            index = int(match.group(1))
+            if index in timers:
+                raise SemanticGateClosed("construction queue timer is ambiguous")
+            value = item.text.strip()
+            if value != "99:99:99" and re.fullmatch(
+                r"[0-9]{2}:[0-5][0-9]:[0-5][0-9]", value
+            ) is None:
+                raise SemanticGateClosed("construction queue timer is malformed")
+            timers[index] = value
+        if tuple(sorted(timers)) != (1, 2):
+            raise SemanticGateClosed("construction queue timers are incomplete")
+        return tuple(timers[index] for index in (1, 2))
+
+    def build_queue_empty(self) -> bool:
+        return all(value == "99:99:99" for value in self.build_queue_timers())
+
     def campaign_menu_is_entry(self) -> bool:
         """Identify the campaign entrance without conflating the chapter page."""
 
@@ -3151,6 +3708,531 @@ class SemanticOracle:
             food_countdown_seconds=countdown,
         )
 
+    def dorm_feed_state(self) -> DormFeedState:
+        """Read the open dorm feed panel without changing inventory."""
+
+        button_state = self.read_state()
+        close = self._unique(button_state, "dorm/feed/close")
+        if not close.actionable or self._blocking_rules(
+            button_state, "dorm/feed/close"
+        ):
+            raise SemanticGateClosed("dorm feed panel identity is not proven")
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("dorm feed snapshots are not coherent")
+
+        def exact_text(path: str) -> str:
+            matches = tuple(
+                item
+                for item in ui_state.texts
+                if item.path.endswith(path)
+                and item.active_in_hierarchy
+                and item.active_and_enabled
+                and not item.truncated
+                and item.bounds is not None
+            )
+            if len(matches) != 1:
+                raise SemanticGateClosed(
+                    "dorm feed text is absent or ambiguous: " + path
+                )
+            return re.sub(r"<[^>]*>", "", matches[0].text).strip()
+
+        fill = re.fullmatch(
+            r"([0-9]+)/([1-9][0-9]*)",
+            exact_text("BackYardFeedUI(Clone)/frame/Text"),
+        )
+        if fill is None:
+            raise SemanticGateClosed("dorm feed capacity is malformed")
+        food, capacity = map(int, fill.groups())
+        if food > capacity:
+            raise SemanticGateClosed("dorm feed capacity is inconsistent")
+
+        items = []
+        for item_id in range(50001, 50007):
+            root = "BackYardFeedUI(Clone)/frame/food_{0}/".format(item_id)
+            value_match = re.fullmatch(r"食物([1-9][0-9]*)", exact_text(root + "Text"))
+            count_text = exact_text(root + "icon_bg/count")
+            if value_match is None or re.fullmatch(r"[0-9]+", count_text) is None:
+                raise SemanticGateClosed("dorm feed inventory is malformed")
+            semantic_id = "dorm/feed/item/{0}".format(item_id)
+            images = tuple(
+                image
+                for image in ui_state.images
+                if image.name == "icon_bg"
+                and image.path.endswith(root + "icon_bg")
+                and image.active_in_hierarchy
+                and image.active_and_enabled
+                and image.raycast_target
+                and image.raycast_top is True
+                and not image.truncated
+                and image.bounds is not None
+            )
+            if len(images) != 1:
+                raise SemanticGateClosed("dorm feed item image is absent or ambiguous")
+            image = images[0]
+            if self._blocking_rules(button_state, semantic_id):
+                raise SemanticGateClosed("dorm feed item is not safely actionable")
+            assert image.bounds is not None
+            button = ButtonState(
+                name=image.name,
+                path=image.path,
+                active_in_hierarchy=image.active_in_hierarchy,
+                active_and_enabled=image.active_and_enabled,
+                interactable=True,
+                raycast_top=image.raycast_top,
+                point=Point(
+                    (image.bounds.left + image.bounds.right) / 2.0,
+                    (image.bounds.top + image.bounds.bottom) / 2.0,
+                ),
+                bounds=image.bounds,
+                raw=image.raw,
+            )
+            items.append(
+                DormFoodState(
+                    item_id=item_id,
+                    value=int(value_match.group(1)),
+                    count=int(count_text),
+                    button=button,
+                )
+            )
+        return DormFeedState(food=food, capacity=capacity, items=tuple(items))
+
+    def click_dorm_food(self, item_id: int) -> ActionReceipt:
+        """Click one ALAS dorm food card after exact typed revalidation."""
+
+        if item_id not in range(50001, 50007):
+            raise ValueError("dorm food item id must be 50001 through 50006")
+        feed = self.dorm_feed_state()
+        matches = tuple(item for item in feed.items if item.item_id == item_id)
+        if len(matches) != 1:
+            raise SemanticGateClosed("dorm feed item identity is ambiguous")
+        target = matches[0].button
+        semantic_id = "dorm/feed/item/{0}".format(item_id)
+        button_state = self.read_state()
+        if (
+            not target.actionable
+            or target.point is None
+            or target.bounds is None
+            or self._blocking_rules(button_state, semantic_id)
+        ):
+            raise SemanticGateClosed("dorm feed item is not safely actionable")
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("foreground changed immediately before input")
+        self._tap(int(round(target.point.x)), int(round(target.point.y)))
+        return ActionReceipt(
+            semantic_id=semantic_id,
+            generation=button_state.generation,
+            point=target.point,
+            bounds=target.bounds,
+            path=target.path,
+        )
+
+    def click_tactical_empty_slot(self, slot: int) -> ActionReceipt:
+        """Click one visually ordered empty tactical slot after exact revalidation."""
+
+        if slot not in range(1, 5):
+            raise ValueError("tactical slot must be 1 through 4")
+        state = self.read_state()
+        prefix = (
+            "NewNavalTacticsUI(Clone)/adpter/"
+            "NewNavalTacticsStudentsPage(Clone)/"
+        )
+        matches = tuple(
+            button
+            for button in state.buttons
+            if button.name in ("add", "add(Clone)")
+            and button.path.endswith(prefix + button.name)
+            and button.actionable
+            and button.point is not None
+        )
+        matches = tuple(sorted(matches, key=lambda button: button.point.x))
+        if len(matches) != 4:
+            raise SemanticGateClosed("tactical empty slots are incomplete")
+        target = matches[slot - 1]
+        if self._blocking_rules(state, "tactical/slot/{0}".format(slot)):
+            raise SemanticGateClosed("tactical slot input is blocked")
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("foreground changed immediately before input")
+        assert target.point is not None and target.bounds is not None
+        self._tap(int(round(target.point.x)), int(round(target.point.y)))
+        return ActionReceipt(
+            semantic_id="tactical/slot/{0}".format(slot),
+            generation=state.generation,
+            point=target.point,
+            bounds=target.bounds,
+            path=target.path,
+        )
+
+    def tactical_candidate_ships(self) -> Tuple[TacticalCandidateShipState, ...]:
+        """Read visible tactical Dock candidates in ALAS grid order."""
+
+        button_state = self.read_state()
+        back = self._unique(button_state, "tactical/dock/back")
+        confirm = self._unique(button_state, "tactical/dock/confirm")
+        if not back.active_and_enabled or not confirm.active_and_enabled:
+            raise SemanticGateClosed("tactical Dock identity is not proven")
+        prefix = "DockyardUI(Clone)/main/ship_container/ships/"
+        buttons = tuple(
+            button
+            for button in button_state.buttons
+            if re.fullmatch(r"[1-9][0-9]{5,7}", button.name) is not None
+            and button.path.endswith(prefix + button.name)
+            and button.bounds is not None
+            and button.bounds.right > 0
+            and button.bounds.bottom > 0
+            and button.bounds.left < self.fingerprint.width
+            and button.bounds.top < 500
+        )
+        if not buttons or len({button.name for button in buttons}) != len(buttons):
+            raise SemanticGateClosed("tactical Dock candidates are absent or ambiguous")
+        buttons = tuple(
+            sorted(
+                buttons,
+                key=lambda button: (
+                    round(button.bounds.top / 50.0),
+                    button.bounds.left,
+                ),
+            )
+        )
+        ui_state = self.read_text_state()
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("tactical Dock snapshots are not coherent")
+
+        candidates = []
+        for position, button in enumerate(buttons):
+            root = button.path + "/content/"
+
+            def exact_text(suffix: str) -> str:
+                matches = tuple(
+                    text
+                    for text in ui_state.texts
+                    if text.path == root + suffix
+                    and text.active_in_hierarchy
+                    and text.active_and_enabled
+                    and not text.truncated
+                    and text.bounds is not None
+                )
+                if len(matches) != 1:
+                    raise SemanticGateClosed(
+                        "tactical Dock text is absent or ambiguous: " + suffix
+                    )
+                return re.sub(r"<[^>]*>", "", matches[0].text).strip()
+
+            name = exact_text("info/name_mask/name")
+            level_text = exact_text("dockyard/lv/Text")
+            if not name or re.fullmatch(r"[1-9][0-9]{0,2}", level_text) is None:
+                raise SemanticGateClosed("tactical Dock candidate is malformed")
+            candidates.append(
+                TacticalCandidateShipState(
+                    position=position,
+                    ship_id=int(button.name),
+                    ship_name=name,
+                    level=int(level_text),
+                    button=button,
+                )
+            )
+        return tuple(candidates)
+
+    def click_tactical_ship(self, ship_id: int) -> ActionReceipt:
+        candidates = self.tactical_candidate_ships()
+        matches = tuple(candidate for candidate in candidates if candidate.ship_id == ship_id)
+        if len(matches) != 1:
+            raise SemanticGateClosed("tactical Dock ship identity changed")
+        target = matches[0].button
+        if not target.actionable or target.point is None or target.bounds is None:
+            raise SemanticGateClosed("tactical Dock ship is not safely actionable")
+        state = self.read_state()
+        current = tuple(button for button in state.buttons if button.path == target.path)
+        if len(current) != 1 or not current[0].actionable:
+            raise SemanticGateClosed("tactical Dock ship changed before input")
+        target = current[0]
+        assert target.point is not None and target.bounds is not None
+        if self._blocking_rules(state, "tactical/dock/ship"):
+            raise SemanticGateClosed("tactical Dock ship input is blocked")
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("foreground changed immediately before input")
+        self._tap(int(round(target.point.x)), int(round(target.point.y)))
+        return ActionReceipt(
+            semantic_id="tactical/dock/ship/{0}".format(ship_id),
+            generation=state.generation,
+            point=target.point,
+            bounds=target.bounds,
+            path=target.path,
+        )
+
+    def tactical_skills(self) -> Tuple[TacticalSkillState, ...]:
+        """Read visible skill rows in the tactical skill-selection dialog."""
+
+        button_state = self.read_state()
+        confirm = self._unique(button_state, "tactical/skill/confirm")
+        if not confirm.active_and_enabled:
+            raise SemanticGateClosed("tactical skill dialog identity is not proven")
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("tactical skill snapshots are not coherent")
+        rows = tuple(
+            image
+            for image in ui_state.images
+            if image.name in ("skill", "skill(Clone)")
+            and image.path.endswith(
+                "NewNavalTacticsSkillsPage(Clone)/frame/skill_container/content/"
+                + image.name
+            )
+            and image.active_in_hierarchy
+            and image.active_and_enabled
+            and image.raycast_target
+            and not image.truncated
+            and image.bounds is not None
+            and image.bounds.bottom > 0
+            and image.bounds.top < self.fingerprint.height
+        )
+        rows = tuple(sorted(rows, key=lambda image: image.bounds.top))
+        if not rows or len(rows) > 4:
+            raise SemanticGateClosed("tactical skill rows are absent or ambiguous")
+
+        result = []
+        for position, row in enumerate(rows):
+            assert row.bounds is not None
+
+            def text_with_suffix(suffix: str) -> str:
+                matches = tuple(
+                    text
+                    for text in ui_state.texts
+                    if text.path.endswith(suffix)
+                    and text.active_in_hierarchy
+                    and text.active_and_enabled
+                    and not text.truncated
+                    and text.bounds is not None
+                    and row.bounds.contains(
+                        Point(
+                            (text.bounds.left + text.bounds.right) / 2.0,
+                            (text.bounds.top + text.bounds.bottom) / 2.0,
+                        )
+                    )
+                )
+                if len(matches) != 1:
+                    raise SemanticGateClosed(
+                        "tactical skill text is absent or ambiguous: " + suffix
+                    )
+                return re.sub(r"<[^>]*>", "", matches[0].text).strip()
+
+            name = text_with_suffix("/name/Text/subText")
+            level = text_with_suffix("/name/level")
+            next_value = text_with_suffix("/next")
+            if not name or re.fullmatch(r"Lv\.[1-9][0-9]?", level) is None:
+                raise SemanticGateClosed("tactical skill row is malformed")
+            result.append(
+                TacticalSkillState(
+                    position=position,
+                    name=name,
+                    level_text=next_value,
+                    max_level=next_value.upper() == "MAX",
+                    button=ButtonState(
+                        name=row.name,
+                        path=row.path,
+                        active_in_hierarchy=row.active_in_hierarchy,
+                        active_and_enabled=row.active_and_enabled,
+                        interactable=True,
+                        raycast_top=row.raycast_top,
+                        point=Point(
+                            (row.bounds.left + row.bounds.right) / 2.0,
+                            (row.bounds.top + row.bounds.bottom) / 2.0,
+                        ),
+                        bounds=row.bounds,
+                        raw=row.raw,
+                    ),
+                )
+            )
+        return tuple(result)
+
+    def click_tactical_skill(self, position: int) -> ActionReceipt:
+        skills = self.tactical_skills()
+        matches = tuple(skill for skill in skills if skill.position == position)
+        if len(matches) != 1 or matches[0].max_level:
+            raise SemanticGateClosed("tactical skill is absent or already maxed")
+        target = matches[0].button
+        if not target.actionable or target.point is None or target.bounds is None:
+            raise SemanticGateClosed("tactical skill is not safely actionable")
+        state = self.read_state()
+        if self._blocking_rules(state, "tactical/skill/item"):
+            raise SemanticGateClosed("tactical skill input is blocked")
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("foreground changed immediately before input")
+        self._tap(int(round(target.point.x)), int(round(target.point.y)))
+        return ActionReceipt(
+            semantic_id="tactical/skill/{0}".format(position),
+            generation=state.generation,
+            point=target.point,
+            bounds=target.bounds,
+            path=target.path,
+        )
+
+    def tactical_books(self) -> Tuple[TacticalBookState, ...]:
+        """Read visible tactical books in the same order as ALAS BOOKS_GRID."""
+
+        button_state = self.read_state()
+        start = self._unique(button_state, "tactical/book/start")
+        cancel = self._unique(button_state, "tactical/book/cancel")
+        if not start.active_and_enabled or not cancel.active_and_enabled:
+            raise SemanticGateClosed("tactical book dialog identity is not proven")
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("tactical book snapshots are not coherent")
+
+        root = "NewNavalTacticsLessonPage(Clone)/items/scorll/content/"
+        items = tuple(
+            image
+            for image in ui_state.images
+            if image.name in ("item", "item(Clone)")
+            and image.path.endswith(root + image.name)
+            and image.active_in_hierarchy
+            and image.active_and_enabled
+            and image.raycast_target
+            and image.raycast_top is True
+            and not image.truncated
+            and image.bounds is not None
+            and image.bounds.right > 0
+            and image.bounds.bottom > 0
+            and image.bounds.left < self.fingerprint.width
+            and image.bounds.top < self.fingerprint.height
+        )
+        items = tuple(
+            sorted(
+                items,
+                key=lambda image: (
+                    round(image.bounds.top / 50.0),
+                    image.bounds.left,
+                ),
+            )
+        )
+        if not items or len(items) > 12:
+            raise SemanticGateClosed("tactical book items are absent or ambiguous")
+
+        def center(bounds: Bounds) -> Point:
+            return Point(
+                (bounds.left + bounds.right) / 2.0,
+                (bounds.top + bounds.bottom) / 2.0,
+            )
+
+        books = []
+        seen_ids = set()
+        for position, item in enumerate(items):
+            assert item.bounds is not None
+            icon_matches = tuple(
+                image
+                for image in ui_state.images
+                if image.name == "icon"
+                and image.path.startswith(item.path + "/icon_bg/")
+                and image.active_in_hierarchy
+                and image.active_and_enabled
+                and not image.truncated
+                and image.bounds is not None
+                and item.bounds.contains(center(image.bounds))
+                and re.fullmatch(r"160[012][1-4]", image.sprite) is not None
+            )
+            count_matches = tuple(
+                text
+                for text in ui_state.texts
+                if text.name == "count"
+                and text.path.startswith(item.path + "/icon_bg/")
+                and text.active_in_hierarchy
+                and text.active_and_enabled
+                and not text.truncated
+                and text.bounds is not None
+                and item.bounds.contains(center(text.bounds))
+                and re.fullmatch(r"[0-9]+", text.text.strip()) is not None
+            )
+            addition_matches = tuple(
+                text
+                for text in ui_state.texts
+                if text.name == "addition"
+                and text.path.startswith(item.path + "/")
+                and text.active_in_hierarchy
+                and text.active_and_enabled
+                and not text.truncated
+                and text.bounds is not None
+                and item.bounds.left <= center(text.bounds).x <= item.bounds.right
+                and item.bounds.top - 10 <= center(text.bounds).y <= item.bounds.bottom
+            )
+            if (
+                len(icon_matches) != 1
+                or len(count_matches) != 1
+                or len(addition_matches) != 1
+            ):
+                raise SemanticGateClosed(
+                    "tactical book identity text is absent or ambiguous"
+                )
+            item_id = icon_matches[0].sprite
+            if item_id in seen_ids:
+                raise SemanticGateClosed("tactical book item ID is duplicated")
+            seen_ids.add(item_id)
+            addition = addition_matches[0].text.strip()
+            if addition not in ("", "EXP150%", "EXP200%"):
+                raise SemanticGateClosed("tactical book EXP bonus is malformed")
+            selected = any(
+                image.name == "selected"
+                and image.path.startswith(item.path + "/selected")
+                and image.active_in_hierarchy
+                and image.active_and_enabled
+                and not image.truncated
+                and image.bounds is not None
+                and item.bounds.contains(center(image.bounds))
+                for image in ui_state.images
+            )
+            books.append(
+                TacticalBookState(
+                    position=position,
+                    item_id=item_id,
+                    genre=int(item_id[-2]) + 1,
+                    tier=int(item_id[-1]),
+                    exp_bonus=bool(addition),
+                    count=int(count_matches[0].text.strip()),
+                    selected=selected,
+                    image=item,
+                )
+            )
+        if sum(book.selected for book in books) != 1:
+            raise SemanticGateClosed("tactical selected book is absent or ambiguous")
+        return tuple(books)
+
+    def click_tactical_book(self, position: int) -> ActionReceipt:
+        books = self.tactical_books()
+        matches = tuple(book for book in books if book.position == position)
+        if len(matches) != 1 or matches[0].count <= 0:
+            raise SemanticGateClosed("tactical book is absent or exhausted")
+        target = matches[0].image
+        if target.raycast_top is not True or target.bounds is None:
+            raise SemanticGateClosed("tactical book is not safely actionable")
+        state = self.read_state()
+        if self._blocking_rules(state, "tactical/book/item"):
+            raise SemanticGateClosed("tactical book input is blocked")
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("foreground changed immediately before input")
+        point = Point(
+            (target.bounds.left + target.bounds.right) / 2.0,
+            (target.bounds.top + target.bounds.bottom) / 2.0,
+        )
+        self._tap(int(round(point.x)), int(round(point.y)))
+        return ActionReceipt(
+            semantic_id="tactical/book/{0}".format(position),
+            generation=state.generation,
+            point=point,
+            bounds=target.bounds,
+            path=target.path,
+        )
+
     def research_projects(self) -> Tuple[ResearchProjectState, ...]:
         """Read the five visible research cards from typed Unity state."""
 
@@ -3208,6 +4290,8 @@ class SemanticOracle:
         status_texts = {
             "查看详情": ResearchProjectStatus.DETAIL,
             "进行中": ResearchProjectStatus.RUNNING,
+            "等待中": ResearchProjectStatus.WAITING,
+            "研究完成": ResearchProjectStatus.FINISHED,
         }
         projects = []
         for slot, (unity_index, button) in enumerate(indexed, start=1):
@@ -3250,6 +4334,246 @@ class SemanticOracle:
                 )
             )
         return tuple(projects)
+
+    def click_research_project(self, slot: int) -> ActionReceipt:
+        if slot not in range(1, 6):
+            raise ValueError("research project slot must be 1 through 5")
+        projects = self.research_projects()
+        matches = tuple(project for project in projects if project.slot == slot)
+        if len(matches) != 1:
+            raise SemanticGateClosed("research project slot identity changed")
+        expected = matches[0]
+        state = self.read_state()
+        current = tuple(
+            button
+            for button in state.buttons
+            if button.path == expected.button.path
+            and button.name == str(expected.unity_index)
+        )
+        if len(current) != 1 or not current[0].actionable:
+            raise SemanticGateClosed("research project changed before input")
+        target = current[0]
+        if self._blocking_rules(state, "research/project/{0}".format(slot)):
+            raise SemanticGateClosed("research project input is blocked")
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("foreground changed immediately before input")
+        assert target.point is not None and target.bounds is not None
+        self._tap(int(round(target.point.x)), int(round(target.point.y)))
+        return ActionReceipt(
+            semantic_id="research/project/{0}".format(slot),
+            generation=state.generation,
+            point=target.point,
+            bounds=target.bounds,
+            path=target.path,
+        )
+
+    @staticmethod
+    def _research_status_from_text(value: str) -> ResearchProjectStatus:
+        plain = re.sub(r"<[^>]*>", "", value).strip()
+        statuses = {
+            "查看详情": ResearchProjectStatus.DETAIL,
+            "进行中": ResearchProjectStatus.RUNNING,
+            "等待中": ResearchProjectStatus.WAITING,
+            "研究完成": ResearchProjectStatus.FINISHED,
+        }
+        try:
+            return statuses[plain]
+        except KeyError as exc:
+            raise SemanticGateClosed(
+                "research status is not reviewed: " + plain
+            ) from exc
+
+    def research_detail_state(self) -> ResearchDetailState:
+        """Read the selected research detail and its exact action state."""
+
+        button_state = self.read_state()
+        root_button = self._unique(button_state, "research/detail/root")
+        if not root_button.actionable or self._blocking_rules(
+            button_state, "research/detail/root"
+        ):
+            raise SemanticGateClosed("research detail identity is not proven")
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.image_truncated
+            or ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("research detail snapshots are incomplete")
+
+        root = (
+            "TechnologyUI(Clone)/main/base_page/selecte_panel/"
+            "technology_card/frame/"
+        )
+        panel = "TechnologyUI(Clone)/main/base_page/selecte_panel/"
+
+        def exact_text(suffix: str) -> str:
+            path = root + suffix
+            matches = tuple(
+                item
+                for item in ui_state.texts
+                if item.path.endswith(path)
+                and item.active_in_hierarchy
+                and item.active_and_enabled
+                and not item.truncated
+                and item.bounds is not None
+            )
+            if len(matches) != 1:
+                raise SemanticGateClosed(
+                    "research detail text is absent or ambiguous: " + suffix
+                )
+            return matches[0].text.strip()
+
+        code = exact_text("name_bg/Text")
+        subtitle = exact_text("sub_name")
+
+        def panel_text(suffix: str) -> str:
+            path = panel + suffix
+            matches = tuple(
+                item
+                for item in ui_state.texts
+                if item.path.endswith(path)
+                and item.active_in_hierarchy
+                and item.active_and_enabled
+                and not item.truncated
+                and item.bounds is not None
+            )
+            if len(matches) != 1:
+                raise SemanticGateClosed(
+                    "research detail text is absent or ambiguous: " + suffix
+                )
+            return matches[0].text.strip()
+
+        duration = self.parse_countdown_seconds(panel_text("timer/bg/Text"))
+        resource = re.fullmatch(
+            r"([0-9]+)/([1-9][0-9]*)",
+            re.sub(r"<[^>]*>", "", panel_text("consume_panel/bg/container/item_tpl/icon_bg/count")),
+        )
+        if resource is None or not code:
+            raise SemanticGateClosed("research detail resource state is malformed")
+        owned, required = map(int, resource.groups())
+        resource_path = panel + "consume_panel/bg/container/item_tpl/icon_bg/icon"
+        icons = tuple(
+            item
+            for item in ui_state.images
+            if item.path.endswith(resource_path)
+            and item.active_in_hierarchy
+            and item.active_and_enabled
+            and not item.truncated
+            and item.bounds is not None
+        )
+        if len(icons) != 1 or re.fullmatch(r"[A-Za-z0-9_.-]+", icons[0].sprite) is None:
+            raise SemanticGateClosed("research detail resource identity is ambiguous")
+
+        action_ids = {
+            "start": "research/detail/start",
+            "stop": "research/detail/stop",
+            "finish": "research/detail/finish",
+            "queue": "research/detail/queue",
+        }
+        actions = {}
+        for key, semantic_id in action_ids.items():
+            matches = self._matches(button_state, semantic_id)
+            if len(matches) > 1:
+                raise SemanticGateClosed("research detail action is ambiguous: " + key)
+            actions[key] = bool(matches and matches[0].actionable)
+        return ResearchDetailState(
+            code=code,
+            subtitle=subtitle,
+            duration_seconds=duration,
+            resource_id=icons[0].sprite,
+            resource_owned=owned,
+            resource_required=required,
+            requirement=re.sub(
+                r"<[^>]*>", "", panel_text(
+                    "consume_panel/bg/task_panel/slider/Text"
+                )
+            ).strip(),
+            can_start=actions["start"] and owned >= required,
+            can_queue=actions["queue"],
+            is_running=actions["stop"],
+            is_finished=actions["finish"],
+        )
+
+    def research_queue_state(self) -> ResearchQueueState:
+        """Read all non-empty queue slots and the reviewed claim control."""
+
+        button_state = self.read_state()
+        back = self._unique(button_state, "research/page/back")
+        ui_state = self.read_ui_state()
+        queue_title = tuple(
+            image
+            for image in ui_state.images
+            if image.path.endswith(
+                "TechnologyUI(Clone)/blur_panel/adapt/top/title_queue"
+            )
+            and image.active_in_hierarchy
+            and image.active_and_enabled
+            and not image.truncated
+        )
+        if (
+            not back.actionable
+            or len(queue_title) != 1
+            or ui_state.image_truncated
+            or ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed("research queue identity is not proven")
+
+        def optional_text(path: str) -> Optional[str]:
+            matches = tuple(
+                item
+                for item in ui_state.texts
+                if item.path.endswith(path)
+                and item.active_in_hierarchy
+                and item.active_and_enabled
+                and not item.truncated
+                and item.bounds is not None
+            )
+            if len(matches) > 1:
+                raise SemanticGateClosed("research queue text is ambiguous: " + path)
+            return matches[0].text.strip() if matches else None
+
+        entries = []
+        for slot in range(1, 6):
+            root = "TechnologyUI(Clone)/main/queue_page/queue_rect/content/{0}/frame/".format(slot)
+            code = optional_text(root + "name_bg/Text")
+            marker = optional_text(root + "marks/Text")
+            remain = optional_text(root + "marks/time")
+            version_path = root + "top/label/version"
+            versions = tuple(
+                image
+                for image in ui_state.images
+                if image.path.endswith(version_path)
+                and image.active_in_hierarchy
+                and image.active_and_enabled
+                and not image.truncated
+                and image.bounds is not None
+            )
+            if code is None and marker is None and remain is None and not versions:
+                continue
+            if code is None or marker is None or remain is None or len(versions) != 1:
+                raise SemanticGateClosed("research queue slot is incomplete")
+            version = re.fullmatch(r"version_([1-9][0-9]*)", versions[0].sprite)
+            if version is None or not code:
+                raise SemanticGateClosed("research queue identity is malformed")
+            entries.append(
+                ResearchQueueEntryState(
+                    slot=slot,
+                    code=code,
+                    series=int(version.group(1)),
+                    status=self._research_status_from_text(marker),
+                    remaining_seconds=self.parse_countdown_seconds(remain),
+                )
+            )
+        claim_matches = self._matches(button_state, "research/queue/claim")
+        if len(claim_matches) > 1:
+            raise SemanticGateClosed("research queue claim target is ambiguous")
+        claimable = bool(claim_matches and claim_matches[0].actionable)
+        if claimable and not any(
+            entry.status == ResearchProjectStatus.FINISHED for entry in entries
+        ):
+            raise SemanticGateClosed("research queue claim state is inconsistent")
+        return ResearchQueueState(tuple(entries), claimable)
 
     def tactical_slots(self) -> Tuple[TacticalSlotState, ...]:
         """Read populated tactical-class slots from typed Unity controls."""
@@ -3717,6 +5041,58 @@ class SemanticOracle:
             and confirm == "确定"
         )
 
+    def _build_warning_prompt_matches(self, state: OracleState) -> bool:
+        parts = self._msgbox_prompt_parts(state)
+        if parts is None:
+            return False
+        plain, cancel, confirm = parts
+        return bool(
+            plain
+            == "常驻UR兑换点数已达上限，未兑换UR角色前继续建造不能获得点数，是否继续建造？"
+            and cancel == "取消"
+            and confirm == "确定"
+        )
+
+    def _tactical_course_prompt_matches(self, state: OracleState) -> bool:
+        parts = self._msgbox_prompt_parts(state)
+        if parts is None:
+            return False
+        plain, cancel, confirm = parts
+        return bool(
+            re.fullmatch(
+                r"是否消耗1本「舰艇(?:攻击|防御|辅助)教材T[1-4]」，"
+                r"训练「[^」]+」的[^「」]+技能？",
+                plain,
+            )
+            and cancel == "取消"
+            and confirm == "确定"
+        )
+
+    def _research_start_prompt_cost(
+        self, state: OracleState
+    ) -> Optional[Tuple[str, int]]:
+        parts = self._msgbox_prompt_parts(state)
+        if parts is None:
+            return None
+        plain, cancel, confirm = parts
+        match = re.fullmatch(
+            r"开启该科研项目需要消耗\s*:\s*(物资|心智魔方)x([1-9][0-9]*)",
+            plain,
+        )
+        if match is None or cancel != "取消" or confirm != "确定":
+            return None
+        resource_id = {"物资": "gold", "心智魔方": "20001"}[match.group(1)]
+        return resource_id, int(match.group(2))
+
+    def research_start_prompt_cost(self) -> Optional[Tuple[str, int]]:
+        state = self.read_state()
+        target = self._matches(state, "research/start/confirm")
+        if len(target) > 1:
+            raise SemanticGateClosed("research start prompt is ambiguous")
+        if not target or not target[0].actionable:
+            return None
+        return self._research_start_prompt_cost(state)
+
     def _tactical_continue_prompt_matches(self, state: OracleState) -> bool:
         return self._tactical_continue_prompt_text(state) is not None
 
@@ -3746,6 +5122,12 @@ class SemanticOracle:
             "overlay/network-reconnect/confirm",
         ):
             return bool(matches and self._network_reconnect_prompt_matches(state))
+        if semantic_id in ("build/warning/cancel", "build/warning/confirm"):
+            return bool(matches and self._build_warning_prompt_matches(state))
+        if semantic_id in ("tactical/course/cancel", "tactical/course/confirm"):
+            return bool(matches and self._tactical_course_prompt_matches(state))
+        if semantic_id in ("research/start/cancel", "research/start/confirm"):
+            return bool(matches and self._research_start_prompt_cost(state) is not None)
         return bool(matches)
 
     def enabled(self, semantic_id: str) -> bool:
@@ -3767,6 +5149,21 @@ class SemanticOracle:
                 "overlay/network-reconnect/confirm",
             )
             and not self._network_reconnect_prompt_matches(state)
+        ):
+            return False
+        if (
+            semantic_id in ("build/warning/cancel", "build/warning/confirm")
+            and not self._build_warning_prompt_matches(state)
+        ):
+            return False
+        if (
+            semantic_id in ("tactical/course/cancel", "tactical/course/confirm")
+            and not self._tactical_course_prompt_matches(state)
+        ):
+            return False
+        if (
+            semantic_id in ("research/start/cancel", "research/start/confirm")
+            and self._research_start_prompt_cost(state) is None
         ):
             return False
         return bool(
@@ -3935,11 +5332,45 @@ class SemanticOracle:
             and not self._network_reconnect_prompt_matches(state)
         ):
             raise SemanticGateClosed("network reconnect prompt identity is not proven")
+        if (
+            semantic_id in ("build/warning/cancel", "build/warning/confirm")
+            and not self._build_warning_prompt_matches(state)
+        ):
+            raise SemanticGateClosed("build warning prompt identity is not proven")
+        if (
+            semantic_id in ("tactical/course/cancel", "tactical/course/confirm")
+            and not self._tactical_course_prompt_matches(state)
+        ):
+            raise SemanticGateClosed("tactical course prompt identity is not proven")
+        if (
+            semantic_id in ("research/start/cancel", "research/start/confirm")
+            and self._research_start_prompt_cost(state) is None
+        ):
+            raise SemanticGateClosed("research start prompt identity is not proven")
         if not target.actionable or target.point is None or target.bounds is None:
             raise SemanticGateClosed("semantic target is not actionable")
+        point = target.point
+        if (
+            semantic_id == "research/queue/claim"
+            and math.isclose(point.x, float(self.fingerprint.width), abs_tol=0.01)
+            and math.isclose(
+                target.bounds.right, float(self.fingerprint.width), abs_tol=0.01
+            )
+            and 0 <= target.bounds.left < target.bounds.right
+            and 0 <= target.bounds.top < target.bounds.bottom <= self.fingerprint.height
+        ):
+            # This reviewed edge-docked Button reports its right-edge pivot as
+            # the screen point.  Its complete visible bounds and top raycast
+            # are proven, so use the centre of the visible in-screen rectangle.
+            point = Point(
+                (target.bounds.left + min(
+                    target.bounds.right, self.fingerprint.width - 1.0
+                )) / 2.0,
+                (target.bounds.top + target.bounds.bottom) / 2.0,
+            )
         if not (
-            0 <= target.point.x < self.fingerprint.width
-            and 0 <= target.point.y < self.fingerprint.height
+            0 <= point.x < self.fingerprint.width
+            and 0 <= point.y < self.fingerprint.height
         ):
             raise SemanticGateClosed("semantic target point is outside the screen")
 
@@ -3953,13 +5384,13 @@ class SemanticOracle:
         if self._foreground_component() != self.fingerprint.component:
             raise SemanticGateClosed("foreground changed immediately before input")
 
-        x = int(round(target.point.x))
-        y = int(round(target.point.y))
+        x = int(round(point.x))
+        y = int(round(point.y))
         self._tap(x, y)
         return ActionReceipt(
             semantic_id=semantic_id,
             generation=state.generation,
-            point=target.point,
+            point=point,
             bounds=target.bounds,
             path=target.path,
         )

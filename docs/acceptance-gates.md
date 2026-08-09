@@ -2,13 +2,12 @@
 
 Status terms are deliberately strict. A build passing does not imply a later gate has passed.
 
-Current status: G1-G4, G5a, controlled G5b, scoped G6, and scoped G7 passed. G4 includes login/main reachability,
-sustained semantic state, RectTransform bounds, top EventSystem raycast identity
-for each action, and a settings-page return loop. G5a covers only the ALAS
-mission-reward no-claim branch. G5b covers one `GetAllButton` claim on the
-default task page. G6 adds typed Text/Image observation and a live semantic
-weekly-tab selection/return loop; weekly-only ALAS reward execution, row-only
-claiming, and every other ALAS task remain open.
+Current status: G1-G4, G5a, controlled G5b, scoped G6-G8, and the G9 bounded
+adapter slices passed. G4 includes login/main reachability, sustained semantic
+state, RectTransform bounds, top EventSystem raycast identity for each action,
+and a settings-page return loop. G5a covers only the ALAS mission-reward
+no-claim branch. G5b covers one `GetAllButton` claim on the default task page.
+G6-G8 add typed UI/task observation and real bounded Reward/Commission passes.
 
 G7 broadens typed observation to selected task surfaces and a read-only
 campaign chapter. It does not enable resource-consuming task starts, stage
@@ -153,6 +152,22 @@ See [G7 typed task and campaign adaptation](g7-task-campaign-adaptation-report.m
   cancellation, and unattended repetition remain separate gates.
 
 See [G8 real ALAS validation](g8-alas-reward-commission-validation-report.md).
+
+## G9 - Five bounded mutation input slices: adapter-qualified
+
+- Keep the original ALAS Tactical, Research, Dorm, and Gacha state machines;
+  replace only reviewed image/OCR/input ports with typed semantic state.
+- Qualify read-only research selection, one research start, research queue and
+  reward I/O, tactical course assignment, dorm collect/feed, and one
+  construction submit under independent default-zero integer budgets.
+- Revalidate visual identities immediately before input and spend each budget
+  only on its exact mutation boundary. Food input must target the food card,
+  and construction must prove count and resource costs at final confirmation.
+- Feed original ALAS `Navbar` and queue primitives exact Toggle/capacity/timer
+  state. Refuse pre-existing nonempty construction queues rather than
+  accelerating or collecting them.
+- Adapter-level live passes and clean pinned-patch application are required.
+  Full patched-ALAS task-command replays remain a later gate.
 
 ## Stop or pivot conditions
 

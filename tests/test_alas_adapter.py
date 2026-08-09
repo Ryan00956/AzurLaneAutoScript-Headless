@@ -45,9 +45,19 @@ class FakeOracle:
         self.toggle_selected_values = {}
         self.mail_empty = False
         self.research_project_values = []
+        self.research_detail_value = SimpleNamespace(
+            code="G-412",
+            resource_id="gold",
+            resource_required=1500,
+            can_start=True,
+            can_queue=True,
+            is_running=False,
+        )
+        self.research_prompt_cost = ("gold", 1500)
         self.tactical_slot_values = []
         self.tactical_remaining_values = ()
         self.tactical_prompt_text = None
+        self.tactical_book_values = []
         self.commission_detail_value = SimpleNamespace(
             signature=("日常资源开发III", 15, 3600),
             selected_ship_count=0,
@@ -75,6 +85,15 @@ class FakeOracle:
             cubes_per_build=1,
             coins_per_build=600,
         )
+        self.build_submit_value = SimpleNamespace(
+            count=1,
+            cubes_owned=10,
+            cubes_required=1,
+            coins_required=600,
+        )
+        self.build_queue_empty_value = True
+        self.build_queue_timer_values = ("99:99:99", "99:99:99")
+        self.main_gold_value = 10000
         self.dorm_state_value = SimpleNamespace(
             occupied_slots=2,
             total_slots=6,
@@ -83,6 +102,14 @@ class FakeOracle:
             comfort=300,
             floor=1,
             food_countdown_seconds=3600,
+        )
+        self.dorm_feed_state_value = SimpleNamespace(
+            food=0,
+            capacity=40000,
+            items=tuple(
+                SimpleNamespace(item_id=50001 + index, value=1000, count=5)
+                for index in range(6)
+            ),
         )
         self.campaign_menu_value = False
         self.campaign_page_value = False
@@ -156,14 +183,59 @@ class FakeOracle:
     def research_projects(self):
         return tuple(self.research_project_values)
 
+    def click_research_project(self, slot):
+        self.click_calls.append("research/project/{0}".format(slot))
+        return self.click_receipt("research/project/{0}".format(slot))
+
+    def research_detail_state(self):
+        return self.research_detail_value
+
+    def research_start_prompt_cost(self):
+        return self.research_prompt_cost
+
     def build_selected_pool(self):
         return self.build_pool_value
 
     def build_costs(self):
         return self.build_cost_value
 
+    def build_submit_state(self):
+        return self.build_submit_value
+
+    def build_queue_empty(self):
+        return self.build_queue_empty_value
+
+    def build_queue_timers(self):
+        return self.build_queue_timer_values
+
+    def main_gold(self):
+        return self.main_gold_value
+
     def dorm_state(self):
         return self.dorm_state_value
+
+    def dorm_feed_state(self):
+        return self.dorm_feed_state_value
+
+    def click_dorm_food(self, item_id):
+        before = self.dorm_feed_state_value
+        items = []
+        for item in before.items:
+            items.append(
+                SimpleNamespace(
+                    item_id=item.item_id,
+                    value=item.value,
+                    count=item.count - (1 if item.item_id == item_id else 0),
+                )
+            )
+        selected = next(item for item in before.items if item.item_id == item_id)
+        self.dorm_feed_state_value = SimpleNamespace(
+            food=before.food + selected.value,
+            capacity=before.capacity,
+            items=tuple(items),
+        )
+        self.click_calls.append("dorm/feed/item/{0}".format(item_id))
+        return self.click_receipt("dorm/feed/item/{0}".format(item_id))
 
     def campaign_menu_is_entry(self):
         return self.campaign_menu_value
@@ -177,11 +249,24 @@ class FakeOracle:
     def tactical_slots(self):
         return tuple(self.tactical_slot_values)
 
+    def tactical_books(self):
+        return tuple(self.tactical_book_values)
+
     def tactical_remaining_seconds(self):
         return tuple(self.tactical_remaining_values)
 
     def tactical_continue_prompt_text(self):
         return self.tactical_prompt_text
+
+    @staticmethod
+    def click_receipt(semantic_id):
+        return ActionReceipt(
+            semantic_id=semantic_id,
+            generation=7,
+            point=Point(2, 3),
+            bounds=Bounds(1, 2, 3, 4),
+            path="root/target",
+        )
 
     def commission_scroll_state(self):
         self.commission_scroll_calls.append("state")
@@ -395,6 +480,193 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertEqual(adapter.build_costs().cubes_owned, 10)
         self.assertEqual(adapter.dorm_state().occupied_slots, 2)
         self.assertEqual(oracle.click_calls, [])
+
+    def test_research_start_budget_is_spent_only_on_matching_final_confirm(self):
+        oracle = FakeOracle()
+        project = SimpleNamespace(
+            slot=1,
+            code="G-412",
+            status=ResearchProjectStatus.DETAIL,
+            button=SimpleNamespace(actionable=True),
+        )
+        oracle.research_project_values = [project]
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            research_start_budget=1,
+        )
+        adapter.begin_research()
+
+        adapter.click(NamedButton("ENTRANCE_1"))
+        adapter.click(NamedButton("RESEARCH_START"))
+        self.assertEqual(adapter._research_context.start_budget, 1)
+        self.assertTrue(adapter.appear(NamedButton("POPUP_CONFIRM")))
+        receipt = adapter.click(NamedButton("POPUP_CONFIRM"))
+
+        self.assertEqual(receipt.semantic_id, "research/start/confirm")
+        self.assertEqual(adapter._research_context.start_budget, 0)
+        with self.assertRaises(SemanticGateClosed):
+            adapter.click(NamedButton("POPUP_CONFIRM"))
+        self.assertEqual(
+            oracle.click_calls,
+            [
+                "research/project/1",
+                "research/detail/start",
+                "research/start/confirm",
+            ],
+        )
+
+    def test_tactical_assignment_budget_is_spent_only_on_course_confirm(self):
+        oracle = FakeOracle()
+        oracle.tactical_book_values = [
+            SimpleNamespace(position=1, selected=True, count=6)
+        ]
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            tactical_assign_budget=1,
+        )
+        adapter.begin_tactical()
+
+        adapter.click(NamedButton("TACTICAL_CLASS_START"))
+        self.assertEqual(adapter._commission_context.assign_budget, 1)
+        receipt = adapter.click(NamedButton("POPUP_CONFIRM"))
+
+        self.assertEqual(receipt.semantic_id, "tactical/course/confirm")
+        self.assertEqual(adapter._commission_context.assign_budget, 0)
+        with self.assertRaises(SemanticGateClosed):
+            adapter.click(NamedButton("POPUP_CONFIRM"))
+
+    def test_dorm_feed_budget_requires_inventory_and_food_mutation_proof(self):
+        oracle = FakeOracle()
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            dorm_feed_budget=1,
+        )
+        adapter.begin_dorm()
+
+        receipts = adapter.dorm_feed_food(0, 1)
+
+        self.assertEqual(len(receipts), 1)
+        self.assertEqual(receipts[0].semantic_id, "dorm/feed/item/50001")
+        self.assertEqual(adapter._dorm_context.feed_budget, 0)
+        self.assertEqual(oracle.dorm_feed_state_value.food, 1000)
+        self.assertEqual(oracle.dorm_feed_state_value.items[0].count, 4)
+        with self.assertRaises(SemanticGateClosed):
+            adapter.dorm_feed_food(0, 1)
+
+    def test_build_submit_budget_checks_coins_and_is_single_use(self):
+        oracle = FakeOracle()
+        oracle.enabled_values.update(
+            {
+                "build/warning/confirm": False,
+                "build/prep/confirm": True,
+            }
+        )
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            build_submit_budget=1,
+        )
+        adapter.begin_build()
+
+        adapter.click(NamedButton("MAIN_GOTO_BUILD"))
+        adapter.click(NamedButton("BUILD_SUBMIT_ORDERS"))
+        receipt = adapter.click(NamedButton("POPUP_CONFIRM_GACHA_ORDER"))
+
+        self.assertEqual(receipt.semantic_id, "build/prep/confirm")
+        self.assertEqual(adapter._build_context.submit_budget, 0)
+        with self.assertRaises(SemanticGateClosed):
+            adapter.click(NamedButton("POPUP_CONFIRM_GACHA_ORDER"))
+
+        insufficient = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            build_submit_budget=1,
+        )
+        insufficient.begin_build()
+        insufficient._build_context.coins_owned = 599
+        with self.assertRaises(SemanticGateClosed):
+            insufficient.click(NamedButton("POPUP_CONFIRM_GACHA_ORDER"))
+
+    def test_build_warning_confirmation_is_admitted_once(self):
+        oracle = FakeOracle()
+        oracle.enabled_values["build/warning/confirm"] = True
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            build_submit_budget=1,
+        )
+        adapter.begin_build()
+
+        self.assertTrue(adapter.appear(NamedButton("POPUP_CONFIRM")))
+        receipt = adapter.click(NamedButton("POPUP_CONFIRM"))
+
+        self.assertEqual(receipt.semantic_id, "build/warning/confirm")
+        self.assertFalse(adapter.appear(NamedButton("POPUP_CONFIRM")))
+        with self.assertRaises(SemanticGateClosed):
+            adapter.click(NamedButton("POPUP_CONFIRM"))
+
+    def test_build_navbars_and_queue_observations_feed_alas_primitives(self):
+        oracle = FakeOracle()
+        oracle.toggle_selected_values.update(
+            {
+                "build/nav/pools": False,
+                "build/nav/queue": True,
+                "build/nav/support": False,
+                "build/nav/unseam": False,
+                "build/pool/light": False,
+                "build/pool/heavy": True,
+                "build/pool/special": False,
+            }
+        )
+        adapter = AlasSemanticAdapter(oracle, lambda: None, build_submit_budget=1)
+        adapter.begin_build()
+
+        self.assertTrue(adapter.supports(NamedButton("GACHA_SIDE_NAVBAR_0_1")))
+        self.assertTrue(adapter.supports(NamedButton("CONSTRUCT_BOTTOM_NAVBAR_2_0")))
+        self.assertTrue(
+            adapter.image_color_count(
+                NamedButton("GACHA_SIDE_NAVBAR_0_1"),
+                color=(247, 255, 173),
+                threshold=221,
+                count=100,
+            )
+        )
+        self.assertTrue(
+            adapter.image_color_count(
+                NamedButton("CONSTRUCT_BOTTOM_NAVBAR_2_0"),
+                color=(247, 227, 148),
+                threshold=180,
+                count=100,
+            )
+        )
+        self.assertFalse(
+            adapter.image_color_count(
+                NamedButton("CONSTRUCT_BOTTOM_NAVBAR_0_0"),
+                color=(189, 231, 247),
+                threshold=180,
+                count=50,
+            )
+        )
+        self.assertTrue(adapter.appear(NamedButton("BUILD_QUEUE_EMPTY")))
+        self.assertTrue(adapter.appear(NamedButton("BUILD_FINISH_ORDERS")))
+        session = AlasSemanticSession.__new__(AlasSemanticSession)
+        session.adapter = adapter
+        session.open = lambda: adapter
+        session.click(NamedButton("GACHA_SIDE_NAVBAR_0_0"))
+        session.click(NamedButton("CONSTRUCT_BOTTOM_NAVBAR_2_0"))
+        self.assertEqual(
+            oracle.click_calls,
+            ["build/nav/pools", "build/pool/heavy"],
+        )
+        with self.assertRaises(SemanticGateClosed):
+            adapter.click(NamedButton("BUILD_FINISH_ORDERS"))
+
+        oracle.build_queue_empty_value = False
+        with self.assertRaises(SemanticGateClosed):
+            adapter.appear(NamedButton("BUILD_QUEUE_EMPTY"))
 
     def test_build_goto_main_uses_exact_reviewed_back(self):
         adapter, oracle, _ = self.make_adapter()
@@ -1375,6 +1647,34 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertEqual(session.commission_start_budget, 1)
 
         environment["ALAS_SEMANTIC_COMMISSION_START_BUDGET"] = "01"
+        with patch.dict("os.environ", environment, clear=True):
+            with self.assertRaises(SemanticGateClosed):
+                AlasSemanticSession.from_environment("emulator-test")
+
+    def test_environment_factory_parses_new_bounded_mutation_budgets(self):
+        environment = {
+            "ALAS_SEMANTIC_MODE": "1",
+            "ALAS_SEMANTIC_DRIVER_REVISION": (
+                "be80ce591a481c12d60c50d6040d40c035b40a2b"
+            ),
+            "ALAS_SEMANTIC_TACTICAL_ASSIGN_BUDGET": "1",
+            "ALAS_SEMANTIC_RESEARCH_REWARD_BUDGET": "2",
+            "ALAS_SEMANTIC_RESEARCH_START_BUDGET": "3",
+            "ALAS_SEMANTIC_DORM_COLLECT_BUDGET": "4",
+            "ALAS_SEMANTIC_DORM_FEED_BUDGET": "5",
+            "ALAS_SEMANTIC_BUILD_SUBMIT_BUDGET": "6",
+        }
+        with patch.dict("os.environ", environment, clear=True):
+            session = AlasSemanticSession.from_environment("emulator-test")
+
+        self.assertEqual(session.tactical_assign_budget, 1)
+        self.assertEqual(session.research_reward_budget, 2)
+        self.assertEqual(session.research_start_budget, 3)
+        self.assertEqual(session.dorm_collect_budget, 4)
+        self.assertEqual(session.dorm_feed_budget, 5)
+        self.assertEqual(session.build_submit_budget, 6)
+
+        environment["ALAS_SEMANTIC_DORM_FEED_BUDGET"] = "05"
         with patch.dict("os.environ", environment, clear=True):
             with self.assertRaises(SemanticGateClosed):
                 AlasSemanticSession.from_environment("emulator-test")

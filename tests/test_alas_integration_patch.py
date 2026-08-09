@@ -98,6 +98,41 @@ class AlasIntegrationPatchTests(unittest.TestCase):
         self.assertIn("diff --git a/module/dorm/dorm.py", self.patch_text)
         self.assertIn("semantic_session.dorm_state().occupied_slots", self.patch_text)
 
+    def test_five_new_flows_preserve_alas_state_machine_ownership(self):
+        for begin, end in (
+            ("begin_tactical()", "end_tactical()"),
+            ("begin_research()", "end_research()"),
+            ("begin_dorm()", "end_dorm()"),
+            ("begin_build()", "end_build()"),
+        ):
+            self.assertIn("semantic_adapter." + begin, self.patch_text)
+            self.assertIn("semantic_adapter." + end, self.patch_text)
+        self.assertGreaterEqual(
+            self.patch_text.count("def _run_alas_state_machine(self):"),
+            3,
+        )
+        self.assertIn("return self._run_alas_state_machine()", self.patch_text)
+        self.assertIn("self.tactical_class_receive()", self.patch_text)
+        self.assertIn("semantic_session.research_projects()", self.patch_text)
+        self.assertIn("semantic_session.research_detail_state()", self.patch_text)
+        self.assertIn("semantic_session.research_queue_empty_slots()", self.patch_text)
+        self.assertIn("Book.from_semantic", self.patch_text)
+        self.assertIn("semantic_session.tactical_select_book", self.patch_text)
+        self.assertIn("semantic_session.dorm_feed_food(index, count)", self.patch_text)
+        self.assertIn("semantic_session.build_submit_state()", self.patch_text)
+        self.assertIn(
+            "ALAS still owns selection, queue filling, retry, and scheduling.",
+            self.patch_text,
+        )
+        self.assertIn(
+            "ALAS still owns feed filtering, collect loop, and scheduling.",
+            self.patch_text,
+        )
+        self.assertIn(
+            "ALAS still owns pool choice, affordability, and submit scheduling.",
+            self.patch_text,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
