@@ -5,8 +5,9 @@ module is the boundary that may replace those frames: every ALAS presence
 query must have a reviewed exact Unity selector, every observer slice must be
 complete and hash-bound, and the bounded phases are inferred from records
 rather than accepted as fixture labels. G25 adds automation switching, radar
-search, and ordered fleet statistics while the incomplete defensive-resource
-and blocker surface remains fail-closed.
+search, and ordered fleet statistics. G26 separates the canonical query path,
+complete pinned defensive query union, and original-ALAS action targets while
+branch and blocker review remain fail-closed.
 """
 
 from __future__ import annotations
@@ -21,9 +22,12 @@ from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Tuple
 
 from .alas_combat_admission import AlasCampaignCombatAdmission
 from .alas_combat_state_replay import (
+    ALAS_COMBAT_ACTION_TARGET_NAMES,
+    ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES,
     ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES,
     ALAS_COMBAT_REPLAY_PHASE_SEQUENCES,
     ALAS_COMBAT_REPLAY_RESOURCE_NAMES,
+    ALAS_COMBAT_RESOURCE_ACTION_TARGETS,
     AlasCampaignCombatReplay,
     AlasCombatReplayFrame,
     AlasCombatReplayPhase,
@@ -56,22 +60,17 @@ ALAS_COMBAT_OBSERVER_FIXTURE_SCHEMA = (
     "alas-headless.g20-combat-observer-fixture/v1"
 )
 ALAS_COMBAT_OBSERVER_MANIFEST_SCHEMA = (
-    "alas-headless.g22-combat-observer-manifest/v1"
+    "alas-headless.g26-combat-observer-manifest/v2"
 )
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
-_ACTION_RESOURCES = frozenset(
-    {
-        "AUTOMATION_CONFIRM",
-        "AUTOMATION_OFF",
-        "BATTLE_PREPARATION",
-        "BATTLE_STATUS_S",
-        "EXP_INFO_S",
-        "GET_ITEMS_1",
-        "GET_MISSION",
-    }
-)
 _ACTION_PRECEDENCE_ALLOWLIST = {
-    "AUTOMATION_OFF": frozenset({"BATTLE_PREPARATION"}),
+    "AUTOMATION_SWITCH": frozenset({"BATTLE_PREPARATION"}),
+    "GUILD_POPUP_CANCEL": frozenset({"GUILD_POPUP_CONFIRM"}),
+    "GUILD_POPUP_CONFIRM": frozenset({"GUILD_POPUP_CANCEL"}),
+    "MISSION_POPUP_ACK": frozenset({"MISSION_POPUP_GO"}),
+    "MISSION_POPUP_GO": frozenset({"MISSION_POPUP_ACK"}),
+    "POPUP_CANCEL": frozenset({"POPUP_CONFIRM"}),
+    "POPUP_CONFIRM": frozenset({"POPUP_CANCEL"}),
 }
 
 
@@ -100,6 +99,19 @@ class AlasCombatUnitySelector:
 @dataclass(frozen=True)
 class AlasCombatResourceMapping:
     resource_name: str
+    selectors: Tuple[AlasCombatUnitySelector, ...] = ()
+    evidence_sha256: str = ""
+
+    @property
+    def qualified(self) -> bool:
+        return bool(self.selectors) and _is_sha256(self.evidence_sha256)
+
+
+@dataclass(frozen=True)
+class AlasCombatActionMapping:
+    """One original-ALAS click target and its exact Unity alternatives."""
+
+    action_name: str
     selectors: Tuple[AlasCombatUnitySelector, ...] = ()
     evidence_sha256: str = ""
 
@@ -142,6 +154,8 @@ class AlasCombatObserverManifest:
     driver_revision: str
     game_fingerprint: str
     resources: Tuple[AlasCombatResourceMapping, ...]
+    actions: Tuple[AlasCombatActionMapping, ...] = ()
+    branch_review_complete: bool = False
     blockers: Tuple[AlasCombatBlockerMapping, ...] = ()
     blocker_review_complete: bool = False
     fleet_stats: AlasCombatFleetStatsMapping = AlasCombatFleetStatsMapping()
@@ -149,9 +163,15 @@ class AlasCombatObserverManifest:
 
 @dataclass(frozen=True)
 class AlasCombatObserverCoverage:
+    canonical_resources: int
+    canonical_qualified_resources: int
     total_resources: int
     qualified_resources: int
     unqualified_resources: Tuple[str, ...]
+    total_actions: int
+    qualified_actions: int
+    unqualified_actions: Tuple[str, ...]
+    branch_review_complete: bool
     total_blockers: int
     qualified_blockers: int
     blocker_review_complete: bool
@@ -162,6 +182,8 @@ class AlasCombatObserverCoverage:
     def production_ready(self) -> bool:
         return (
             self.qualified_resources == self.total_resources
+            and self.qualified_actions == self.total_actions
+            and self.branch_review_complete
             and self.blockers_qualified
             and self.fleet_stats_qualified
         )
@@ -203,7 +225,11 @@ def unqualified_alas_combat_observer_manifest(
         game_fingerprint=game_fingerprint,
         resources=tuple(
             AlasCombatResourceMapping(name)
-            for name in ALAS_COMBAT_REPLAY_RESOURCE_NAMES
+            for name in ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES
+        ),
+        actions=tuple(
+            AlasCombatActionMapping(name)
+            for name in ALAS_COMBAT_ACTION_TARGET_NAMES
         ),
     )
 
@@ -284,6 +310,29 @@ def _mapping_from_json(value: Any) -> AlasCombatResourceMapping:
     )
 
 
+def _action_from_json(value: Any) -> AlasCombatActionMapping:
+    if not isinstance(value, dict) or set(value) != {
+        "action_name",
+        "selectors",
+        "evidence_sha256",
+    }:
+        raise SemanticGateClosed("combat manifest action schema changed")
+    selectors = value["selectors"]
+    if not isinstance(selectors, list):
+        raise SemanticGateClosed("combat manifest action selectors are malformed")
+    return AlasCombatActionMapping(
+        action_name=(
+            value["action_name"] if isinstance(value["action_name"], str) else ""
+        ),
+        selectors=tuple(_selector_from_json(item) for item in selectors),
+        evidence_sha256=(
+            value["evidence_sha256"]
+            if isinstance(value["evidence_sha256"], str)
+            else ""
+        ),
+    )
+
+
 def _blocker_from_json(value: Any) -> AlasCombatBlockerMapping:
     if not isinstance(value, dict) or set(value) != {
         "blocker_name",
@@ -322,6 +371,8 @@ def load_alas_combat_observer_manifest(
         "driver_revision",
         "game_fingerprint",
         "resources",
+        "actions",
+        "branch_review_complete",
         "blockers",
         "blocker_review_complete",
         "fleet_stats",
@@ -338,12 +389,19 @@ def load_alas_combat_observer_manifest(
         )
     ):
         raise SemanticGateClosed("combat observer manifest identity is malformed")
+    if not isinstance(value["branch_review_complete"], bool):
+        raise SemanticGateClosed("combat branch review flag is malformed")
     if not isinstance(value["blocker_review_complete"], bool):
         raise SemanticGateClosed("combat blocker review flag is malformed")
     resources = value["resources"]
+    actions = value["actions"]
     blockers = value["blockers"]
     stats = value["fleet_stats"]
-    if not isinstance(resources, list) or not isinstance(blockers, list):
+    if (
+        not isinstance(resources, list)
+        or not isinstance(actions, list)
+        or not isinstance(blockers, list)
+    ):
         raise SemanticGateClosed("combat observer manifest lists are malformed")
     if not isinstance(stats, dict) or set(stats) != {
         "hp_images",
@@ -362,6 +420,8 @@ def load_alas_combat_observer_manifest(
         driver_revision=value["driver_revision"],
         game_fingerprint=value["game_fingerprint"],
         resources=tuple(_mapping_from_json(item) for item in resources),
+        actions=tuple(_action_from_json(item) for item in actions),
+        branch_review_complete=value["branch_review_complete"],
         blockers=tuple(_blocker_from_json(item) for item in blockers),
         blocker_review_complete=value["blocker_review_complete"],
         fleet_stats=AlasCombatFleetStatsMapping(
@@ -420,6 +480,15 @@ def alas_combat_observer_manifest_to_json(
             }
             for mapping in manifest.resources
         ],
+        "actions": [
+            {
+                "action_name": mapping.action_name,
+                "selectors": selectors(mapping.selectors),
+                "evidence_sha256": mapping.evidence_sha256,
+            }
+            for mapping in manifest.actions
+        ],
+        "branch_review_complete": manifest.branch_review_complete,
         "blockers": [
             {
                 "blocker_name": mapping.blocker_name,
@@ -450,10 +519,17 @@ def audit_alas_combat_observer_manifest(
     names = tuple(mapping.resource_name for mapping in manifest.resources)
     if len(names) != len(set(names)):
         raise SemanticGateClosed("combat observer manifest has duplicate resources")
-    if set(names) != set(ALAS_COMBAT_REPLAY_RESOURCE_NAMES):
+    if set(names) != set(ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES):
         raise SemanticGateClosed("combat observer resource surface changed")
     for mapping in manifest.resources:
         _validate_mapping_shape(mapping)
+    action_names = tuple(mapping.action_name for mapping in manifest.actions)
+    if len(action_names) != len(set(action_names)):
+        raise SemanticGateClosed("combat observer manifest has duplicate actions")
+    if set(action_names) != set(ALAS_COMBAT_ACTION_TARGET_NAMES):
+        raise SemanticGateClosed("combat observer action surface changed")
+    for mapping in manifest.actions:
+        _validate_action_shape(mapping)
     blocker_names = tuple(mapping.blocker_name for mapping in manifest.blockers)
     if len(blocker_names) != len(set(blocker_names)):
         raise SemanticGateClosed("combat observer manifest has duplicate blockers")
@@ -467,6 +543,16 @@ def audit_alas_combat_observer_manifest(
             if not mapping.qualified
         )
     )
+    unqualified_actions = tuple(
+        sorted(
+            mapping.action_name
+            for mapping in manifest.actions
+            if not mapping.qualified
+        )
+    )
+    qualified_resource_names = {
+        mapping.resource_name for mapping in manifest.resources if mapping.qualified
+    }
     qualified_blockers = sum(mapping.qualified for mapping in manifest.blockers)
     blockers_qualified = (
         manifest.blocker_review_complete
@@ -474,10 +560,19 @@ def audit_alas_combat_observer_manifest(
         and qualified_blockers == len(manifest.blockers)
     )
     return AlasCombatObserverCoverage(
-        total_resources=len(ALAS_COMBAT_REPLAY_RESOURCE_NAMES),
-        qualified_resources=len(ALAS_COMBAT_REPLAY_RESOURCE_NAMES)
+        canonical_resources=len(ALAS_COMBAT_REPLAY_RESOURCE_NAMES),
+        canonical_qualified_resources=len(
+            set(ALAS_COMBAT_REPLAY_RESOURCE_NAMES) & qualified_resource_names
+        ),
+        total_resources=len(ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES),
+        qualified_resources=len(ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES)
         - len(unqualified),
         unqualified_resources=unqualified,
+        total_actions=len(ALAS_COMBAT_ACTION_TARGET_NAMES),
+        qualified_actions=len(ALAS_COMBAT_ACTION_TARGET_NAMES)
+        - len(unqualified_actions),
+        unqualified_actions=unqualified_actions,
+        branch_review_complete=manifest.branch_review_complete,
         total_blockers=len(manifest.blockers),
         qualified_blockers=qualified_blockers,
         blocker_review_complete=manifest.blocker_review_complete,
@@ -548,21 +643,27 @@ def _validate_mapping_shape(mapping: AlasCombatResourceMapping) -> None:
         raise SemanticGateClosed("combat resource mapping has duplicate selectors")
     if mapping.evidence_sha256 and not _is_sha256(mapping.evidence_sha256):
         raise SemanticGateClosed("combat resource evidence hash is malformed")
-    if mapping.resource_name in _ACTION_RESOURCES and mapping.qualified:
-        if not any(
-            selector.kind
-            in (
-                AlasCombatUnityRecordKind.BUTTON,
-                AlasCombatUnityRecordKind.IMAGE,
-                AlasCombatUnityRecordKind.TOGGLE_OFF,
-                AlasCombatUnityRecordKind.TOGGLE_ON,
-            )
-            and selector.require_top_raycast
-            for selector in mapping.selectors
-        ):
+
+
+def _validate_action_shape(mapping: AlasCombatActionMapping) -> None:
+    if not isinstance(mapping, AlasCombatActionMapping) or not mapping.action_name:
+        raise SemanticGateClosed("combat action mapping is malformed")
+    for selector in mapping.selectors:
+        _validate_selector(selector)
+        if selector.kind not in (
+            AlasCombatUnityRecordKind.BUTTON,
+            AlasCombatUnityRecordKind.IMAGE,
+            AlasCombatUnityRecordKind.TOGGLE_OFF,
+            AlasCombatUnityRecordKind.TOGGLE_ON,
+        ) or not selector.require_top_raycast:
             raise SemanticGateClosed(
                 "combat action mapping lacks an exact top-raycast control"
             )
+    identities = tuple((selector.kind, selector.path) for selector in mapping.selectors)
+    if len(identities) != len(set(identities)):
+        raise SemanticGateClosed("combat action mapping has duplicate selectors")
+    if mapping.evidence_sha256 and not _is_sha256(mapping.evidence_sha256):
+        raise SemanticGateClosed("combat action evidence hash is malformed")
 
 
 def _validate_blocker_shape(mapping: AlasCombatBlockerMapping) -> None:
@@ -808,6 +909,8 @@ def prepare_alas_combat_resource_action(
     snapshot: AlasCombatObserverSnapshot,
     manifest: AlasCombatObserverManifest,
     resource_name: str,
+    *,
+    action_name: Optional[str] = None,
 ) -> ActionReceipt:
     """Resolve one reviewed combat action without injecting input.
 
@@ -818,8 +921,20 @@ def prepare_alas_combat_resource_action(
 
     audit_alas_combat_observer_manifest(manifest)
     _validate_snapshot(snapshot, manifest)
-    if resource_name not in _ACTION_RESOURCES:
-        raise SemanticGateClosed("combat resource is not an action resource")
+    explicit_action = action_name is not None
+    allowed_actions = ALAS_COMBAT_RESOURCE_ACTION_TARGETS.get(resource_name)
+    if allowed_actions is None:
+        raise SemanticGateClosed("combat resource is outside the branch contract")
+    if action_name is None:
+        if len(allowed_actions) != 1:
+            raise SemanticGateClosed(
+                "combat resource action is contextual; exact target is required"
+            )
+        action_name = allowed_actions[0]
+    elif action_name not in allowed_actions:
+        raise SemanticGateClosed(
+            "combat action target is not owned by the original ALAS branch"
+        )
     mappings = tuple(
         mapping
         for mapping in manifest.resources
@@ -840,32 +955,50 @@ def prepare_alas_combat_resource_action(
         )
     if not _resource_visible(snapshot, mapping):
         raise SemanticGateClosed("combat action resource is not visible")
-    competing_actions = tuple(
-        candidate.resource_name
-        for candidate in manifest.resources
-        if candidate.resource_name in _ACTION_RESOURCES
-        and candidate.resource_name != resource_name
-        and candidate.resource_name
-        not in _ACTION_PRECEDENCE_ALLOWLIST.get(resource_name, frozenset())
-        and candidate.qualified
-        and _resource_visible(snapshot, candidate)
+    action_mappings = tuple(
+        action
+        for action in manifest.actions
+        if action.action_name == action_name
     )
-    if competing_actions:
+    if len(action_mappings) != 1 or not action_mappings[0].qualified:
+        raise SemanticGateClosed("combat action target is not qualified")
+    action_mapping = action_mappings[0]
+    resource_index = {
+        candidate.resource_name: candidate for candidate in manifest.resources
+    }
+
+    def action_visible(candidate: AlasCombatActionMapping) -> bool:
+        if not any(_selector_present(snapshot, item) for item in candidate.selectors):
+            return False
+        triggers = tuple(
+            trigger
+            for trigger, targets in ALAS_COMBAT_RESOURCE_ACTION_TARGETS.items()
+            if candidate.action_name in targets
+        )
+        return any(
+            resource_index[trigger].qualified
+            and _resource_visible(snapshot, resource_index[trigger])
+            for trigger in triggers
+        )
+
+    competing_actions = tuple(
+        candidate.action_name
+        for candidate in manifest.actions
+        if candidate.action_name != action_name
+        and candidate.action_name
+        not in _ACTION_PRECEDENCE_ALLOWLIST.get(action_name, frozenset())
+        and candidate.qualified
+        and action_visible(candidate)
+    )
+    if competing_actions and not explicit_action:
         raise SemanticGateClosed(
             "combat action resource is ambiguous with: "
             + ", ".join(competing_actions)
         )
     control_selectors = tuple(
         selector
-        for selector in mapping.selectors
-        if selector.kind
-        in (
-            AlasCombatUnityRecordKind.BUTTON,
-            AlasCombatUnityRecordKind.IMAGE,
-            AlasCombatUnityRecordKind.TOGGLE_OFF,
-            AlasCombatUnityRecordKind.TOGGLE_ON,
-        )
-        and selector.require_top_raycast
+        for selector in action_mapping.selectors
+        if _selector_present(snapshot, selector)
     )
     if len(control_selectors) != 1:
         raise SemanticGateClosed(
@@ -1054,8 +1187,15 @@ def build_alas_campaign_combat_replay_from_observer(
     coverage = audit_alas_combat_observer_manifest(manifest)
     if not coverage.production_ready:
         raise SemanticGateClosed(
-            "combat observer manifest is not production-ready: {0}/{1} resources"
-            .format(coverage.qualified_resources, coverage.total_resources)
+            "combat observer manifest is not production-ready: "
+            "{0}/{1} resources, {2}/{3} actions, branch_review={4}"
+            .format(
+                coverage.qualified_resources,
+                coverage.total_resources,
+                coverage.qualified_actions,
+                coverage.total_actions,
+                coverage.branch_review_complete,
+            )
         )
     allowed_lengths = {len(sequence) for sequence in ALAS_COMBAT_REPLAY_PHASE_SEQUENCES}
     if len(snapshots) not in allowed_lengths:

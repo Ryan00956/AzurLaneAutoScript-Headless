@@ -59,6 +59,13 @@ with ammo `2 -> 1`. Foreground masking now translates only covered Unity
 objects into original ALAS `appear()` semantics. Coverage is `12/41`, fleet
 stats are qualified, but blocker review and 29 defensive resources remain
 open; `production_ready=false` and production still stops at G18.
+G26 proves that the canonical 41-query all-false path is not the complete
+defensive surface. Manifest v2 separately gates 52 pinned query resources, 37
+original-ALAS click targets, branch review, blocker review, and fleet stats.
+A reversible retreat popup promotes generic cancel/confirm observations and
+their two exact actions without retreating. Current coverage is canonical
+`13/41`, defensive `14/52`, and actions `9/37`; branch and blocker review remain
+incomplete, `production_ready=false`, and production still stops at G18.
 G4 includes
 login/main reachability, sustained semantic state, RectTransform bounds, top
 EventSystem raycast identity for each action, and a settings-page return loop.

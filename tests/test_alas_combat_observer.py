@@ -7,13 +7,17 @@ from pathlib import Path
 from unittest import mock
 
 from alas_headless import (
+    ALAS_COMBAT_ACTION_TARGET_NAMES,
+    ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES,
     ALAS_COMBAT_OBSERVER_FIXTURE_SCHEMA,
     ALAS_COMBAT_MAPPING_RECEIPT_SCHEMA,
+    ALAS_COMBAT_MAPPING_REVIEW_SCHEMA,
     ALAS_COMBAT_OBSERVER_TRACE_SCHEMA,
     ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES,
     ALAS_COMBAT_REPLAY_PHASES,
     ALAS_COMBAT_REPLAY_RESOURCE_NAMES,
     AlasCampaignCombatAdmission,
+    AlasCombatActionMapping,
     AlasCombatBlockerMapping,
     AlasCombatFleetStatsMapping,
     AlasCombatObserverManifest,
@@ -60,6 +64,8 @@ ACTION_RESOURCES = {
     "EXP_INFO_S",
     "GET_ITEMS_1",
     "GET_MISSION",
+    "POPUP_CANCEL",
+    "POPUP_CONFIRM",
 }
 
 
@@ -112,8 +118,26 @@ def qualified_manifest(blockers=None):
         game_fingerprint=GAME,
         resources=tuple(
             AlasCombatResourceMapping(name, (selector_for(name),), EVIDENCE)
-            for name in ALAS_COMBAT_REPLAY_RESOURCE_NAMES
+            for name in ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES
         ),
+        actions=tuple(
+            AlasCombatActionMapping(
+                name,
+                (
+                    selector_for(name)
+                    if name in ACTION_RESOURCES
+                    else AlasCombatUnitySelector(
+                        AlasCombatUnityRecordKind.BUTTON,
+                        "Combat/Button/" + name,
+                        name,
+                        require_top_raycast=True,
+                    ),
+                ),
+                EVIDENCE,
+            )
+            for name in ALAS_COMBAT_ACTION_TARGET_NAMES
+        ),
+        branch_review_complete=True,
         blockers=(
             AlasCombatBlockerMapping(
                 "test_blocker",
@@ -421,19 +445,24 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
         return path
 
-    def test_unqualified_manifest_is_honestly_zero_of_41(self):
+    def test_unqualified_manifest_separates_canonical_and_defensive_surfaces(self):
         coverage = audit_alas_combat_observer_manifest(
             unqualified_alas_combat_observer_manifest(
                 driver_revision=DRIVER, game_fingerprint=GAME
             )
         )
 
-        self.assertEqual(coverage.total_resources, 41)
+        self.assertEqual(coverage.canonical_resources, 41)
+        self.assertEqual(coverage.canonical_qualified_resources, 0)
+        self.assertEqual(coverage.total_resources, 52)
         self.assertEqual(coverage.qualified_resources, 0)
+        self.assertEqual(coverage.total_actions, 37)
+        self.assertEqual(coverage.qualified_actions, 0)
+        self.assertFalse(coverage.branch_review_complete)
         self.assertFalse(coverage.production_ready)
         self.assertEqual(
             set(coverage.unqualified_resources),
-            set(ALAS_COMBAT_REPLAY_RESOURCE_NAMES),
+            set(ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES),
         )
 
     def test_complete_raw_fixture_infers_six_frames_without_phase_tokens(self):
@@ -601,6 +630,14 @@ class AlasCombatObserverContractTests(unittest.TestCase):
                     (item.resource_name, item) for item in manifest.resources
                 )
             ),
+            actions=tuple(
+                AlasCombatActionMapping(
+                    "AUTOMATION_SWITCH", (image_selector,), EVIDENCE
+                )
+                if mapping.action_name == "AUTOMATION_SWITCH"
+                else mapping
+                for mapping in manifest.actions
+            ),
         )
         phases = alas_combat_replay_phase_sequence(
             include_automation_switch=True
@@ -694,7 +731,7 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         manifest = unqualified_alas_combat_observer_manifest(
             driver_revision=DRIVER, game_fingerprint=GAME
         )
-        with self.assertRaisesRegex(SemanticGateClosed, "0/41"):
+        with self.assertRaisesRegex(SemanticGateClosed, "0/52"):
             build_alas_campaign_combat_replay_from_observer(
                 admission(), (), manifest
             )
@@ -765,6 +802,39 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         with self.assertRaisesRegex(SemanticGateClosed, "ambiguous with"):
             prepare_alas_combat_resource_action(
                 ambiguous, manifest, "BATTLE_STATUS_S"
+            )
+
+    def test_contextual_popup_action_requires_original_alas_click_target(self):
+        manifest = qualified_manifest()
+        snapshot = parse_alas_combat_observer_fixture_frame(
+            frame(22, ("POPUP_CANCEL", "POPUP_CONFIRM")), manifest
+        )
+
+        with self.assertRaisesRegex(SemanticGateClosed, "contextual"):
+            prepare_alas_combat_resource_action(
+                snapshot, manifest, "POPUP_CANCEL"
+            )
+        cancel = prepare_alas_combat_resource_action(
+            snapshot,
+            manifest,
+            "POPUP_CANCEL",
+            action_name="POPUP_CANCEL",
+        )
+        confirm = prepare_alas_combat_resource_action(
+            snapshot,
+            manifest,
+            "POPUP_CONFIRM",
+            action_name="POPUP_CONFIRM",
+        )
+
+        self.assertEqual(cancel.path, "Combat/Button/POPUP_CANCEL")
+        self.assertEqual(confirm.path, "Combat/Button/POPUP_CONFIRM")
+        with self.assertRaisesRegex(SemanticGateClosed, "not owned"):
+            prepare_alas_combat_resource_action(
+                snapshot,
+                manifest,
+                "POPUP_CANCEL",
+                action_name="MISSION_POPUP_GO",
             )
 
     def test_live_evidence_action_requires_two_stable_generations_then_taps_once(self):
@@ -981,8 +1051,13 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         )
         coverage = audit_alas_combat_observer_manifest(manifest)
 
-        self.assertEqual(coverage.total_resources, 41)
-        self.assertEqual(coverage.qualified_resources, 12)
+        self.assertEqual(coverage.canonical_resources, 41)
+        self.assertEqual(coverage.canonical_qualified_resources, 13)
+        self.assertEqual(coverage.total_resources, 52)
+        self.assertEqual(coverage.qualified_resources, 14)
+        self.assertEqual(coverage.total_actions, 37)
+        self.assertEqual(coverage.qualified_actions, 9)
+        self.assertFalse(coverage.branch_review_complete)
         self.assertTrue(coverage.fleet_stats_qualified)
         self.assertEqual(coverage.qualified_blockers, 1)
         self.assertFalse(coverage.blocker_review_complete)
@@ -1209,11 +1284,13 @@ class AlasCombatObserverContractTests(unittest.TestCase):
             "require_top_raycast": selector.require_top_raycast,
         }
         review = {
-            "schema": "alas-headless.g22-combat-mapping-review/v1",
+            "schema": ALAS_COMBAT_MAPPING_REVIEW_SCHEMA,
             "review_id": "unit-in-map",
             "trace_sha256": EVIDENCE,
             "generations": [15, 16],
             "resources": [{"resource_name": "IN_MAP", "selectors": [selector_json]}],
+            "actions": [],
+            "branch_review_complete": True,
             "blockers": [{"blocker_name": "map_overlay", "selectors": [selector_json]}],
             "blocker_review_complete": False,
         }
@@ -1227,7 +1304,7 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         coverage = audit_alas_combat_observer_manifest(promoted)
 
         self.assertEqual(receipt["schema"], ALAS_COMBAT_MAPPING_RECEIPT_SCHEMA)
-        self.assertEqual(coverage.qualified_resources, 41)
+        self.assertEqual(coverage.qualified_resources, 52)
         self.assertEqual(coverage.qualified_blockers, 1)
         self.assertFalse(coverage.blockers_qualified)
         self.assertFalse(coverage.production_ready)
@@ -1375,11 +1452,13 @@ class AlasCombatObserverContractTests(unittest.TestCase):
             manifest,
         )
         review = {
-            "schema": "alas-headless.g22-combat-mapping-review/v1",
+            "schema": ALAS_COMBAT_MAPPING_REVIEW_SCHEMA,
             "review_id": "unit-fleet-stats",
             "trace_sha256": EVIDENCE,
             "generations": [11, 12, 13],
             "resources": [],
+            "actions": [],
+            "branch_review_complete": True,
             "blockers": [],
             "blocker_review_complete": True,
             "fleet_stats": {

@@ -22,6 +22,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--serial", required=True)
     parser.add_argument("--resource", required=True)
+    parser.add_argument("--action-target")
     parser.add_argument("--expected-pid", required=True, type=int)
     parser.add_argument("--minimum-generation", required=True, type=int)
     parser.add_argument("--output", required=True, type=Path)
@@ -61,6 +62,7 @@ def main():
             session,
             manifest,
             args.resource,
+            action_name=args.action_target,
             expected_pid=args.expected_pid,
             minimum_generation=args.minimum_generation,
             action_budget=1,

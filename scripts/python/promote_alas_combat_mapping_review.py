@@ -68,12 +68,15 @@ def main() -> int:
     print(
         json.dumps(
             {
-                "schema": "alas-headless.g22-combat-mapping-promotion-result/v1",
+                "schema": "alas-headless.g26-combat-mapping-promotion-result/v2",
                 "passed": True,
                 "manifest": str(args.output_manifest.resolve()),
                 "receipt": str(args.receipt.resolve()),
                 "qualified_resources": receipt["coverage_after"]["qualified_resources"],
                 "total_resources": receipt["coverage_after"]["total_resources"],
+                "qualified_actions": receipt["coverage_after"]["qualified_actions"],
+                "total_actions": receipt["coverage_after"]["total_actions"],
+                "branch_review_complete": receipt["branch_review_complete"],
                 "qualified_blockers": receipt["coverage_after"]["qualified_blockers"],
                 "blocker_review_complete": receipt["blocker_review_complete"],
                 "production_ready": receipt["coverage_after"]["production_ready"],

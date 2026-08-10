@@ -131,8 +131,9 @@ tokens are rejected. The G20 baseline was deliberately `0/38`, so the boundary
 was testable but could not run production combat or spend the campaign-combat
 budget.
 
-G21 makes the remaining evidence work reproducible. The sole durable mapping
-source is `combat-observer-manifest.json`; it must retain exactly 38 entries.
+G21 made the remaining evidence work reproducible. At that gate the sole
+durable mapping source, `combat-observer-manifest.json`, retained exactly 38
+entries; later gates expand and version that surface explicitly.
 The package-verified trace recorder stores only raw, hash-bound observer
 triples with `input_injected=false`:
 
@@ -204,6 +205,21 @@ switching, `MAP_ENEMY_SEARCHING`, and the remaining defensive resources remain
 unqualified. Therefore `production_ready=false` and the G18 runner stop is
 unchanged. See
 `docs/g24-alas-combat-preparation-observer-validation-report.md`.
+
+G25 closes automation switching, radar searching, and ordered fleet statistics
+without moving the G18 production stop. G26 then corrects the readiness model:
+the canonical all-false replay still asks 41 names, while its pinned defensive
+allowlist contains 52 possible queries and their original handlers can select
+37 distinct click targets. Manifest v2 stores observations and actions
+separately and adds an independent branch-review gate.
+
+A reversible live retreat dialog promotes generic `POPUP_CANCEL`, the
+true-branch-only `POPUP_CONFIRM`, and both exact top-raycast targets. The
+headless boundary accepts a contextual target only when it is one of the
+targets the original query may drive; ALAS still chooses confirm versus cancel.
+Current coverage is canonical `13/41`, defensive `14/52`, actions `9/37`, with
+branch and blocker review incomplete and `production_ready=false`. See
+`docs/g26-alas-defensive-input-surface-validation-report.md`.
 
 Commission start has a separate integer budget and remains closed by default:
 

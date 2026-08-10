@@ -14,6 +14,7 @@ from dataclasses import replace
 from typing import Any, Mapping, Optional, Sequence, Tuple
 
 from .alas_combat_observer import (
+    AlasCombatActionMapping,
     AlasCombatBlockerMapping,
     AlasCombatFleetStatsMapping,
     AlasCombatObserverCoverage,
@@ -35,9 +36,9 @@ from .alas_combat_trace import (
 from .semantic_oracle import SemanticGateClosed
 
 
-ALAS_COMBAT_MAPPING_REVIEW_SCHEMA = "alas-headless.g22-combat-mapping-review/v1"
-ALAS_COMBAT_MAPPING_RECEIPT_SCHEMA = "alas-headless.g22-combat-mapping-receipt/v1"
-ALAS_COMBAT_MAPPING_EVIDENCE_SCHEMA = "alas-headless.g22-combat-mapping-evidence/v1"
+ALAS_COMBAT_MAPPING_REVIEW_SCHEMA = "alas-headless.g26-combat-mapping-review/v2"
+ALAS_COMBAT_MAPPING_RECEIPT_SCHEMA = "alas-headless.g26-combat-mapping-receipt/v2"
+ALAS_COMBAT_MAPPING_EVIDENCE_SCHEMA = "alas-headless.g26-combat-mapping-evidence/v2"
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _REVIEW_ID_PATTERN = re.compile(r"[a-z0-9]+(?:[-_][a-z0-9]+)*")
 
@@ -52,8 +53,13 @@ def _canonical_sha256(value: Mapping[str, Any]) -> str:
 def _coverage_json(coverage: AlasCombatObserverCoverage) -> Mapping[str, Any]:
     return {
         "production_ready": coverage.production_ready,
+        "canonical_qualified_resources": coverage.canonical_qualified_resources,
+        "canonical_resources": coverage.canonical_resources,
         "qualified_resources": coverage.qualified_resources,
         "total_resources": coverage.total_resources,
+        "qualified_actions": coverage.qualified_actions,
+        "total_actions": coverage.total_actions,
+        "branch_review_complete": coverage.branch_review_complete,
         "qualified_blockers": coverage.qualified_blockers,
         "total_blockers": coverage.total_blockers,
         "blocker_review_complete": coverage.blocker_review_complete,
@@ -67,7 +73,13 @@ def _review_entries(
 ) -> Tuple[Tuple[str, Tuple[AlasCombatUnitySelector, ...]], ...]:
     if not isinstance(value, list):
         raise SemanticGateClosed("combat mapping review entries are malformed")
-    name_field = "resource_name" if entry_kind == "resource" else "blocker_name"
+    name_field = {
+        "resource": "resource_name",
+        "action": "action_name",
+        "blocker": "blocker_name",
+    }.get(entry_kind)
+    if name_field is None:
+        raise SemanticGateClosed("combat mapping review entry kind changed")
     parsed = []
     for item in value:
         if not isinstance(item, dict) or set(item) != {name_field, "selectors"}:
@@ -218,6 +230,8 @@ def promote_alas_combat_mapping_review(
         "trace_sha256",
         "generations",
         "resources",
+        "actions",
+        "branch_review_complete",
         "blockers",
         "blocker_review_complete",
     }
@@ -255,10 +269,16 @@ def promote_alas_combat_mapping_review(
     for sample in selected:
         validate_alas_combat_observer_snapshot(sample.snapshot, manifest)
     resources = _review_entries(review["resources"], entry_kind="resource")
+    actions = _review_entries(review["actions"], entry_kind="action")
     blockers = _review_entries(review["blockers"], entry_kind="blocker")
     reviewed_stats = _review_fleet_stats(review.get("fleet_stats"))
-    if not resources and not blockers and reviewed_stats is None:
+    if not resources and not actions and not blockers and reviewed_stats is None:
         raise SemanticGateClosed("combat mapping review has no promotions")
+    branch_complete = review["branch_review_complete"]
+    if not isinstance(branch_complete, bool):
+        raise SemanticGateClosed("combat mapping branch review flag is malformed")
+    if manifest.branch_review_complete and not branch_complete:
+        raise SemanticGateClosed("combat mapping review cannot reopen branch coverage")
     complete = review["blocker_review_complete"]
     if not isinstance(complete, bool):
         raise SemanticGateClosed("combat mapping blocker review flag is malformed")
@@ -291,6 +311,41 @@ def promote_alas_combat_mapping_review(
             {
                 "resource_name": name,
                 "match": "all_of",
+                "selectors": [
+                    alas_combat_unity_selector_to_json(selector)
+                    for selector in selectors
+                ],
+                "evidence_sha256": evidence,
+                "present_in_all_samples": True,
+            }
+        )
+
+    action_index = {mapping.action_name: mapping for mapping in manifest.actions}
+    action_promotions = []
+    for name, selectors in actions:
+        if name not in action_index:
+            raise SemanticGateClosed(
+                "combat mapping review action is unknown: " + name
+            )
+        _prove_all_present(selected, selectors)
+        evidence = _evidence_sha256(
+            mapping_type="action",
+            mapping_name=name,
+            selectors=selectors,
+            trace_sha256=source_trace_sha256,
+            selected=selected,
+        )
+        reviewed_mapping = AlasCombatActionMapping(name, selectors, evidence)
+        existing_mapping = action_index[name]
+        if existing_mapping.qualified and existing_mapping != reviewed_mapping:
+            raise SemanticGateClosed(
+                "combat mapping review refuses to overwrite action: " + name
+            )
+        action_index[name] = reviewed_mapping
+        action_promotions.append(
+            {
+                "action_name": name,
+                "match": "exactly_one",
                 "selectors": [
                     alas_combat_unity_selector_to_json(selector)
                     for selector in selectors
@@ -382,6 +437,10 @@ def promote_alas_combat_mapping_review(
         resources=tuple(
             resource_index[mapping.resource_name] for mapping in manifest.resources
         ),
+        actions=tuple(
+            action_index[mapping.action_name] for mapping in manifest.actions
+        ),
+        branch_review_complete=branch_complete,
         blockers=tuple(blocker_index[name] for name in sorted(blocker_index)),
         blocker_review_complete=complete,
         fleet_stats=promoted_stats,
@@ -405,6 +464,8 @@ def promote_alas_combat_mapping_review(
         "manifest_before_sha256": _canonical_sha256(before_json),
         "manifest_after_sha256": _canonical_sha256(after_json),
         "resource_promotions": resource_promotions,
+        "action_promotions": action_promotions,
+        "branch_review_complete": branch_complete,
         "blocker_promotions": blocker_promotions,
         "blocker_review_complete": complete,
         "coverage_before": _coverage_json(coverage_before),
@@ -433,6 +494,8 @@ def verify_alas_combat_mapping_receipt(
         "manifest_before_sha256",
         "manifest_after_sha256",
         "resource_promotions",
+        "action_promotions",
+        "branch_review_complete",
         "blocker_promotions",
         "blocker_review_complete",
         "coverage_before",
@@ -518,15 +581,28 @@ def verify_alas_combat_mapping_receipt(
         raise SemanticGateClosed("combat mapping receipt prior coverage is malformed")
     if receipt["blocker_review_complete"] != manifest.blocker_review_complete:
         raise SemanticGateClosed("combat mapping receipt blocker review changed")
+    if receipt["branch_review_complete"] != manifest.branch_review_complete:
+        raise SemanticGateClosed("combat mapping receipt branch review changed")
 
     resource_index = {mapping.resource_name: mapping for mapping in manifest.resources}
+    action_index = {mapping.action_name: mapping for mapping in manifest.actions}
     blocker_index = {mapping.blocker_name: mapping for mapping in manifest.blockers}
 
     def verify_entries(raw_entries: Any, *, mapping_type: str) -> int:
         if not isinstance(raw_entries, list):
             raise SemanticGateClosed("combat mapping receipt entries are malformed")
-        name_field = "resource_name" if mapping_type == "resource" else "blocker_name"
-        expected_index = resource_index if mapping_type == "resource" else blocker_index
+        name_field = {
+            "resource": "resource_name",
+            "action": "action_name",
+            "blocker": "blocker_name",
+        }.get(mapping_type)
+        expected_index = {
+            "resource": resource_index,
+            "action": action_index,
+            "blocker": blocker_index,
+        }.get(mapping_type)
+        if name_field is None or expected_index is None:
+            raise SemanticGateClosed("combat mapping receipt entry kind changed")
         names = []
         for raw in raw_entries:
             if not isinstance(raw, dict) or set(raw) != {
@@ -540,7 +616,8 @@ def verify_alas_combat_mapping_receipt(
             name = raw[name_field]
             if (
                 not isinstance(name, str)
-                or raw["match"] != "all_of"
+                or raw["match"]
+                != ("exactly_one" if mapping_type == "action" else "all_of")
                 or raw["present_in_all_samples"] is not True
                 or name not in expected_index
             ):
@@ -570,6 +647,9 @@ def verify_alas_combat_mapping_receipt(
 
     resource_count = verify_entries(
         receipt["resource_promotions"], mapping_type="resource"
+    )
+    action_count = verify_entries(
+        receipt["action_promotions"], mapping_type="action"
     )
     blocker_count = verify_entries(
         receipt["blocker_promotions"], mapping_type="blocker"
@@ -630,14 +710,18 @@ def verify_alas_combat_mapping_receipt(
                 "combat mapping receipt fleet stats evidence changed"
             )
         fleet_stats_verified = True
-    if resource_count + blocker_count == 0 and not fleet_stats_verified:
+    if (
+        resource_count + action_count + blocker_count == 0
+        and not fleet_stats_verified
+    ):
         raise SemanticGateClosed("combat mapping receipt has no verified entries")
     return {
-        "schema": "alas-headless.g22-combat-mapping-verification/v1",
+        "schema": "alas-headless.g26-combat-mapping-verification/v2",
         "passed": True,
         "review_id": receipt["review_id"],
         "source_frames": len(selected),
         "verified_resources": resource_count,
+        "verified_actions": action_count,
         "verified_blockers": blocker_count,
         "verified_fleet_stats": fleet_stats_verified,
         "manifest_sha256": manifest_sha256,

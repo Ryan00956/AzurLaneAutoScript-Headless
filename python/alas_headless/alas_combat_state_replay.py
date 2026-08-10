@@ -260,9 +260,11 @@ ALAS_COMBAT_REPLAY_RESOURCE_NAMES = (
     "STORY_SKIP_3",
 )
 
-# This is a pinned replay allowlist, not a generic false fallback.  Every
-# original ALAS presence query made by the qualified chain must be listed.
-# A new upstream query closes the replay at final validation.
+# This is a pinned replay allowlist, not a generic false fallback.  The
+# canonical all-false defensive path above reaches 41 names, but a true
+# short-circuit branch can reach the additional names below.  Production
+# observation must cover the union rather than mistaking 41/41 for branch
+# closure.  A new upstream query closes the replay at final validation.
 _PINNED_RESOURCE_QUERY_ALLOWLIST = frozenset(
     {
         "AUTOMATION_CONFIRM",
@@ -318,6 +320,101 @@ _PINNED_RESOURCE_QUERY_ALLOWLIST = frozenset(
         "STORY_CLOSE",
         "STORY_SKIP_3",
     }
+)
+
+ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES = tuple(
+    sorted(_PINNED_RESOURCE_QUERY_ALLOWLIST)
+)
+
+# Source-pinned query -> possible click-target relation for the original ALAS
+# methods exercised by this combat slice.  This is not a replacement state
+# machine and does not select a target: it makes the existing branch/action
+# surface auditable before Unity inputs are admitted.  Empty tuples are
+# observation-only queries.  Multiple targets are selected by ALAS's existing
+# context, configuration, and short-circuit order.
+ALAS_COMBAT_RESOURCE_ACTION_TARGETS = MappingProxyType(
+    {
+        "AUTOMATION_CONFIRM": ("AUTOMATION_CONFIRM",),
+        "AUTOMATION_CONFIRM_CHECK": ("AUTOMATION_CONFIRM",),
+        "AUTOMATION_OFF": ("AUTOMATION_SWITCH",),
+        "AUTOMATION_ON": ("AUTOMATION_SWITCH",),
+        "AUTO_SEARCH_MENU_EXIT": ("AUTO_SEARCH_MENU_EXIT",),
+        "BACK_ARROW": (),
+        "BATTLE_PREPARATION": ("BATTLE_PREPARATION",),
+        "BATTLE_PREPARATION_WITH_OVERLAY": ("AUTOMATION_CONFIRM",),
+        "BATTLE_STATUS_A": ("BATTLE_STATUS_A",),
+        "BATTLE_STATUS_B": ("BATTLE_STATUS_B",),
+        "BATTLE_STATUS_C": ("BATTLE_STATUS_C",),
+        "BATTLE_STATUS_D": ("BATTLE_STATUS_D",),
+        "BATTLE_STATUS_S": ("BATTLE_STATUS_S",),
+        "CAMPAIGN_CHECK": (),
+        "DAILY_CHECK": ("BACK_ARROW",),
+        "EMERGENCY_REPAIR_CONFIRM": ("EMERGENCY_REPAIR_CONFIRM",),
+        "EVENT_CHECK": (),
+        "EXP_INFO_A": ("EXP_INFO_A",),
+        "EXP_INFO_B": ("EXP_INFO_B",),
+        "EXP_INFO_S": ("EXP_INFO_S",),
+        "FLEET_PREPARATION": (
+            "FLEET_PREPARATION",
+            "MAP_PREPARATION_CANCEL",
+        ),
+        "GAME_TIPS": ("GAME_TIPS",),
+        "GAME_TIPS3": ("GAME_TIPS",),
+        "GAME_TIPS4": ("GAME_TIPS",),
+        "GET_AMMO": (),
+        "GET_ITEMS_1": ("GET_ITEMS_1", "GET_ITEMS_1_RETIREMENT_SAVE"),
+        "GET_ITEMS_2": ("GET_ITEMS_1",),
+        "GET_ITEMS_3": ("GET_ITEMS_1",),
+        "GET_ITEMS_SHIP_1": ("GET_ITEMS_SHIP_1",),
+        "GET_MISSION": ("GET_MISSION",),
+        "GET_SHIP": ("GET_SHIP",),
+        "GUILD_POPUP_CANCEL": (
+            "GUILD_POPUP_CANCEL",
+            "GUILD_POPUP_CONFIRM",
+        ),
+        "GUILD_POPUP_CONFIRM": (
+            "GUILD_POPUP_CANCEL",
+            "GUILD_POPUP_CONFIRM",
+        ),
+        "IN_MAP": (),
+        "IN_RETIREMENT_CHECK": (),
+        "MAP_AMBUSH_EVADE": ("MAP_AMBUSH_EVADE",),
+        "MAP_CAT_ATTACK": ("MAP_CAT_ATTACK",),
+        "MAP_CAT_ATTACK_MIRROR": ("MAP_CAT_ATTACK",),
+        "MAP_ENEMY_SEARCHING": (),
+        "MAP_PREPARATION": ("MAP_PREPARATION", "MAP_PREPARATION_CANCEL"),
+        "MISSION_POPUP_ACK": ("MISSION_POPUP_ACK", "MISSION_POPUP_GO"),
+        "MISSION_POPUP_GO": ("MISSION_POPUP_ACK", "MISSION_POPUP_GO"),
+        "MUNITIONS_CHECK": ("BACK_ARROW",),
+        "NEW_SHIP": (),
+        "PAUSE": (),
+        "POPUP_CANCEL": ("POPUP_CANCEL", "POPUP_CONFIRM"),
+        "POPUP_CONFIRM": ("POPUP_CANCEL", "POPUP_CONFIRM"),
+        "POPUP_CONFIRM_WHITE": ("POPUP_CONFIRM_WHITE",),
+        "RETIRE_APPEAR_1": ("RETIRE_APPEAR_1",),
+        "SP_CHECK": (),
+        "STORY_CLOSE": ("STORY_CLOSE",),
+        "STORY_SKIP_3": (
+            "OS_CLICK_SAFE_AREA",
+            "STORY_OPTION_DYNAMIC",
+            "STORY_SKIP",
+        ),
+    }
+)
+
+if set(ALAS_COMBAT_RESOURCE_ACTION_TARGETS) != set(
+    ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES
+):
+    raise RuntimeError("combat query/action contract surface changed")
+
+ALAS_COMBAT_ACTION_TARGET_NAMES = tuple(
+    sorted(
+        {
+            target
+            for targets in ALAS_COMBAT_RESOURCE_ACTION_TARGETS.values()
+            for target in targets
+        }
+    )
 )
 
 _MUTABLE_TIMER_FIELDS = (

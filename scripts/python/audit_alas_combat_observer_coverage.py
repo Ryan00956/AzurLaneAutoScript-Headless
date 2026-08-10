@@ -10,6 +10,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python"))
 
 from alas_headless import (  # noqa: E402
+    ALAS_COMBAT_ACTION_TARGET_NAMES,
+    ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES,
     ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES,
     ALAS_COMBAT_REPLAY_RESOURCE_NAMES,
     audit_alas_combat_observer_manifest,
@@ -39,12 +41,25 @@ def main() -> int:
     print(
         json.dumps(
             {
-                "schema": "alas-headless.g22-combat-observer-coverage/v1",
-                "contract_valid": coverage.total_resources == 38,
+                "schema": "alas-headless.g26-combat-observer-coverage/v2",
+                "contract_valid": (
+                    coverage.total_resources
+                    == len(ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES)
+                    and coverage.total_actions
+                    == len(ALAS_COMBAT_ACTION_TARGET_NAMES)
+                ),
                 "production_ready": coverage.production_ready,
+                "canonical_qualified_resources": (
+                    coverage.canonical_qualified_resources
+                ),
+                "canonical_resources": coverage.canonical_resources,
                 "qualified_resources": coverage.qualified_resources,
                 "total_resources": coverage.total_resources,
                 "unqualified_resources": coverage.unqualified_resources,
+                "qualified_actions": coverage.qualified_actions,
+                "total_actions": coverage.total_actions,
+                "unqualified_actions": coverage.unqualified_actions,
+                "branch_review_complete": coverage.branch_review_complete,
                 "qualified_blockers": coverage.qualified_blockers,
                 "total_blockers": coverage.total_blockers,
                 "blocker_review_complete": coverage.blocker_review_complete,
@@ -54,9 +69,13 @@ def main() -> int:
                     phase.value: resources
                     for phase, resources in ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES.items()
                 },
-                "g19_resource_surface_exact": tuple(
+                "canonical_resource_surface_exact": tuple(
                     sorted(ALAS_COMBAT_REPLAY_RESOURCE_NAMES)
                 ),
+                "defensive_resource_surface_exact": (
+                    ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES
+                ),
+                "action_target_surface_exact": ALAS_COMBAT_ACTION_TARGET_NAMES,
                 "input_injected": False,
             },
             ensure_ascii=False,
@@ -65,7 +84,12 @@ def main() -> int:
     )
     if args.require_ready and not coverage.production_ready:
         return 1
-    return 0 if coverage.total_resources == 38 else 2
+    return (
+        0
+        if coverage.total_resources == len(ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES)
+        and coverage.total_actions == len(ALAS_COMBAT_ACTION_TARGET_NAMES)
+        else 2
+    )
 
 
 if __name__ == "__main__":

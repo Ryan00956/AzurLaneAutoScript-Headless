@@ -1,4 +1,4 @@
-"""Verify a G22 combat mapping receipt against its raw trace and manifest."""
+"""Verify a versioned combat mapping receipt against its raw trace and manifest."""
 
 import argparse
 import hashlib

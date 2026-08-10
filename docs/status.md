@@ -4,6 +4,29 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G26 defensive input surface: popup cancel pass; production closed
+
+- The canonical 41-query replay is now explicitly separated from the complete
+  52-name pinned defensive query surface and 37 original-ALAS click targets.
+  A new independent `branch_review_complete` gate prevents 41/41 from being
+  mistaken for true-branch closure.
+- Observation and action mappings are separate. Contextual resources require
+  the exact click target selected by original ALAS; the headless layer does
+  not choose confirm versus cancel or replace handler control flow.
+- On PID `23161`, a reversible retreat dialog produced eight complete raw
+  frames. `POPUP_CANCEL`, true-branch `POPUP_CONFIRM`, and their exact action
+  targets were promoted from generations `36266,36269,36275`; only the
+  cancel target was tapped, and the 12-4 map remained open.
+- Current coverage is canonical `13/41`, defensive `14/52`, actions `9/37`.
+  Fleet stats remain qualified, but branch and blocker reviews are incomplete,
+  so `production_ready=false` and production remains stopped at G18.
+- The full suite passes `311/311`; focused observer tests pass `29/29`, the
+  maximum original-ALAS replay still passes 135 queries over the unchanged 41
+  canonical names, and the G26 popup receipt verifies two resources plus two
+  actions.
+
+See [G26 defensive input-surface validation](g26-alas-defensive-input-surface-validation-report.md).
+
 ### G25 combat input closure: switch, radar, and fleet stats pass; production closed
 
 - Original ALAS now owns an optional automation-off branch before its unchanged

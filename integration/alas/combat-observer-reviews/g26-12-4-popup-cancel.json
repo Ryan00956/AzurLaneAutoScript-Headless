@@ -1,0 +1,97 @@
+{
+  "schema": "alas-headless.g26-combat-mapping-review/v2",
+  "review_id": "g26-12-4-popup-cancel",
+  "trace_sha256": "265819cd606e86843f740ec6d0d560222a7abcd9315e174b9b4c37fe8fc5f5d5",
+  "generations": [36266, 36269, 36275],
+  "resources": [
+    {
+      "resource_name": "POPUP_CANCEL",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_2(Clone)",
+          "name": "custom_button_2(Clone)",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_2(Clone)",
+          "name": "custom_button_2(Clone)",
+          "sprite": "btn_big_grey",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_2(Clone)/pic",
+          "name": "pic",
+          "sprite": "",
+          "text": "取 消",
+          "require_top_raycast": false
+        }
+      ]
+    },
+    {
+      "resource_name": "POPUP_CONFIRM",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
+          "name": "custom_button_1(Clone)",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
+          "name": "custom_button_1(Clone)",
+          "sprite": "btn_big_blue",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)/pic",
+          "name": "pic",
+          "sprite": "",
+          "text": "确 定",
+          "require_top_raycast": false
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "action_name": "POPUP_CANCEL",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_2(Clone)",
+          "name": "custom_button_2(Clone)",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        }
+      ]
+    },
+    {
+      "action_name": "POPUP_CONFIRM",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
+          "name": "custom_button_1(Clone)",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        }
+      ]
+    }
+  ],
+  "branch_review_complete": false,
+  "blockers": [],
+  "blocker_review_complete": false
+}
