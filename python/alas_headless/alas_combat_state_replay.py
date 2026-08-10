@@ -10,8 +10,8 @@ recorded as a virtual action and no semantic adapter or Android input is used.
 import copy
 from dataclasses import dataclass
 from enum import Enum
-from types import MethodType
-from typing import Any, Dict, Tuple
+from types import MappingProxyType, MethodType
+from typing import Any, Mapping, Tuple
 
 from .alas_combat_admission import AlasCampaignCombatAdmission
 from .alas_decision_preview import (
@@ -114,7 +114,7 @@ class AlasCampaignCombatStateReplayResult:
     projected_map_unchanged: bool
 
 
-_EXPECTED_PHASES = (
+ALAS_COMBAT_REPLAY_PHASES = (
     AlasCombatReplayPhase.BATTLE_PREPARATION,
     AlasCombatReplayPhase.COMBAT_EXECUTING,
     AlasCombatReplayPhase.BATTLE_STATUS,
@@ -123,7 +123,9 @@ _EXPECTED_PHASES = (
     AlasCombatReplayPhase.MAP_STABLE,
 )
 
-_EXPECTED_RESOURCES: Dict[AlasCombatReplayPhase, Tuple[str, ...]] = {
+ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES: Mapping[
+    AlasCombatReplayPhase, Tuple[str, ...]
+] = MappingProxyType({
     AlasCombatReplayPhase.BATTLE_PREPARATION: (
         "AUTOMATION_ON",
         "BATTLE_PREPARATION",
@@ -136,7 +138,52 @@ _EXPECTED_RESOURCES: Dict[AlasCombatReplayPhase, Tuple[str, ...]] = {
         "MAP_ENEMY_SEARCHING",
     ),
     AlasCombatReplayPhase.MAP_STABLE: ("IN_MAP",),
-}
+})
+
+# Exact resource surface reached by the pinned original ALAS ordinary-combat
+# chain.  This is intentionally narrower than the defensive allowlist below:
+# adding *or removing* a query is upstream control-flow drift that must be
+# reviewed before a live Unity mapping can be considered complete.
+ALAS_COMBAT_REPLAY_RESOURCE_NAMES = (
+    "AUTOMATION_CONFIRM_CHECK",
+    "AUTOMATION_OFF",
+    "AUTOMATION_ON",
+    "AUTO_SEARCH_MENU_EXIT",
+    "BATTLE_PREPARATION",
+    "BATTLE_STATUS_A",
+    "BATTLE_STATUS_B",
+    "BATTLE_STATUS_C",
+    "BATTLE_STATUS_D",
+    "BATTLE_STATUS_S",
+    "CAMPAIGN_CHECK",
+    "EVENT_CHECK",
+    "EXP_INFO_S",
+    "FLEET_PREPARATION",
+    "GAME_TIPS",
+    "GAME_TIPS3",
+    "GAME_TIPS4",
+    "GET_ITEMS_1",
+    "GET_ITEMS_2",
+    "GET_ITEMS_3",
+    "GET_MISSION",
+    "GET_SHIP",
+    "GUILD_POPUP_CONFIRM",
+    "IN_MAP",
+    "IN_RETIREMENT_CHECK",
+    "MAP_AMBUSH_EVADE",
+    "MAP_CAT_ATTACK",
+    "MAP_CAT_ATTACK_MIRROR",
+    "MAP_ENEMY_SEARCHING",
+    "MAP_PREPARATION",
+    "MISSION_POPUP_GO",
+    "PAUSE",
+    "POPUP_CANCEL",
+    "POPUP_CONFIRM_WHITE",
+    "RETIRE_APPEAR_1",
+    "SP_CHECK",
+    "STORY_CLOSE",
+    "STORY_SKIP_3",
+)
 
 # This is a pinned replay allowlist, not a generic false fallback.  Every
 # original ALAS presence query made by the qualified chain must be listed.
@@ -227,7 +274,9 @@ def canonical_alas_campaign_combat_replay(
         AlasCombatReplayFrame(
             base + 1,
             AlasCombatReplayPhase.BATTLE_PREPARATION,
-            _EXPECTED_RESOURCES[AlasCombatReplayPhase.BATTLE_PREPARATION],
+            ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES[
+                AlasCombatReplayPhase.BATTLE_PREPARATION
+            ],
             False,
             True,
             False,
@@ -238,7 +287,9 @@ def canonical_alas_campaign_combat_replay(
         AlasCombatReplayFrame(
             base + 2,
             AlasCombatReplayPhase.COMBAT_EXECUTING,
-            _EXPECTED_RESOURCES[AlasCombatReplayPhase.COMBAT_EXECUTING],
+            ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES[
+                AlasCombatReplayPhase.COMBAT_EXECUTING
+            ],
             False,
             False,
             True,
@@ -249,7 +300,9 @@ def canonical_alas_campaign_combat_replay(
         AlasCombatReplayFrame(
             base + 3,
             AlasCombatReplayPhase.BATTLE_STATUS,
-            _EXPECTED_RESOURCES[AlasCombatReplayPhase.BATTLE_STATUS],
+            ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES[
+                AlasCombatReplayPhase.BATTLE_STATUS
+            ],
             False,
             False,
             False,
@@ -260,7 +313,9 @@ def canonical_alas_campaign_combat_replay(
         AlasCombatReplayFrame(
             base + 4,
             AlasCombatReplayPhase.EXP_INFO,
-            _EXPECTED_RESOURCES[AlasCombatReplayPhase.EXP_INFO],
+            ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES[
+                AlasCombatReplayPhase.EXP_INFO
+            ],
             False,
             False,
             False,
@@ -271,7 +326,9 @@ def canonical_alas_campaign_combat_replay(
         AlasCombatReplayFrame(
             base + 5,
             AlasCombatReplayPhase.MAP_SEARCHING,
-            _EXPECTED_RESOURCES[AlasCombatReplayPhase.MAP_SEARCHING],
+            ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES[
+                AlasCombatReplayPhase.MAP_SEARCHING
+            ],
             True,
             False,
             False,
@@ -282,7 +339,9 @@ def canonical_alas_campaign_combat_replay(
         AlasCombatReplayFrame(
             base + 6,
             AlasCombatReplayPhase.MAP_STABLE,
-            _EXPECTED_RESOURCES[AlasCombatReplayPhase.MAP_STABLE],
+            ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES[
+                AlasCombatReplayPhase.MAP_STABLE
+            ],
             True,
             False,
             False,
@@ -313,7 +372,7 @@ def _validate_replay(
         or replay.input_generation != admission.input_generation
     ):
         raise SemanticGateClosed("combat replay identity changed")
-    if tuple(frame.phase for frame in replay.frames) != _EXPECTED_PHASES:
+    if tuple(frame.phase for frame in replay.frames) != ALAS_COMBAT_REPLAY_PHASES:
         raise SemanticGateClosed("combat replay phase order changed")
     generations = tuple(frame.generation for frame in replay.frames)
     if (
@@ -328,7 +387,7 @@ def _validate_replay(
     for frame in replay.frames:
         if (
             tuple(sorted(frame.visible_resources))
-            != tuple(sorted(_EXPECTED_RESOURCES[frame.phase]))
+            != tuple(sorted(ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES[frame.phase]))
         ):
             raise SemanticGateClosed("combat replay visible resources changed")
         expected_flags = {
@@ -546,6 +605,8 @@ class _ReplayDriver:
                 "combat replay queried unmapped resources: "
                 + ", ".join(sorted(unknown))
             )
+        if set(self.resource_queries) != set(ALAS_COMBAT_REPLAY_RESOURCE_NAMES):
+            raise SemanticGateClosed("combat replay resource query surface changed")
 
 
 class _ReplayDevice:
@@ -974,6 +1035,8 @@ def replay_alas_campaign_combat_state_machine(
                 "combat replay queried unmapped resources: "
                 + ", ".join(sorted(unknown))
             )
+        if set(driver.resource_queries) != set(ALAS_COMBAT_REPLAY_RESOURCE_NAMES):
+            raise SemanticGateClosed("combat replay resource query surface changed")
         expected_end = sandbox._expected_end(decision.expected)
         auto_mode = sandbox.config.Fleet_Fleet1Mode
         submarine_mode = "do_not_use"

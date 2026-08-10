@@ -4,6 +4,29 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G20 exact combat observer input: contract pass, live mappings open
+
+- G19's six replay phases can now be built from complete raw Unity observer
+  snapshots. Fixture phase labels, OCR, image templates, coordinates, and
+  scripted booleans are not accepted as production evidence.
+- The original ALAS chain's `104` presence calls are pinned to an exact
+  `38`-resource surface; both added and removed upstream queries now fail.
+- Every resource requires reviewed exact full paths and record identity. The
+  three post-grid action resources additionally require actionable top-raycast
+  Unity Buttons; all frames require complete Button/Text/Image slices, coherent
+  PID/generations, game/driver identity, blockers, and hash-bound payloads.
+- A test-only complete six-frame fixture drives the same G19 replay without a
+  phase field. Tampering, unqualified coverage, active blocker, non-top
+  raycast, and resource-surface drift fail closed.
+- The honest live manifest remains `0/38`, with blockers and six-ship HP/level
+  mappings also unqualified. Therefore `production_ready=false`, the canonical
+  ALAS patch is unchanged, and D6 input remains closed at G18.
+- The suite passes `275/275`. Current read-only generations
+  `119693..119695` remained complete (`96` Buttons, `60` Texts, `320` Images)
+  and still showed the exact `[NetworkDown]` text; no input was injected.
+
+See [G20 ALAS combat observer contract](g20-alas-combat-observer-contract-validation-report.md).
+
 ### G19 original combat state machine: pinned Device-free replay pass
 
 - Six strictly increasing typed frames now represent battle preparation,

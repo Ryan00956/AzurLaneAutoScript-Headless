@@ -58,6 +58,9 @@ plus the [G18 validation report](docs/g18-alas-goto-input-preview-validation-rep
 The Device-free replay of ALAS's complete ordinary-combat/result/arrival chain
 is documented in the
 [G19 validation report](docs/g19-alas-combat-state-replay-validation-report.md).
+Its exact raw-Unity input contract and intentionally unqualified live mapping
+manifest are documented in the
+[G20 validation report](docs/g20-alas-combat-observer-contract-validation-report.md).
 
 G1, G2, G3, and the formal G4 harmless closed loop passed. G4 includes
 EventSystem top-raycast proof for every injected target, not only object state
@@ -99,9 +102,11 @@ conversion prefix on an isolated shell and captures its own
 `device.click(grid)` call without spending that lease or injecting input. The
 G19 qualification then drives ALAS's original combat preparation, execution,
 status, enemy-searching, arrival, and native-map mutation logic with six
-strict typed replay phases and four virtual actions. Production remains at the
-G18 capture boundary until those phase tokens are mapped to exact live Unity
-records. Lua/game-state coverage,
+strict typed replay phases and four virtual actions. G20 can reconstruct those
+phases only from six complete, hash-bound raw Unity snapshots and an exact
+38-resource mapping; it rejects fixture phase labels. The current live mapping
+coverage is honestly `0/38`, so production remains at the G18 capture boundary.
+Lua/game-state coverage,
 formation-layout changes, campaign movement execution, battle state,
 weekly-only end-to-end
 coverage, repeated sorties, and full unattended ALAS task coverage remain

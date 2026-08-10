@@ -182,6 +182,8 @@ def main() -> int:
                 "virtual_actions": result.virtual_actions,
                 "virtual_sleeps": result.virtual_sleeps,
                 "resource_query_count": len(result.resource_queries),
+                "resource_query_names": sorted(set(result.resource_queries)),
+                "resource_query_unique_count": len(set(result.resource_queries)),
                 "source_restored": source_restored,
                 "projected_map_unchanged": result.projected_map_unchanged,
             },

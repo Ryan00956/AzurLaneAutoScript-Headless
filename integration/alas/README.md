@@ -123,6 +123,14 @@ actions are virtual records only. The canonical ALAS patch deliberately does
 not import or invoke this synthetic replay; the production runner remains at
 the G18 capture boundary until every phase has an exact live Unity mapping.
 
+G20 adds that replacement input boundary without changing the ALAS patch or
+state machine. It accepts six complete, hash-bound raw observer snapshots only
+when all 38 resource queries, blockers, three post-grid action Buttons, and
+fleet HP/levels have reviewed exact Unity mappings. Fixture-provided phase
+tokens are rejected. The checked-in manifest remains deliberately `0/38`, so
+the boundary is testable but cannot yet run production combat or spend the
+campaign-combat budget.
+
 Commission start has a separate integer budget and remains closed by default:
 
 ```powershell

@@ -20,6 +20,11 @@ post-click combat chain remains closed.
 G19 passes a pinned Device-free replay of the complete original ordinary-combat
 chain with six typed phases and virtual actions only. Its phase tokens are not
 yet mapped to live Unity records, so production still stops at G18.
+G20 defines the exact raw-Unity replacement for those tokens: six complete,
+hash-bound snapshots, all 38 original ALAS resource queries, reviewed blockers,
+three top-raycast action Buttons, map/fleet/ammunition closure, and six typed
+HP/level records. The checked-in mapping is deliberately `0/38`, so G20 is a
+contract pass rather than a live mapping or input pass.
 G4 includes
 login/main reachability, sustained semantic state, RectTransform bounds, top
 EventSystem raycast identity for each action, and a settings-page return loop.
