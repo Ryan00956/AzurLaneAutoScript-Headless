@@ -215,7 +215,12 @@ class AlasIntegrationPatchTests(unittest.TestCase):
         self.assertIn("Semantic ALAS map projection:", self.patch_text)
         self.assertIn("recommended_enemy_node", self.patch_text)
         self.assertIn("recommended_pickup_node", self.patch_text)
+        self.assertIn("projection.displayed_fleet_index", self.patch_text)
+        self.assertIn("projection.current_fleet_index", self.patch_text)
+        self.assertIn("fleet.fleet_index", self.patch_text)
+        self.assertIn("fleet.is_current", self.patch_text)
         self.assertNotIn("semantic_map_projection.goto", self.patch_text)
+        self.assertNotIn("semantic_map_projection.map_control_init", self.patch_text)
 
 
 if __name__ == "__main__":

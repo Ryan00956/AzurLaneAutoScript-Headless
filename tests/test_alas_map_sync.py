@@ -1,6 +1,7 @@
 import copy
 import unittest
 from collections import deque
+from dataclasses import replace
 from types import SimpleNamespace
 
 from alas_headless import (
@@ -37,6 +38,7 @@ class FakeGrid:
 
     def reset(self):
         self.is_fleet = False
+        self.is_current_fleet = False
         self.is_enemy = False
         self.is_ammo = False
         self.enemy_scale = 0
@@ -181,6 +183,9 @@ def make_state(pickup_node="C1"):
                 sprite="event4",
             ),
         ),
+        displayed_fleet_index=1,
+        current_fleet_marker="alpha",
+        current_fleet_roster_sprites=("alpha", "support"),
     )
 
 
@@ -193,13 +198,16 @@ class AlasCampaignMapSyncTests(unittest.TestCase):
         self.assertEqual(campaign.map_data_init_calls, 1)
         self.assertTrue(campaign.map[(0, 1)].is_fleet)
         self.assertTrue(campaign.map[(1, 1)].is_fleet)
+        self.assertTrue(campaign.map[(0, 1)].is_current_fleet)
         self.assertTrue(campaign.map[(0, 0)].is_enemy)
         self.assertEqual(campaign.map[(0, 0)].enemy_scale, 1)
         self.assertEqual(campaign.map[(0, 0)].enemy_genre, "Light")
         self.assertTrue(campaign.map[(2, 0)].is_ammo)
         self.assertEqual(campaign.map.path_starts, [(0, 1), (1, 1)])
-        self.assertEqual(campaign.fleet_1_location, ())
-        self.assertEqual(campaign.fleet_2_location, ())
+        self.assertEqual(campaign.fleet_show_index, 1)
+        self.assertEqual(campaign.fleet_current_index, 1)
+        self.assertEqual(campaign.fleet_1_location, (0, 1))
+        self.assertEqual(campaign.fleet_2_location, (1, 1))
         self.assertTrue(campaign.config.POOR_MAP_DATA)
         self.assertEqual(
             campaign.semantic_fleet_locations,
@@ -209,6 +217,8 @@ class AlasCampaignMapSyncTests(unittest.TestCase):
         self.assertEqual(
             tuple(
                 (
+                    fleet.fleet_index,
+                    fleet.is_current,
                     fleet.marker,
                     fleet.origin_node,
                     fleet.recommended_enemy_node,
@@ -217,8 +227,8 @@ class AlasCampaignMapSyncTests(unittest.TestCase):
                 for fleet in projection.fleets
             ),
             (
-                ("alpha", "A2", "A1", "C1"),
-                ("beta", "B2", "A1", "C1"),
+                (1, True, "alpha", "A2", "A1", "C1"),
+                (2, False, "beta", "B2", "A1", "C1"),
             ),
         )
         self.assertEqual(
@@ -230,6 +240,36 @@ class AlasCampaignMapSyncTests(unittest.TestCase):
             ("A2", "B2", "C2", "C1"),
         )
         self.assertTrue(all(grid.cost == 9999 for grid in campaign.map))
+
+    def test_maps_displayed_fleet_through_alas_reversed_order(self):
+        campaign = FakeCampaign()
+        campaign.fleets_reversed = True
+
+        projection = synchronize_alas_campaign_map(campaign, make_state())
+
+        self.assertEqual(projection.displayed_fleet_index, 1)
+        self.assertEqual(projection.current_fleet_index, 2)
+        self.assertEqual(campaign.fleet_show_index, 1)
+        self.assertEqual(campaign.fleet_current_index, 2)
+        self.assertEqual(campaign.fleet_1_location, (1, 1))
+        self.assertEqual(campaign.fleet_2_location, (0, 1))
+        self.assertTrue(campaign.map[(0, 1)].is_current_fleet)
+        self.assertEqual(
+            tuple((fleet.fleet_index, fleet.marker) for fleet in projection.fleets),
+            ((1, "beta"), (2, "alpha")),
+        )
+
+    def test_rejects_fleet_roster_identity_disagreement(self):
+        campaign = FakeCampaign()
+        state = replace(
+            make_state(),
+            current_fleet_roster_sprites=("beta", "support"),
+        )
+
+        with self.assertRaisesRegex(SemanticGateClosed, "roster identity"):
+            synchronize_alas_campaign_map(campaign, state)
+
+        self.assertEqual(campaign.map_data_init_calls, 0)
 
     def test_rejects_static_map_mismatch_before_mutating_campaign(self):
         campaign = FakeCampaign()

@@ -4,6 +4,28 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G15 fleet-index reconciliation: live passive and pinned native pass
+
+- The current displayed fleet now comes from one exact `1|2` top-stage Text
+  plus a unique exact match between a `cell_fleet_*` marker suffix and the
+  displayed fleet's typed ship sprites.
+- Three live read-only generations `33896 -> 33905 -> 33913` consistently
+  reported displayed fleet `1`, six roster sprites, map markers
+  `cell_fleet_shengwang_younv/cell_fleet_ying`, and only
+  `cell_fleet_shengwang_younv` as the roster match. No input was injected.
+- The exact `[NetworkDown]` overlay remained present. A full map-model call
+  failed closed, so no fresh same-process indexed projection is claimed.
+- The projection now supplies ALAS `fleet_show_index`, logical
+  `fleet_current_index`, indexed fleet locations, and one native
+  `is_current_fleet` flag. It reuses ALAS's own reversed-fleet rule.
+- Pinned real-ALAS tests passed both normal (`fleet1=D6`, `fleet2=F8`, current
+  `1`) and reversed (`fleet1=F8`, `fleet2=D6`, current `2`) configurations.
+- Map control, fleet switching, movement, combat, retreat, and rewards remain
+  uncalled and unmapped. The suite passes `235/235`; the canonical patch
+  applies cleanly and exactly matches the exercised checkout.
+
+See [G15 fleet-index validation](g15-campaign-fleet-index-validation-report.md).
+
 ### G14 read-only ALAS map synchronization: pinned native-object pass
 
 - The G13 model now projects transactionally into a deep-copied native ALAS

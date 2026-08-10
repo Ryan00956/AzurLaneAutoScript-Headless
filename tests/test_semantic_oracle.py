@@ -290,6 +290,9 @@ def make_oracle(backend):
 def make_campaign_map_backend(generations=(10, 11)):
     map_root = "LevelCamera/Canvas/UIMain/LevelGrid"
     stage_root = "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)"
+    fleet_status_root = (
+        "LevelCamera/Canvas/LevelOrigin/top/LevelStageView(Clone)"
+    )
     cells = {
         (1, 1): (100.0, 100.0),
         (1, 3): (300.0, 100.0),
@@ -357,12 +360,26 @@ def make_campaign_map_backend(generations=(10, 11)):
             "danyao_bar",
             anchor_world_position=(3.0, -3.0, -178.0),
         ),
+        make_image(
+            fleet_status_root
+            + "/left_stage/fleet/main/shiptpl(Clone)/icon_bg/icon",
+            "one",
+        ),
+        make_image(
+            fleet_status_root
+            + "/left_stage/fleet/vanguard/shiptpl(Clone)/icon_bg/icon",
+            "support",
+        ),
     ]
     texts = [
         make_text("10", enemy_root + "/lv/Text"),
         make_text("Lv.", enemy_root + "/lv/lv_label"),
         make_text("5/5", fleet1 + "/ammo/text"),
         make_text("4/5", fleet2 + "/ammo/text"),
+        make_text(
+            "1",
+            fleet_status_root + "/top_stage/msg_panel/fleet_info/number",
+        ),
     ]
     backend = FakeBackend(buttons)
     backend.buttons_sequence = [
@@ -1205,7 +1222,57 @@ class SemanticOracleTests(unittest.TestCase):
             tuple((pickup.node, pickup.kind) for pickup in state.pickups),
             (("C1", "ammo"),),
         )
+        self.assertEqual(state.displayed_fleet_index, 1)
+        self.assertEqual(state.current_fleet_marker, "cell_fleet_one")
+        self.assertEqual(
+            state.current_fleet_roster_sprites,
+            ("one", "support"),
+        )
         self.assertEqual(backend.taps, [])
+
+    def test_campaign_map_model_rejects_ambiguous_current_fleet_marker(self):
+        backend = make_campaign_map_backend(generations=(10,))
+        roster_path = (
+            "LevelCamera/Canvas/LevelOrigin/top/LevelStageView(Clone)/"
+            "left_stage/fleet/main/shiptpl(Clone)/icon_bg/icon"
+        )
+        backend.ui["images"].append(make_image(roster_path, "two"))
+        backend.ui["image_count"] += 1
+        backend.ui_sequence[0] = backend.ui
+
+        with self.assertRaisesRegex(
+            SemanticGateClosed, "current fleet marker is absent or ambiguous"
+        ):
+            make_oracle(backend).campaign_map_state(
+                "12-4",
+                columns=3,
+                rows=2,
+                land_cells=((1, 0),),
+                expected_fleet_count=2,
+            )
+
+    def test_campaign_map_model_rejects_fighting_enemy_at_other_fleet(self):
+        backend = make_campaign_map_backend(generations=(10,))
+        enemy_root = (
+            "LevelCamera/Canvas/UIMain/LevelGrid/DragLayer/plane/cells/"
+            "chapter_cell_1_1/attachment/enemy_1001/fighting"
+        )
+        backend.ui["images"].append(make_image(enemy_root, "xingdongzhong"))
+        backend.ui["image_count"] += 1
+        backend.ui["texts"].append(make_text("行动中", enemy_root + "/Text"))
+        backend.ui["text_count"] += 1
+        backend.ui_sequence[0] = backend.ui
+
+        with self.assertRaisesRegex(
+            SemanticGateClosed, "fighting enemy disagrees with current fleet"
+        ):
+            make_oracle(backend).campaign_map_state(
+                "12-4",
+                columns=3,
+                rows=2,
+                land_cells=((1, 0),),
+                expected_fleet_count=2,
+            )
 
     def test_campaign_map_model_rejects_truncated_images_and_topology_drift(self):
         truncated = make_campaign_map_backend(generations=(10,))
@@ -1257,6 +1324,39 @@ class SemanticOracleTests(unittest.TestCase):
                 land_cells=((1, 0),),
                 expected_fleet_count=2,
             )
+
+    def test_campaign_map_signature_tracks_displayed_fleet_identity(self):
+        first_backend = make_campaign_map_backend(generations=(10,))
+        first = make_oracle(first_backend)._campaign_map_state_once(
+            "12-4",
+            columns=3,
+            rows=2,
+            land=((1, 2),),
+            expected_fleet_count=2,
+        )
+
+        second_backend = make_campaign_map_backend(generations=(11,))
+        number_path = (
+            "LevelCamera/Canvas/LevelOrigin/top/LevelStageView(Clone)/"
+            "top_stage/msg_panel/fleet_info/number"
+        )
+        number = next(
+            item
+            for item in second_backend.ui_sequence[0]["texts"]
+            if item["path"] == number_path
+        )
+        number["text"] = "2"
+        second = make_oracle(second_backend)._campaign_map_state_once(
+            "12-4",
+            columns=3,
+            rows=2,
+            land=((1, 2),),
+            expected_fleet_count=2,
+        )
+
+        self.assertEqual(first.displayed_fleet_index, 1)
+        self.assertEqual(second.displayed_fleet_index, 2)
+        self.assertNotEqual(first.signature, second.signature)
 
     def test_campaign_page_rejects_stage_id_text_mismatch(self):
         root = "root/UICamera/Canvas/UIMain/LevelMainScene(Clone)/"

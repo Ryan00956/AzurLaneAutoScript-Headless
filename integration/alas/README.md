@@ -81,9 +81,12 @@ model. The returned stable cells, fleets, enemies, and pickups are validated
 against a deep copy of ALAS's native `CampaignMap`, initialized through
 `map_data_init()`, and planned through ALAS's existing path methods. The
 invocation logs immutable per-marker reachability summaries and returns before
-ALAS's existing retreat branch. Semantic markers are not assigned to ALAS
-fleet indexes, and no grid Button, movement, combat, retreat, or map reward
-input is mapped.
+ALAS's existing retreat branch. A semantic marker is assigned to the displayed
+fleet only when its suffix uniquely matches one typed ship sprite in the exact
+top-stage roster across stable generations. The displayed `1|2` number is then
+translated with ALAS's existing reversed-fleet rule before native indexed
+locations are populated. No grid Button, movement, combat, retreat, or map
+reward input is mapped.
 
 Commission start has a separate integer budget and remains closed by default:
 
@@ -209,7 +212,8 @@ reviewed popup chain, and passed a full dual-budget-zero replay. Reward budget
 list also passed exact-handle multipage scanning and stable row-index merging.
 Nonzero-oil rows, cancellation, repeated unattended starts, and multi-order
 construction are not live-qualified. Numeric-row claiming, campaign hard-mode
-fleet restrictions, formation-layout changes, semantic fleet-index binding,
-movement and battle input, Lua/game-state access, other reward popups,
+fleet restrictions, formation-layout changes, decision-only campaign branch
+qualification, movement and battle input, Lua/game-state access, other reward
+popups,
 gestures outside the exact commission handle, and full unattended task flows
 remain fail-closed.

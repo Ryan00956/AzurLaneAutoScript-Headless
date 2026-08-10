@@ -5,6 +5,8 @@ Status terms are deliberately strict. A build passing does not imply a later gat
 Current status: G1-G4, G5a, controlled G5b, scoped G6-G8, the G9 bounded
 adapter slices, and the G10-G13 campaign slices passed. G14 has a pinned
 native-object pass while its fresh same-process live replay is network-blocked.
+G15 adds a live passive fleet-identity pass and pinned indexed projection; its
+fresh complete live-map projection remains blocked by the same network dialog.
 G4 includes
 login/main reachability, sustained semantic state, RectTransform bounds, top
 EventSystem raycast identity for each action, and a settings-page return loop.
@@ -265,6 +267,23 @@ See [G13 campaign map-model validation](g13-campaign-map-model-validation-report
   disclosure when a same-process replay cannot run.
 
 See [G14 ALAS map synchronization validation](g14-alas-map-sync-validation-report.md).
+
+## G15 - Passive fleet-index reconciliation
+
+- Type the exact displayed fleet number and complete displayed-fleet ship
+  sprite roster without adding new observer invocation capabilities.
+- Require exactly one map fleet marker suffix to match exactly one displayed
+  roster sprite across two increasing stable generations.
+- If a fighting enemy exists, require the current fleet to occupy its node.
+- Reuse ALAS's normal/reversed `fleet_show_index -> fleet_current_index` rule,
+  then populate native indexed fleet locations and `is_current_fleet`.
+- Keep `map_control_init()`, fleet switching, grid movement, battle, retreat,
+  and rewards closed.
+- Require ambiguous/missing/fighting-mismatch negatives, both pinned ALAS
+  fleet-order cases, a live passive identity sample, and explicit disclosure
+  when an overlay blocks the complete live model.
+
+See [G15 fleet-index validation](g15-campaign-fleet-index-validation-report.md).
 
 ## Stop or pivot conditions
 

@@ -47,7 +47,9 @@ The complete read-only ALAS-backed map model is documented in the
 [G13 validation report](docs/g13-campaign-map-model-validation-report.md). Its
 transactional projection into native ALAS map objects and read-only path
 planning are documented in the
-[G14 validation report](docs/g14-alas-map-sync-validation-report.md).
+[G14 validation report](docs/g14-alas-map-sync-validation-report.md). The
+passive semantic-marker to ALAS fleet-index reconciliation is documented in
+the [G15 validation report](docs/g15-campaign-fleet-index-validation-report.md).
 
 G1, G2, G3, and the formal G4 harmless closed loop passed. G4 includes
 EventSystem top-raycast proof for every injected target, not only object state
@@ -79,12 +81,14 @@ including both fleets, enemies, and the ammunition pickup. ALAS consumes that
 model at its existing already-in-map checkpoint and returns before retreat;
 there is still no map input. G14 validates that model against a deep-copied
 native ALAS `CampaignMap`, reuses `map_data_init()` and the native path finder,
-and emits deterministic per-marker reachability summaries. Fleet markers are
-deliberately not assigned to ALAS fleet indexes, so movement remains
-structurally closed. Lua/game-state coverage, formation-layout changes,
-semantic fleet-index binding, map movement, battle state, weekly-only
-end-to-end coverage, repeated sorties, and full unattended ALAS task coverage
-remain open.
+and emits deterministic per-marker reachability summaries. G15 then proves the
+displayed marker from the exact top-stage fleet number and current roster,
+including ALAS's reversed-fleet rule, and populates native indexed locations.
+Movement remains structurally closed because no grid input or map-control loop
+is enabled. Lua/game-state coverage, formation-layout changes, decision-only
+campaign execution, map movement, battle state, weekly-only end-to-end
+coverage, repeated sorties, and full unattended ALAS task coverage remain
+open.
 
 ## Repository layout
 

@@ -505,6 +505,9 @@ class CampaignMapState:
     fleets: Tuple[CampaignMapFleetState, ...]
     enemies: Tuple[CampaignMapEnemyState, ...]
     pickups: Tuple[CampaignMapPickupState, ...]
+    displayed_fleet_index: int
+    current_fleet_marker: str
+    current_fleet_roster_sprites: Tuple[str, ...]
 
     @property
     def signature(self) -> Tuple[Any, ...]:
@@ -531,6 +534,9 @@ class CampaignMapState:
                 for enemy in self.enemies
             ),
             tuple((pickup.node, pickup.kind, pickup.sprite) for pickup in self.pickups),
+            self.displayed_fleet_index,
+            self.current_fleet_marker,
+            self.current_fleet_roster_sprites,
         )
 
 
@@ -4322,6 +4328,75 @@ class SemanticOracle:
             )
             occupied_nodes.add(matched_cell.node)
 
+        fleet_status_root = (
+            "LevelCamera/Canvas/LevelOrigin/top/LevelStageView(Clone)"
+        )
+        fleet_number_path = (
+            fleet_status_root + "/top_stage/msg_panel/fleet_info/number"
+        )
+        fleet_number_matches = tuple(
+            item for item in active_texts if item.path == fleet_number_path
+        )
+        if (
+            len(fleet_number_matches) != 1
+            or re.fullmatch(
+                r"[12]", fleet_number_matches[0].text.strip()
+            ) is None
+        ):
+            raise SemanticGateClosed(
+                "campaign map displayed fleet index is absent or ambiguous"
+            )
+        displayed_fleet_index = int(fleet_number_matches[0].text.strip())
+
+        roster_icon_pattern = re.compile(
+            re.escape(fleet_status_root)
+            + r"/left_stage/fleet/(?:vanguard|main)/shiptpl\(Clone\)"
+            + r"/icon_bg/icon$"
+        )
+        roster_icons = tuple(
+            image
+            for image in active_images
+            if roster_icon_pattern.fullmatch(image.path) is not None
+        )
+        roster_sprites = tuple(sorted(image.sprite for image in roster_icons))
+        if (
+            not roster_sprites
+            or len(roster_sprites) > 6
+            or any(
+                re.fullmatch(r"[A-Za-z0-9_]+", sprite) is None
+                for sprite in roster_sprites
+            )
+        ):
+            raise SemanticGateClosed(
+                "campaign map displayed fleet roster is incomplete"
+            )
+        current_marker_candidates = []
+        for marker in fleet_markers:
+            marker_sprite = marker.removeprefix("cell_fleet_")
+            matches = sum(sprite == marker_sprite for sprite in roster_sprites)
+            if matches > 1:
+                raise SemanticGateClosed(
+                    "campaign map current fleet roster identity is ambiguous"
+                )
+            if matches == 1:
+                current_marker_candidates.append(marker)
+        if len(current_marker_candidates) != 1:
+            raise SemanticGateClosed(
+                "campaign map current fleet marker is absent or ambiguous"
+            )
+        current_fleet_marker = current_marker_candidates[0]
+        current_fleet_node = next(
+            fleet.node for fleet in fleets
+            if fleet.marker == current_fleet_marker
+        )
+        fighting_nodes = tuple(
+            enemy.node for enemy in enemies if enemy.fighting
+        )
+        if fighting_nodes and fighting_nodes != (current_fleet_node,):
+            raise SemanticGateClosed(
+                "campaign map fighting enemy disagrees with current fleet"
+            )
+
         return CampaignMapState(
             generation=max(button_state.generation, ui_state.generation),
             stage_code=stage_code,
@@ -4340,6 +4415,9 @@ class SemanticOracle:
             pickups=tuple(
                 sorted(pickups, key=lambda item: (item.row, item.column, item.kind))
             ),
+            displayed_fleet_index=displayed_fleet_index,
+            current_fleet_marker=current_fleet_marker,
+            current_fleet_roster_sprites=roster_sprites,
         )
 
     def campaign_is_in_map(self) -> bool:
