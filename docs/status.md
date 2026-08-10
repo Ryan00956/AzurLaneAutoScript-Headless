@@ -4,6 +4,36 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G17 campaign combat admission: contract pass, live execution still closed
+
+- A separate `ALAS_SEMANTIC_CAMPAIGN_COMBAT_BUDGET` now defaults to `0`; the
+  first slice accepts only exactly `1` and binds it to the immutable ALAS
+  decision plus the same stable semantic map object.
+- The qualified shape is deliberately minimal: current fleet and one typed
+  `fighting` enemy share the target cell, native cost is `0`, and both the full
+  route and goto route contain only that node. Movement, fleet switching,
+  bosses, pickups, and multi-node routes remain closed.
+- ALAS's original `_goto()` grid annotation is recognized only at its existing
+  `device.click(grid)` input boundary. The exact Unity Button is revalidated
+  for path, geometry, top raycast, foreground, screen bounds, and blockers;
+  the budget is consumed immediately after the tap and cannot replay.
+- The independent completion contract requires ALAS battle count `+1`, target
+  object removal, current fleet still on target, ammunition `-1`, stable map
+  topology, and a newer complete generation.
+- A Device-free replay derived `68` passable and `20` land cells from the real
+  pinned `campaign_12_4.MAP` and accepted exactly D6 object `1204090` with
+  ammunition `5` and cell path `chapter_cell_quad_6_4`.
+- The patched runner intentionally raises `ScriptEnd` after admission
+  preflight and before calling `goto()`: the original `_goto()` and combat
+  observation closure is not yet qualified, so G17 performs no live grid tap.
+- A fresh read-only observer sample at generations `74795..74797` was healthy
+  and complete (`96` Buttons, `60` Texts, `320` Images) but still contained the
+  exact `[NetworkDown]` overlay. No input was injected.
+- The full controller/integration suite passes `253/253`; the canonical patch
+  applies cleanly to the pinned upstream SHA.
+
+See [G17 campaign combat admission](g17-campaign-combat-admission-validation-report.md).
+
 ### G16 original ALAS campaign decision: pinned decision-only pass
 
 - The indexed shadow map now runs ALAS's original `battle_function()` on an

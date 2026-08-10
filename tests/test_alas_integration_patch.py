@@ -241,6 +241,19 @@ class AlasIntegrationPatchTests(unittest.TestCase):
         self.assertNotIn("self.campaign.goto(decision", self.patch_text)
         self.assertNotIn("self.campaign._goto(decision", self.patch_text)
 
+    def test_campaign_combat_admission_stops_before_alas_execution(self):
+        self.assertIn(
+            "semantic_adapter.authorize_campaign_combat(",
+            self.patch_text,
+        )
+        self.assertIn("Semantic ALAS combat admission:", self.patch_text)
+        self.assertIn(
+            "Semantic campaign combat admission validation complete",
+            self.patch_text,
+        )
+        self.assertNotIn("self.campaign.goto(decision", self.patch_text)
+        self.assertNotIn("self.campaign._goto(decision", self.patch_text)
+
 
 if __name__ == "__main__":
     unittest.main()

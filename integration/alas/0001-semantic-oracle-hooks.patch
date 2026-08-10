@@ -165,7 +165,7 @@ index 45e8179..55ba834 100644
          timeout = Timer(1, count=2).start()
          while 1:
 diff --git a/module/campaign/run.py b/module/campaign/run.py
-index 5703330..aae73d4 100644
+index 5703330..95b27a0 100644
 --- a/module/campaign/run.py
 +++ b/module/campaign/run.py
 @@ -366,6 +366,16 @@ class CampaignRun(CampaignEvent):
@@ -193,7 +193,7 @@ index 5703330..aae73d4 100644
          name, folder = self.handle_stage_name(name, folder, mode=mode)
          self.config.override(Campaign_Name=name, Campaign_Event=folder)
          self.load_campaign(name, folder=folder)
-@@ -399,6 +410,73 @@ class CampaignRun(CampaignEvent):
+@@ -399,6 +410,92 @@ class CampaignRun(CampaignEvent):
                  self.device.screenshot()
              self.campaign.device.image = self.device.image
              if self.campaign.is_in_map():
@@ -263,11 +263,30 @@ index 5703330..aae73d4 100644
 +                        f'goto_nodes={list(decision.goto_nodes)}, '
 +                        f'generation={decision.generation}'
 +                    )
++                    admission = semantic_adapter.authorize_campaign_combat(
++                        decision, state
++                    )
++                    if admission is not None:
++                        logger.info(
++                            'Semantic ALAS combat admission: '
++                            f'battle={admission.battle_count}, '
++                            f'fleet={admission.fleet_index}:'
++                            f'{admission.fleet_marker}, '
++                            f'target={admission.target_node}:'
++                            f'{admission.enemy_object_id}, '
++                            f'ammo={admission.ammo_before}, '
++                            f'path={admission.cell_path}, '
++                            f'generation={admission.generation}'
++                            f'->{admission.input_generation}'
++                        )
++                        raise ScriptEnd(
++                            'Semantic campaign combat admission validation complete'
++                        )
 +                    return True
                  logger.info('Already in map, retreating.')
                  try:
                      self.campaign.withdraw()
-@@ -435,6 +513,12 @@ class CampaignRun(CampaignEvent):
+@@ -435,6 +532,12 @@ class CampaignRun(CampaignEvent):
              self.device.stuck_record_clear()
              self.device.click_record_clear()
              try:

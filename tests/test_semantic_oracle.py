@@ -1230,6 +1230,63 @@ class SemanticOracleTests(unittest.TestCase):
         )
         self.assertEqual(backend.taps, [])
 
+    def test_campaign_map_cell_click_revalidates_exact_top_raycast(self):
+        backend = make_campaign_map_backend()
+        oracle = make_oracle(backend)
+        state = oracle.campaign_map_state(
+            "12-4",
+            columns=3,
+            rows=2,
+            land_cells=((1, 0),),
+            expected_fleet_count=2,
+        )
+        target = next(
+            button
+            for button in backend.buttons["buttons"]
+            if button["path"].endswith("chapter_cell_quad_1_1")
+        )
+        backend.snapshot = make_snapshot(generation=12)
+        backend.buttons["generation"] = 12
+        target["raycast_top"] = True
+
+        receipt = oracle.click_campaign_map_cell(state, "A1")
+
+        self.assertEqual(receipt.semantic_id, "campaign/map/grid/A1")
+        self.assertEqual(receipt.path, state.cells[0].button_path)
+        self.assertEqual(backend.taps, [(100, 100)])
+
+    def test_campaign_map_cell_click_rejects_geometry_drift_and_blockers(self):
+        backend = make_campaign_map_backend()
+        oracle = make_oracle(backend)
+        state = oracle.campaign_map_state(
+            "12-4",
+            columns=3,
+            rows=2,
+            land_cells=((1, 0),),
+            expected_fleet_count=2,
+        )
+        target = next(
+            button
+            for button in backend.buttons["buttons"]
+            if button["path"].endswith("chapter_cell_quad_1_1")
+        )
+        backend.snapshot = make_snapshot(generation=12)
+        backend.buttons["generation"] = 12
+        target["raycast_top"] = True
+        target["adb_point"]["x"] += 1
+        with self.assertRaisesRegex(SemanticGateClosed, "geometry"):
+            oracle.click_campaign_map_cell(state, "A1")
+        self.assertEqual(backend.taps, [])
+
+        target["adb_point"]["x"] -= 1
+        backend.buttons["buttons"].append(
+            make_button("loading", "root/UIOverlay/Loading(Clone)/mask")
+        )
+        backend.buttons["button_count"] += 1
+        with self.assertRaisesRegex(SemanticGateClosed, "blocked"):
+            oracle.click_campaign_map_cell(state, "A1")
+        self.assertEqual(backend.taps, [])
+
     def test_campaign_map_model_rejects_ambiguous_current_fleet_marker(self):
         backend = make_campaign_map_backend(generations=(10,))
         roster_path = (

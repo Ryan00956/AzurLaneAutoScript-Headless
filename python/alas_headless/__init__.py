@@ -10,6 +10,12 @@ from .alas_decision_preview import (
     AlasCampaignDecisionPreview,
     preview_alas_campaign_decision,
 )
+from .alas_combat_admission import (
+    AlasCampaignCombatAdmission,
+    AlasCampaignCombatProof,
+    prepare_alas_campaign_combat_admission,
+    prove_alas_campaign_combat_transition,
+)
 from .alas_adapter import (
     AlasSemanticAdapter,
     AlasSemanticSession,
@@ -102,6 +108,8 @@ __all__ = (
     "ActionReceipt",
     "AdbObserverBridge",
     "AlasCampaignFleetPlan",
+    "AlasCampaignCombatAdmission",
+    "AlasCampaignCombatProof",
     "AlasCampaignDecisionPreview",
     "AlasCampaignMapProjection",
     "AlasCampaignRoutePlan",
@@ -185,5 +193,7 @@ __all__ = (
     "current_semantic_session",
     "reset_semantic_session",
     "preview_alas_campaign_decision",
+    "prepare_alas_campaign_combat_admission",
+    "prove_alas_campaign_combat_transition",
     "synchronize_alas_campaign_map",
 )

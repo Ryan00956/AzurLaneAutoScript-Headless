@@ -10,9 +10,16 @@ from __future__ import annotations
 import os
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
+from .alas_combat_admission import (
+    AlasCampaignCombatAdmission,
+    AlasCampaignCombatProof,
+    prepare_alas_campaign_combat_admission,
+    prove_alas_campaign_combat_transition,
+)
+from .alas_decision_preview import AlasCampaignDecisionPreview
 from .semantic_oracle import (
     ActionReceipt,
     AdbObserverBridge,
@@ -571,6 +578,15 @@ class _CampaignFlowContext:
     sortie_receipt: Optional[ActionReceipt] = None
     map_entry_state: Optional[CampaignMapEntryState] = None
     sortie_proof: Optional[CampaignSortieProof] = None
+    combat_budget: int = 0
+    map_state: Optional[CampaignMapState] = None
+    map_columns: Optional[int] = None
+    map_rows: Optional[int] = None
+    map_land_cells: Tuple[Tuple[int, int], ...] = ()
+    map_expected_fleet_count: Optional[int] = None
+    combat_admission: Optional[AlasCampaignCombatAdmission] = None
+    combat_receipt: Optional[ActionReceipt] = None
+    combat_proof: Optional[AlasCampaignCombatProof] = None
     passive_transition_until: float = 0.0
 
 
@@ -613,6 +629,7 @@ class AlasSemanticAdapter:
         campaign_stage_entry_budget: int = 0,
         campaign_fleet_mutation_budget: int = 0,
         campaign_sortie_budget: int = 0,
+        campaign_combat_budget: int = 0,
     ) -> None:
         if package_gate is None:
             raise ValueError("semantic ALAS mode requires a package identity gate")
@@ -639,6 +656,7 @@ class AlasSemanticAdapter:
             ("campaign stage entry", campaign_stage_entry_budget),
             ("campaign fleet mutation", campaign_fleet_mutation_budget),
             ("campaign sortie", campaign_sortie_budget),
+            ("campaign combat", campaign_combat_budget),
         ):
             if (
                 isinstance(budget, bool)
@@ -659,6 +677,7 @@ class AlasSemanticAdapter:
         self._campaign_stage_entry_budget = campaign_stage_entry_budget
         self._campaign_fleet_mutation_budget = campaign_fleet_mutation_budget
         self._campaign_sortie_budget = campaign_sortie_budget
+        self._campaign_combat_budget = campaign_combat_budget
         self._mission_context: Optional[_MissionFlowContext] = None
         self._mail_context: Optional[_MailFlowContext] = None
         self._commission_context: Optional[_CommissionFlowContext] = None
@@ -919,6 +938,7 @@ class AlasSemanticAdapter:
             entry_budget=self._campaign_stage_entry_budget,
             fleet_mutation_budget=self._campaign_fleet_mutation_budget,
             sortie_budget=self._campaign_sortie_budget,
+            combat_budget=self._campaign_combat_budget,
             passive_transition_until=time.monotonic() + 20.0,
         )
 
@@ -2472,13 +2492,157 @@ class AlasSemanticAdapter:
             raise SemanticGateClosed(
                 "campaign map model is qualified only in normal mode"
             )
-        return self.oracle.campaign_map_state(
+        state = self.oracle.campaign_map_state(
             context.stage_code,
             columns=columns,
             rows=rows,
             land_cells=land_cells,
             expected_fleet_count=expected_fleet_count,
         )
+
+        context.map_state = state
+        context.map_columns = columns
+        context.map_rows = rows
+        context.map_land_cells = tuple(tuple(item) for item in land_cells)
+        context.map_expected_fleet_count = expected_fleet_count
+        return state
+
+    def authorize_campaign_combat(
+        self,
+        decision: AlasCampaignDecisionPreview,
+        state: CampaignMapState,
+    ) -> Optional[AlasCampaignCombatAdmission]:
+        """Prepare one exact combat grid input without consuming its budget."""
+
+        self._package_gate()
+        context = self._require_campaign_context()
+        if context.combat_budget == 0:
+            return None
+        if context.combat_budget != 1:
+            raise SemanticGateClosed(
+                "campaign combat requires exactly one remaining budget unit"
+            )
+        if (
+            context.combat_admission is not None
+            or context.combat_receipt is not None
+            or context.combat_proof is not None
+        ):
+            raise SemanticGateClosed("campaign combat admission is single-use")
+        if context.map_state is not state:
+            raise SemanticGateClosed("campaign combat map state is not current")
+        target = self.oracle.campaign_map_cell_input(state, decision.target_node)
+        admission = prepare_alas_campaign_combat_admission(
+            decision,
+            state,
+            input_generation=state.generation,
+        )
+        if (
+            target.path != admission.cell_path
+            or target.point != admission.point
+            or target.bounds != admission.bounds
+        ):
+            raise SemanticGateClosed("campaign combat target changed during preflight")
+        context.combat_admission = admission
+        return admission
+
+    @staticmethod
+    def _campaign_grid_location(button: Any) -> Optional[Tuple[int, int]]:
+        """Read ALAS `_goto()`'s explicit global-location annotation only."""
+
+        location = getattr(button, "__str__", None)
+        if callable(location) or not isinstance(location, (tuple, list)):
+            return None
+        if len(location) != 2 or any(
+            isinstance(value, bool) or not isinstance(value, int)
+            for value in location
+        ):
+            return None
+        if not (
+            hasattr(button, "corner")
+            and hasattr(button, "button")
+            and hasattr(button, "location")
+        ):
+            return None
+        return tuple(location)
+
+    @staticmethod
+    def _campaign_node(location: Tuple[int, int]) -> str:
+        column, row = location
+        if not (0 <= column < 26 and 0 <= row < 99):
+            raise SemanticGateClosed("campaign combat grid location is outside bounds")
+        return chr(ord("A") + column) + str(row + 1)
+
+    def click_campaign_combat_grid(self, button: Any) -> ActionReceipt:
+        """Consume the one budget only at ALAS's original `device.click(grid)`."""
+
+        self._package_gate()
+        context = self._require_campaign_context()
+        admission = context.combat_admission
+        location = self._campaign_grid_location(button)
+        if admission is None or location is None or context.map_state is None:
+            raise SemanticGateClosed("campaign combat grid input is not authorized")
+        node = self._campaign_node(location)
+        if node != admission.target_node:
+            raise SemanticGateClosed("campaign combat grid target changed")
+        if context.combat_budget != 1 or context.combat_receipt is not None:
+            raise SemanticGateClosed(
+                "campaign combat grid requires one remaining budget unit"
+            )
+        receipt = self.oracle.click_campaign_map_cell(context.map_state, node)
+        # The ADB tap has happened.  Consume and record the lease before any
+        # subsequent assertion so an anomalous receipt can never be replayed.
+        context.combat_budget -= 1
+        context.combat_admission = replace(
+            admission, input_generation=receipt.generation
+        )
+        context.combat_receipt = receipt
+        if (
+            receipt.path != admission.cell_path
+            or receipt.point != admission.point
+            or receipt.bounds != admission.bounds
+            or receipt.generation < admission.input_generation
+        ):
+            raise SemanticGateClosed("campaign combat input receipt changed")
+        return receipt
+
+    def campaign_combat_committed(self) -> bool:
+        context = self._require_campaign_context()
+        return context.combat_receipt is not None
+
+    def confirm_campaign_combat(
+        self,
+        battle_count_after: int,
+    ) -> AlasCampaignCombatProof:
+        """Validate ALAS's completed combat against a stable semantic map."""
+
+        self._package_gate()
+        context = self._require_campaign_context()
+        if context.combat_proof is not None:
+            return context.combat_proof
+        if (
+            context.combat_admission is None
+            or context.combat_receipt is None
+            or context.map_columns is None
+            or context.map_rows is None
+            or context.map_expected_fleet_count is None
+        ):
+            raise SemanticGateClosed("campaign combat input is not committed")
+        state = self.oracle.campaign_map_state(
+            context.stage_code,
+            columns=context.map_columns,
+            rows=context.map_rows,
+            land_cells=context.map_land_cells,
+            expected_fleet_count=context.map_expected_fleet_count,
+        )
+        proof = prove_alas_campaign_combat_transition(
+            context.combat_admission,
+            state,
+            battle_count_after=battle_count_after,
+            input_path=context.combat_receipt.path,
+        )
+        context.map_state = state
+        context.combat_proof = proof
+        return proof
 
     def research_series(self) -> List[int]:
         return [project.series for project in self.research_projects()]
@@ -2792,6 +2956,8 @@ class AlasSemanticAdapter:
         return True
 
     def click(self, button: Any) -> ActionReceipt:
+        if self._campaign_grid_location(button) is not None:
+            return self.click_campaign_combat_grid(button)
         name = self._button_name(button)
         campaign_stage_code = getattr(
             button, "semantic_campaign_stage_code", None
@@ -4055,6 +4221,7 @@ class AlasSemanticSession:
         campaign_stage_entry_budget: int = 0,
         campaign_fleet_mutation_budget: int = 0,
         campaign_sortie_budget: int = 0,
+        campaign_combat_budget: int = 0,
     ) -> None:
         if not serial:
             raise ValueError("semantic ALAS mode requires an ADB serial")
@@ -4079,6 +4246,7 @@ class AlasSemanticSession:
             ("campaign stage entry", campaign_stage_entry_budget),
             ("campaign fleet mutation", campaign_fleet_mutation_budget),
             ("campaign sortie", campaign_sortie_budget),
+            ("campaign combat", campaign_combat_budget),
         ):
             if (
                 isinstance(budget, bool)
@@ -4099,6 +4267,7 @@ class AlasSemanticSession:
         self.campaign_stage_entry_budget = campaign_stage_entry_budget
         self.campaign_fleet_mutation_budget = campaign_fleet_mutation_budget
         self.campaign_sortie_budget = campaign_sortie_budget
+        self.campaign_combat_budget = campaign_combat_budget
         self.bridge = AdbObserverBridge(serial, package, adb=adb)
         self.adapter: Optional[AlasSemanticAdapter] = None
 
@@ -4141,6 +4310,9 @@ class AlasSemanticSession:
         raw_campaign_sortie_budget = os.environ.get(
             "ALAS_SEMANTIC_CAMPAIGN_SORTIE_BUDGET", "0"
         )
+        raw_campaign_combat_budget = os.environ.get(
+            "ALAS_SEMANTIC_CAMPAIGN_COMBAT_BUDGET", "0"
+        )
         for label, value in (
             ("tactical assign", raw_tactical_assign_budget),
             ("commission reward", raw_reward_budget),
@@ -4153,6 +4325,7 @@ class AlasSemanticSession:
             ("campaign stage entry", raw_campaign_stage_entry_budget),
             ("campaign fleet mutation", raw_campaign_fleet_mutation_budget),
             ("campaign sortie", raw_campaign_sortie_budget),
+            ("campaign combat", raw_campaign_combat_budget),
         ):
             if re.fullmatch(r"0|[1-9][0-9]*", value) is None:
                 raise SemanticGateClosed(
@@ -4190,6 +4363,7 @@ class AlasSemanticSession:
                 raw_campaign_fleet_mutation_budget
             ),
             campaign_sortie_budget=int(raw_campaign_sortie_budget),
+            campaign_combat_budget=int(raw_campaign_combat_budget),
         )
 
     def open(self) -> AlasSemanticAdapter:
@@ -4230,6 +4404,7 @@ class AlasSemanticSession:
                     self.campaign_fleet_mutation_budget
                 ),
                 campaign_sortie_budget=self.campaign_sortie_budget,
+                campaign_combat_budget=self.campaign_combat_budget,
             )
             return self.adapter
         except Exception:
@@ -4356,6 +4531,22 @@ class AlasSemanticSession:
             land_cells=land_cells,
             expected_fleet_count=expected_fleet_count,
         )
+
+    def authorize_campaign_combat(
+        self,
+        decision: AlasCampaignDecisionPreview,
+        state: CampaignMapState,
+    ) -> Optional[AlasCampaignCombatAdmission]:
+        return self.open().authorize_campaign_combat(decision, state)
+
+    def campaign_combat_committed(self) -> bool:
+        return self.open().campaign_combat_committed()
+
+    def confirm_campaign_combat(
+        self,
+        battle_count_after: int,
+    ) -> AlasCampaignCombatProof:
+        return self.open().confirm_campaign_combat(battle_count_after)
 
     def campaign_stage_entry_allowed(self) -> bool:
         return self.open().campaign_stage_entry_allowed()
@@ -4507,6 +4698,8 @@ class AlasSemanticSession:
         return self.open().cancel_tactical_continue_if_present()
 
     def click(self, button: Any) -> ActionReceipt:
+        if AlasSemanticAdapter._campaign_grid_location(button) is not None:
+            return self.open().click_campaign_combat_grid(button)
         name = AlasSemanticAdapter._button_name(button)
         campaign_stage_code = getattr(
             button, "semantic_campaign_stage_code", None

@@ -50,6 +50,10 @@ planning are documented in the
 [G14 validation report](docs/g14-alas-map-sync-validation-report.md). The
 passive semantic-marker to ALAS fleet-index reconciliation is documented in
 the [G15 validation report](docs/g15-campaign-fleet-index-validation-report.md).
+The original-ALAS decision preview and the separately budgeted, still
+preflight-only combat admission are documented in the
+[G16 validation report](docs/g16-alas-campaign-decision-preview-validation-report.md)
+and [G17 validation report](docs/g17-campaign-combat-admission-validation-report.md).
 
 G1, G2, G3, and the formal G4 harmless closed loop passed. G4 includes
 EventSystem top-raycast proof for every injected target, not only object state
@@ -84,9 +88,12 @@ native ALAS `CampaignMap`, reuses `map_data_init()` and the native path finder,
 and emits deterministic per-marker reachability summaries. G15 then proves the
 displayed marker from the exact top-stage fleet number and current roster,
 including ALAS's reversed-fleet rule, and populates native indexed locations.
-Movement remains structurally closed because no grid input or map-control loop
-is enabled. Lua/game-state coverage, formation-layout changes, decision-only
-campaign execution, map movement, battle state, weekly-only end-to-end
+Movement remains structurally closed because the patched runner stops before
+`goto()`. G17 defines a default-zero, decision-bound exact grid-input lease and
+post-battle proof, but does not spend that lease until ALAS's original
+`_goto()` and combat observation chain is complete. Lua/game-state coverage,
+formation-layout changes, campaign movement execution, battle state,
+weekly-only end-to-end
 coverage, repeated sorties, and full unattended ALAS task coverage remain
 open.
 

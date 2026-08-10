@@ -4058,6 +4058,63 @@ class SemanticOracle:
             previous = current
         raise SemanticGateClosed("campaign map model did not stabilize")
 
+    def campaign_map_cell_input(
+        self,
+        state: CampaignMapState,
+        node: str,
+    ) -> ButtonState:
+        """Revalidate one exact actionable map cell without injecting input."""
+
+        if not isinstance(state, CampaignMapState):
+            raise SemanticGateClosed("campaign map-cell input requires a typed state")
+        matches = tuple(cell for cell in state.cells if cell.node == node)
+        if len(matches) != 1:
+            raise SemanticGateClosed("campaign map-cell input is absent or ambiguous")
+        cell = matches[0]
+        observed = self.read_state()
+        if observed.generation < state.generation:
+            raise SemanticGateClosed("campaign map-cell input snapshot is stale")
+        buttons = tuple(
+            button for button in observed.buttons if button.path == cell.button_path
+        )
+        if len(buttons) != 1:
+            raise SemanticGateClosed("campaign map-cell Button identity changed")
+        target = buttons[0]
+        if (
+            not target.actionable
+            or target.point != cell.point
+            or target.bounds != cell.bounds
+        ):
+            raise SemanticGateClosed("campaign map-cell geometry or actionability changed")
+        if self._blocking_rules(observed, "campaign/map/grid"):
+            raise SemanticGateClosed("campaign map-cell input is blocked")
+        if not (
+            0 <= target.point.x < self.fingerprint.width
+            and 0 <= target.point.y < self.fingerprint.height
+        ):
+            raise SemanticGateClosed("campaign map-cell point is outside the screen")
+        return target
+
+    def click_campaign_map_cell(
+        self,
+        state: CampaignMapState,
+        node: str,
+    ) -> ActionReceipt:
+        """Inject one exact map-cell tap after a fresh typed revalidation."""
+
+        target = self.campaign_map_cell_input(state, node)
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("foreground changed immediately before input")
+        assert target.point is not None and target.bounds is not None
+        self._tap(int(round(target.point.x)), int(round(target.point.y)))
+        return ActionReceipt(
+            semantic_id="campaign/map/grid/" + node,
+            generation=self._last_generation or state.generation,
+            point=target.point,
+            bounds=target.bounds,
+            path=target.path,
+        )
+
     def _campaign_map_state_once(
         self,
         stage_code: str,

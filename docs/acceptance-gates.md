@@ -10,6 +10,9 @@ fresh complete live-map projection remains blocked by the same network dialog.
 G16 adds a pinned original-ALAS decision-only pass with first `goto()` capture;
 its fresh same-process replay remains blocked by that dialog, and no movement
 or combat input is enabled.
+G17 adds a default-zero, decision-bound combat admission contract and an exact
+dynamic grid-input port, but the patched runner still stops after preflight.
+It is not a movement or battle execution pass.
 G4 includes
 login/main reachability, sustained semantic state, RectTransform bounds, top
 EventSystem raycast identity for each action, and a settings-page return loop.
@@ -306,6 +309,33 @@ See [G15 fleet-index validation](g15-campaign-fleet-index-validation-report.md).
   map is blocked.
 
 See [G16 ALAS campaign decision preview](g16-alas-campaign-decision-preview-validation-report.md).
+
+## G17 - Decision-bound campaign combat admission
+
+- Bind ALAS's immutable decision signature to the same stable semantic map
+  object and require an exact normal `combat` against one `fighting` enemy.
+- Admit only the smallest zero-distance slice: current fleet, enemy, origin,
+  target, native route, and native goto nodes must all identify the same cell;
+  fleet-step movement, bosses, pickups, portals, fleet switching, and positive
+  path cost remain closed.
+- Give campaign combat an independent canonical integer budget that defaults
+  to zero and requires exactly one unit for this slice.
+- Re-read the exact cell Button before input and require unchanged Unity path,
+  point, bounds, active/enabled/interactable state, top EventSystem raycast,
+  foreground package, screen bounds, and no global blocker.
+- Consume the budget immediately after the ADB tap, before validating its
+  receipt, so an anomalous post-input result cannot replay the action.
+- Accept only ALAS `_goto()`'s explicit global-location annotation at the
+  existing `device.click(grid)` boundary; do not expose generic coordinates or
+  a second movement implementation.
+- Define the postcondition as ALAS battle count `+1`, exact target object
+  removal, current fleet still on the target, ammunition `-1`, stable topology,
+  and a newer complete map generation.
+- Keep the patched campaign runner stopped after admission preflight until the
+  original `_goto()`/combat observation closure is qualified. A positive
+  budget therefore proves readiness but injects no live input in G17.
+
+See [G17 campaign combat admission](g17-campaign-combat-admission-validation-report.md).
 
 ## Stop or pivot conditions
 

@@ -97,6 +97,21 @@ full route, and optimized goto nodes, then returns. Any Device access, fleet
 switch, `_goto()`, combat, retreat, timed emotion wait, unknown target, stale
 projection, or route disagreement fails closed.
 
+Campaign combat has a separate canonical integer budget and remains closed by
+default:
+
+```powershell
+$env:ALAS_SEMANTIC_CAMPAIGN_COMBAT_BUDGET = '1'
+```
+
+G17 uses this value only to prepare one decision-bound, zero-distance
+fighting-enemy admission. It revalidates the exact Unity cell path, geometry,
+top raycast, foreground, and blockers, then the patched runner raises
+`ScriptEnd` before `goto()`; no grid tap is injected. The dynamic input port
+accepts only the global cell annotation written by ALAS's original `_goto()`
+at `device.click(grid)`, and its one-use budget/post-battle proof are ready for
+a later gate. Do not treat the positive G17 budget as live combat enablement.
+
 Commission start has a separate integer budget and remains closed by default:
 
 ```powershell

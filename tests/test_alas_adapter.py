@@ -1,5 +1,6 @@
 import time
 import unittest
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -7,10 +8,16 @@ from alas_headless import (
     AlasSemanticAdapter,
     AlasSemanticSession,
     AlasSemanticUnmapped,
+    AlasCampaignDecisionPreview,
     MissionClaimableDetected,
     AndroidPackageFingerprint,
     Bounds,
     BuildPool,
+    ButtonState,
+    CampaignMapCellState,
+    CampaignMapEnemyState,
+    CampaignMapFleetState,
+    CampaignMapState,
     MissionDisposition,
     PINNED_CN_GAME_FINGERPRINT,
     PinnedPackageGate,
@@ -24,6 +31,80 @@ from alas_headless.semantic_oracle import ActionReceipt, AdbObserverBridge
 class NamedButton:
     def __init__(self, name):
         self.name = name
+
+
+class CampaignGridButton:
+    def __init__(self, global_location):
+        self.location = (0, 0)
+        self.corner = object()
+        self.button = (1, 2, 3, 4)
+        self.__str__ = global_location
+
+
+def make_campaign_combat_state(generation=51, *, after=False):
+    cell = CampaignMapCellState(
+        row=6,
+        column=4,
+        node="D6",
+        button_path="root/DragLayer/plane/quads/chapter_cell_quad_6_4",
+        point=Point(640, 360),
+        bounds=Bounds(600, 320, 680, 400),
+    )
+    enemies = () if after else (
+        CampaignMapEnemyState(
+            row=6,
+            column=4,
+            node="D6",
+            object_id=104,
+            sprite="zl2",
+            scale=2,
+            genre="Main",
+            level=114,
+            fighting=True,
+        ),
+    )
+    return CampaignMapState(
+        generation=generation,
+        stage_code="12-4",
+        rows=8,
+        columns=11,
+        cells=(cell,),
+        land_nodes=("A1",),
+        fleets=(
+            CampaignMapFleetState(
+                marker="cell_fleet_shengwang_younv",
+                node="D6",
+                ammo=(4 if after else 5),
+                ammo_capacity=5,
+            ),
+        ),
+        enemies=enemies,
+        pickups=(),
+        displayed_fleet_index=1,
+        current_fleet_marker="cell_fleet_shengwang_younv",
+        current_fleet_roster_sprites=("shengwang_younv",),
+    )
+
+
+def make_campaign_combat_decision(generation=51):
+    return AlasCampaignDecisionPreview(
+        generation=generation,
+        stage_code="12-4",
+        battle_count=0,
+        branch_name="battle_0",
+        fleet_index=1,
+        fleet_marker="cell_fleet_shengwang_younv",
+        origin_node="D6",
+        target_node="D6",
+        target_kind="enemy",
+        expected="combat",
+        cost=0,
+        weight=50.0,
+        route_nodes=("D6",),
+        goto_nodes=("D6",),
+        step_optimize=False,
+        turning_optimize=True,
+    )
 
 
 class FakeOracle:
@@ -343,6 +424,32 @@ class FakeOracle:
             )
         )
         return self.campaign_map_state_value
+
+    def campaign_map_cell_input(self, state, node):
+        cell = next(item for item in state.cells if item.node == node)
+        return ButtonState(
+            name="chapter_cell_quad_6_4",
+            path=cell.button_path,
+            active_in_hierarchy=True,
+            active_and_enabled=True,
+            interactable=True,
+            raycast_top=True,
+            point=cell.point,
+            bounds=cell.bounds,
+            raw={},
+        )
+
+    def click_campaign_map_cell(self, state, node):
+        target = self.campaign_map_cell_input(state, node)
+        semantic_id = "campaign/map/grid/" + node
+        self.click_calls.append(semantic_id)
+        return ActionReceipt(
+            semantic_id=semantic_id,
+            generation=state.generation + 1,
+            point=target.point,
+            bounds=target.bounds,
+            path=target.path,
+        )
 
     def campaign_mode_switch_state(self):
         return "hard"
@@ -1680,6 +1787,156 @@ class AlasSemanticAdapterTests(unittest.TestCase):
                 expected_fleet_count=2,
             )
 
+    def test_campaign_combat_defaults_closed_after_alas_decision(self):
+        oracle = FakeOracle()
+        oracle.campaign_map_state_value = make_campaign_combat_state()
+        adapter = AlasSemanticAdapter(oracle, lambda: None)
+        adapter.begin_campaign_pre_sortie("12-4")
+        state = adapter.campaign_map_state(
+            columns=11,
+            rows=8,
+            land_cells=((0, 0),),
+            expected_fleet_count=1,
+        )
+
+        admission = adapter.authorize_campaign_combat(
+            make_campaign_combat_decision(), state
+        )
+
+        self.assertIsNone(admission)
+        self.assertEqual(oracle.click_calls, [])
+        with self.assertRaisesRegex(SemanticGateClosed, "not authorized"):
+            adapter.click(CampaignGridButton((3, 5)))
+        adapter.end_campaign_pre_sortie()
+
+    def test_campaign_combat_binds_alas_grid_click_and_proves_post_state(self):
+        oracle = FakeOracle()
+        before = make_campaign_combat_state()
+        oracle.campaign_map_state_value = before
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            campaign_combat_budget=1,
+        )
+        adapter.begin_campaign_pre_sortie("12-4")
+        state = adapter.campaign_map_state(
+            columns=11,
+            rows=8,
+            land_cells=((0, 0),),
+            expected_fleet_count=1,
+        )
+        admission = adapter.authorize_campaign_combat(
+            make_campaign_combat_decision(), state
+        )
+
+        self.assertIsNotNone(admission)
+        receipt = adapter.click(CampaignGridButton((3, 5)))
+        self.assertEqual(receipt.semantic_id, "campaign/map/grid/D6")
+        self.assertTrue(adapter.campaign_combat_committed())
+        with self.assertRaisesRegex(SemanticGateClosed, "remaining budget"):
+            adapter.click(CampaignGridButton((3, 5)))
+
+        oracle.campaign_map_state_value = make_campaign_combat_state(
+            generation=55, after=True
+        )
+        proof = adapter.confirm_campaign_combat(battle_count_after=1)
+        adapter.end_campaign_pre_sortie()
+
+        self.assertEqual(proof.target_node, "D6")
+        self.assertEqual(proof.enemy_object_id, 104)
+        self.assertEqual((proof.ammo_before, proof.ammo_after), (5, 4))
+        self.assertEqual((proof.battle_count_before, proof.battle_count_after), (0, 1))
+        self.assertEqual(oracle.click_calls, ["campaign/map/grid/D6"])
+
+    def test_campaign_combat_rejects_route_drift_before_input(self):
+        oracle = FakeOracle()
+        state = make_campaign_combat_state()
+        oracle.campaign_map_state_value = state
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            campaign_combat_budget=1,
+        )
+        adapter.begin_campaign_pre_sortie("12-4")
+        current = adapter.campaign_map_state(
+            columns=11,
+            rows=8,
+            land_cells=((0, 0),),
+            expected_fleet_count=1,
+        )
+        decision = replace(
+            make_campaign_combat_decision(),
+            cost=1,
+            route_nodes=("D6", "D5"),
+        )
+
+        with self.assertRaisesRegex(SemanticGateClosed, "zero-distance route"):
+            adapter.authorize_campaign_combat(decision, current)
+
+        self.assertEqual(oracle.click_calls, [])
+        adapter.end_campaign_pre_sortie()
+
+    def test_campaign_combat_rejects_failed_postcondition_without_replay(self):
+        oracle = FakeOracle()
+        state = make_campaign_combat_state()
+        oracle.campaign_map_state_value = state
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            campaign_combat_budget=1,
+        )
+        adapter.begin_campaign_pre_sortie("12-4")
+        current = adapter.campaign_map_state(
+            columns=11,
+            rows=8,
+            land_cells=((0, 0),),
+            expected_fleet_count=1,
+        )
+        adapter.authorize_campaign_combat(
+            make_campaign_combat_decision(), current
+        )
+        adapter.click(CampaignGridButton((3, 5)))
+        oracle.campaign_map_state_value = replace(state, generation=55)
+
+        with self.assertRaisesRegex(SemanticGateClosed, "enemy still exists"):
+            adapter.confirm_campaign_combat(battle_count_after=1)
+
+        self.assertEqual(oracle.click_calls, ["campaign/map/grid/D6"])
+        adapter.end_campaign_pre_sortie()
+
+    def test_campaign_combat_anomalous_receipt_cannot_replay_input(self):
+        oracle = FakeOracle()
+        state = make_campaign_combat_state()
+        oracle.campaign_map_state_value = state
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            campaign_combat_budget=1,
+        )
+        adapter.begin_campaign_pre_sortie("12-4")
+        current = adapter.campaign_map_state(
+            columns=11,
+            rows=8,
+            land_cells=((0, 0),),
+            expected_fleet_count=1,
+        )
+        adapter.authorize_campaign_combat(
+            make_campaign_combat_decision(), current
+        )
+        exact_click = oracle.click_campaign_map_cell
+
+        def anomalous_click(map_state, node):
+            return replace(exact_click(map_state, node), path="wrong/path")
+
+        oracle.click_campaign_map_cell = anomalous_click
+        with self.assertRaisesRegex(SemanticGateClosed, "receipt changed"):
+            adapter.click(CampaignGridButton((3, 5)))
+        with self.assertRaisesRegex(SemanticGateClosed, "remaining budget"):
+            adapter.click(CampaignGridButton((3, 5)))
+
+        self.assertEqual(oracle.click_calls, ["campaign/map/grid/D6"])
+        adapter.end_campaign_pre_sortie()
+
     def test_goto_main_from_mission_uses_exact_task_back(self):
         adapter, oracle, _ = self.make_adapter()
         oracle.exists_values["task/page/back"] = True
@@ -2814,6 +3071,7 @@ class AlasSemanticAdapterTests(unittest.TestCase):
             "ALAS_SEMANTIC_CAMPAIGN_STAGE_ENTRY_BUDGET": "7",
             "ALAS_SEMANTIC_CAMPAIGN_FLEET_MUTATION_BUDGET": "8",
             "ALAS_SEMANTIC_CAMPAIGN_SORTIE_BUDGET": "9",
+            "ALAS_SEMANTIC_CAMPAIGN_COMBAT_BUDGET": "10",
         }
         with patch.dict("os.environ", environment, clear=True):
             session = AlasSemanticSession.from_environment("emulator-test")
@@ -2827,6 +3085,7 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertEqual(session.campaign_stage_entry_budget, 7)
         self.assertEqual(session.campaign_fleet_mutation_budget, 8)
         self.assertEqual(session.campaign_sortie_budget, 9)
+        self.assertEqual(session.campaign_combat_budget, 10)
 
         environment["ALAS_SEMANTIC_DORM_FEED_BUDGET"] = "05"
         with patch.dict("os.environ", environment, clear=True):
