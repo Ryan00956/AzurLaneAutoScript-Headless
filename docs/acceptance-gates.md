@@ -82,6 +82,13 @@ action, sleep, return, and short-circuit order is verified. This proves source
 control-flow ownership only: the trace audit found no repeated complete Unity
 evidence for those branches, `live_mapping_promoted=false`, coverage remains
 `16/41`, `18/54`, `12/38`, and `1/4`, and production still stops at G18.
+G29 makes the first two contextual-popup gaps safely collectable. Its watcher
+uses only coherent raw observer endpoints and requires three adjacent samples
+with the complete paired controls, exact stable Unity identities, top-raycast
+actionability, and stable geometry. A result is a non-applying G27 review
+draft, never a manifest edit or input. The current 25-sample real map trace is
+a clean negative observation for both guild and mission profiles, so coverage
+does not change and production still stops at G18.
 G4 includes
 login/main reachability, sustained semantic state, RectTransform bounds, top
 EventSystem raycast identity for each action, and a settings-page return loop.

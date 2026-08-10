@@ -258,6 +258,29 @@ not contain Unity selectors and explicitly reports
 defensive `18/54`, actions `12/38`, and blockers `1/4`. See
 `docs/g28-alas-defensive-branch-replay-validation-report.md`.
 
+G29 adds a dedicated read-only acquisition boundary for the contextual guild
+and mission dialog pairs. It requires three adjacent coherent frames with both
+controls simultaneously top-raycast actionable, exact stable paths/names, and
+stable geometry. A success writes only a G27 review draft; it never edits the
+manifest or performs input:
+
+```powershell
+python scripts/python/watch_alas_combat_rare_surface.py `
+  --serial 127.0.0.1:5581 `
+  --profile guild-popup `
+  --trace-output artifacts/g29-guild.trace.json `
+  --evidence-output artifacts/g29-guild.evidence.json
+
+python scripts/python/analyze_alas_combat_rare_surface.py `
+  --trace artifacts/g29-guild.trace.json `
+  --profile mission-popup `
+  --output artifacts/g29-mission.evidence.json
+```
+
+The first restored-game run saw neither dialog in 25 complete map samples, so
+both rare profiles and all four resource/action pairs remain unqualified. See
+`docs/g29-alas-rare-surface-acquisition-validation-report.md`.
+
 Commission start has a separate integer budget and remains closed by default:
 
 ```powershell

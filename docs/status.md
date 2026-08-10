@@ -4,6 +4,25 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G29 rare-surface acquisition: watcher passed; live dialogs absent
+
+- A zero-input watcher now targets paired guild confirm/cancel and mission
+  go/acknowledge controls without changing original ALAS control flow.
+- Qualification requires three adjacent coherent samples, both controls
+  top-raycast actionable, stable exact paths/names, and bounded geometry.
+  Ambiguity, coverage, missing controls, or drift fails closed.
+- A match emits only a deterministic G27 review draft. G29 never applies the
+  draft, changes the manifest, imports ALAS, or injects input.
+- The current real map run captured 25 samples at generations
+  `101652..101756` on PID `23161`, with zero endpoint rejects, duplicates, or
+  ambiguities. Neither rare dialog was present, so both profiles remain
+  unqualified and no mapping was promoted.
+- Coverage remains canonical `16/41`, defensive `18/54`, actions `12/38`, and
+  blockers `1/4`; `production_ready=false`.
+- Focused G29 tests pass `6/6`; the full Python suite passes `324/324`.
+
+See [G29 rare-surface acquisition validation](g29-alas-rare-surface-acquisition-validation-report.md).
+
 ### G28 defensive branch replay: 16 source paths pass; mappings unchanged
 
 - Sixteen Device-free scenarios now run original ALAS methods for A-D result
