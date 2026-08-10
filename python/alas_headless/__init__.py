@@ -20,6 +20,14 @@ from .alas_goto_input_preview import (
     AlasCampaignGotoInputPreview,
     preview_alas_campaign_goto_input,
 )
+from .alas_combat_state_replay import (
+    AlasCampaignCombatReplay,
+    AlasCampaignCombatStateReplayResult,
+    AlasCombatReplayFrame,
+    AlasCombatReplayPhase,
+    canonical_alas_campaign_combat_replay,
+    replay_alas_campaign_combat_state_machine,
+)
 from .alas_adapter import (
     AlasSemanticAdapter,
     AlasSemanticSession,
@@ -114,10 +122,14 @@ __all__ = (
     "AlasCampaignFleetPlan",
     "AlasCampaignCombatAdmission",
     "AlasCampaignCombatProof",
+    "AlasCampaignCombatReplay",
+    "AlasCampaignCombatStateReplayResult",
     "AlasCampaignDecisionPreview",
     "AlasCampaignGotoInputPreview",
     "AlasCampaignMapProjection",
     "AlasCampaignRoutePlan",
+    "AlasCombatReplayFrame",
+    "AlasCombatReplayPhase",
     "AlasSemanticAdapter",
     "AlasSemanticSession",
     "AlasSemanticUnmapped",
@@ -195,11 +207,13 @@ __all__ = (
     "TacticalBookState",
     "UiState",
     "bind_semantic_session",
+    "canonical_alas_campaign_combat_replay",
     "current_semantic_session",
     "reset_semantic_session",
     "preview_alas_campaign_decision",
     "preview_alas_campaign_goto_input",
     "prepare_alas_campaign_combat_admission",
     "prove_alas_campaign_combat_transition",
+    "replay_alas_campaign_combat_state_machine",
     "synchronize_alas_campaign_map",
 )

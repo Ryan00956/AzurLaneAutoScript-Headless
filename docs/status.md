@@ -4,6 +4,30 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G19 original combat state machine: pinned Device-free replay pass
+
+- Six strictly increasing typed frames now represent battle preparation,
+  combat execution, S result, experience result, enemy searching, and the
+  stable post-battle map. Extra/reordered frames or resource/flag/stat drift
+  fail before replay.
+- Real pinned ALAS executed its original `_goto()`, `combat_appear()`,
+  `combat()`, `combat_preparation()`, `combat_execute()`, `combat_status()`,
+  enemy-searching handler, arrival confirmation, native grid mutation, and
+  path rebuild.
+- The exact virtual actions were D6, `BATTLE_PREPARATION`, `BATTLE_STATUS_S`,
+  and `EXP_INFO_S`. No adapter or ADB method was called.
+- The isolated native result was battle `0 -> 1`, ammo `5 -> 4`, D6 enemy
+  removed, current fleet retained, source MAP restored, projected map
+  unchanged, and shared ALAS timers unchanged.
+- The original chain made `104` queries over `38` allowlisted ALAS resources;
+  any new upstream query prevents success rather than silently returning false.
+- Current read-only generations `103330..103331` remained complete with
+  `96` Buttons, `60` Texts, `320` Images and the exact `[NetworkDown]` blocker.
+- The suite passes `267/267`; the reusable qualification script passes; the
+  canonical patch remains clean and identical to patchcheck.
+
+See [G19 ALAS combat state replay](g19-alas-combat-state-replay-validation-report.md).
+
 ### G18 original ALAS `_goto()` prefix: pinned zero-input pass
 
 - After the G17 admission, an isolated campaign shell now calls the original

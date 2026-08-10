@@ -263,6 +263,12 @@ class AlasIntegrationPatchTests(unittest.TestCase):
         )
         self.assertNotIn("self.campaign.goto(decision", self.patch_text)
         self.assertNotIn("self.campaign._goto(decision", self.patch_text)
+        self.assertNotIn(
+            "canonical_alas_campaign_combat_replay", self.patch_text
+        )
+        self.assertNotIn(
+            "replay_alas_campaign_combat_state_machine", self.patch_text
+        )
 
 
 if __name__ == "__main__":

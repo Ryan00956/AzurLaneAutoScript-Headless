@@ -13,9 +13,12 @@ from alas_headless import (
     CampaignMapState,
     Point,
     SemanticGateClosed,
+    AlasCombatReplayPhase,
+    canonical_alas_campaign_combat_replay,
     prepare_alas_campaign_combat_admission,
     preview_alas_campaign_decision,
     preview_alas_campaign_goto_input,
+    replay_alas_campaign_combat_state_machine,
     synchronize_alas_campaign_map,
 )
 
@@ -757,6 +760,128 @@ class AlasCampaignGotoInputPreviewTests(unittest.TestCase):
         with self.assertRaisesRegex(SemanticGateClosed, "native target state"):
             preview_alas_campaign_goto_input(
                 campaign, projection, decision, admission, state
+            )
+
+
+class AlasCampaignCombatReplayContractTests(unittest.TestCase):
+    @staticmethod
+    def prepare():
+        campaign = FakeGotoCampaign()
+        state = make_zero_distance_state()
+        projection = synchronize_alas_campaign_map(campaign, state)
+        decision = preview_alas_campaign_decision(campaign, projection)
+        admission = prepare_alas_campaign_combat_admission(
+            decision, state, input_generation=state.generation
+        )
+        replay = canonical_alas_campaign_combat_replay(admission)
+        return campaign, state, projection, decision, admission, replay
+
+    def test_builds_exact_increasing_six_phase_replay(self):
+        _, state, _, _, admission, replay = self.prepare()
+
+        self.assertEqual(replay.stage_code, "12-4")
+        self.assertEqual(replay.target_node, "A1")
+        self.assertEqual(
+            tuple(frame.phase for frame in replay.frames),
+            (
+                AlasCombatReplayPhase.BATTLE_PREPARATION,
+                AlasCombatReplayPhase.COMBAT_EXECUTING,
+                AlasCombatReplayPhase.BATTLE_STATUS,
+                AlasCombatReplayPhase.EXP_INFO,
+                AlasCombatReplayPhase.MAP_SEARCHING,
+                AlasCombatReplayPhase.MAP_STABLE,
+            ),
+        )
+        self.assertEqual(
+            tuple(frame.generation for frame in replay.frames),
+            tuple(range(state.generation + 1, state.generation + 7)),
+        )
+        self.assertEqual(replay.input_generation, admission.input_generation)
+        self.assertEqual(replay.frames[-1].hp, (1.0,) * 6)
+        self.assertEqual(replay.frames[-1].levels, (-1,) * 6)
+
+    def test_rejects_reordered_phase_trace_before_campaign_interface(self):
+        campaign, state, projection, decision, admission, replay = self.prepare()
+        frames = list(replay.frames)
+        frames[1], frames[2] = frames[2], frames[1]
+
+        with self.assertRaisesRegex(SemanticGateClosed, "phase order"):
+            replay_alas_campaign_combat_state_machine(
+                campaign,
+                projection,
+                decision,
+                admission,
+                state,
+                replace(replay, frames=tuple(frames)),
+            )
+
+    def test_rejects_nonincreasing_replay_generation(self):
+        campaign, state, projection, decision, admission, replay = self.prepare()
+        frames = list(replay.frames)
+        frames[2] = replace(frames[2], generation=frames[1].generation)
+
+        with self.assertRaisesRegex(SemanticGateClosed, "not increasing"):
+            replay_alas_campaign_combat_state_machine(
+                campaign,
+                projection,
+                decision,
+                admission,
+                state,
+                replace(replay, frames=tuple(frames)),
+            )
+
+    def test_rejects_extra_visible_resource(self):
+        campaign, state, projection, decision, admission, replay = self.prepare()
+        frames = list(replay.frames)
+        frames[0] = replace(
+            frames[0],
+            visible_resources=frames[0].visible_resources + ("UNKNOWN",),
+        )
+
+        with self.assertRaisesRegex(SemanticGateClosed, "resources changed"):
+            replay_alas_campaign_combat_state_machine(
+                campaign,
+                projection,
+                decision,
+                admission,
+                state,
+                replace(replay, frames=tuple(frames)),
+            )
+
+    def test_rejects_early_stats_and_final_flag_drift(self):
+        campaign, state, projection, decision, admission, replay = self.prepare()
+        early = list(replay.frames)
+        early[1] = replace(early[1], hp=(1.0,) * 6)
+        with self.assertRaisesRegex(SemanticGateClosed, "too early"):
+            replay_alas_campaign_combat_state_machine(
+                campaign,
+                projection,
+                decision,
+                admission,
+                state,
+                replace(replay, frames=tuple(early)),
+            )
+
+        drift = list(replay.frames)
+        drift[-1] = replace(drift[-1], current_fleet_on_target=False)
+        with self.assertRaisesRegex(SemanticGateClosed, "flags changed"):
+            replay_alas_campaign_combat_state_machine(
+                campaign,
+                projection,
+                decision,
+                admission,
+                state,
+                replace(replay, frames=tuple(drift)),
+            )
+
+    def test_rejects_configuration_outside_pinned_replay_slice(self):
+        campaign, state, projection, decision, admission, replay = self.prepare()
+
+        with self.assertRaisesRegex(
+            SemanticGateClosed, "outside pinned slice: Emotion_Mode"
+        ):
+            replay_alas_campaign_combat_state_machine(
+                campaign, projection, decision, admission, state, replay
             )
 
 if __name__ == "__main__":

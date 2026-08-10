@@ -115,6 +115,14 @@ no grid tap is injected. The runner logs the eight-call prefix and raises
 `ScriptEnd`. Do not treat a positive budget as live combat enablement until
 the post-click ALAS combat observation chain is also qualified.
 
+G19 supplies a separate qualification-only replay for that post-click chain.
+Six complete typed phase tokens drive the original ALAS combat preparation,
+execution, status, enemy-searching, arrival, native-map mutation, and path
+rebuild on an isolated shell. Its D6, preparation, S-result, and experience
+actions are virtual records only. The canonical ALAS patch deliberately does
+not import or invoke this synthetic replay; the production runner remains at
+the G18 capture boundary until every phase has an exact live Unity mapping.
+
 Commission start has a separate integer budget and remains closed by default:
 
 ```powershell

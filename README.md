@@ -55,6 +55,9 @@ captured original `_goto()` input prefix are documented in the
 [G16 validation report](docs/g16-alas-campaign-decision-preview-validation-report.md)
 and [G17 validation report](docs/g17-campaign-combat-admission-validation-report.md),
 plus the [G18 validation report](docs/g18-alas-goto-input-preview-validation-report.md).
+The Device-free replay of ALAS's complete ordinary-combat/result/arrival chain
+is documented in the
+[G19 validation report](docs/g19-alas-combat-state-replay-validation-report.md).
 
 G1, G2, G3, and the formal G4 harmless closed loop passed. G4 includes
 EventSystem top-raycast proof for every injected target, not only object state
@@ -94,7 +97,11 @@ Movement remains structurally closed because the patched runner stops before
 post-battle proof. G18 now runs ALAS's original `_goto()` retreat/fleet/camera/
 conversion prefix on an isolated shell and captures its own
 `device.click(grid)` call without spending that lease or injecting input. The
-post-click combat observation chain remains closed. Lua/game-state coverage,
+G19 qualification then drives ALAS's original combat preparation, execution,
+status, enemy-searching, arrival, and native-map mutation logic with six
+strict typed replay phases and four virtual actions. Production remains at the
+G18 capture boundary until those phase tokens are mapped to exact live Unity
+records. Lua/game-state coverage,
 formation-layout changes, campaign movement execution, battle state,
 weekly-only end-to-end
 coverage, repeated sorties, and full unattended ALAS task coverage remain
@@ -226,3 +233,6 @@ G17 binds that decision to one exact default-closed D6 combat lease, and G18
 runs the original `_goto()` prefix through its exact click statement using
 typed fleet/camera/grid observations. The click is captured before dispatch,
 so this remains a zero-input preflight rather than a movement or battle pass.
+G19 separately replays the full original combat chain without a Device:
+ALAS advances battle `0 -> 1`, ammunition `5 -> 4`, clears D6, confirms arrival,
+and rebuilds paths while all four intended actions remain virtual records.

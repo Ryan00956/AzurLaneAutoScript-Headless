@@ -17,6 +17,9 @@ G18 runs the original ALAS `_goto()` prefix through its existing
 `device.click(grid)` statement with semantic fleet/camera/grid inputs, then
 captures and aborts before dispatch. The lease remains unspent and the
 post-click combat chain remains closed.
+G19 passes a pinned Device-free replay of the complete original ordinary-combat
+chain with six typed phases and virtual actions only. Its phase tokens are not
+yet mapped to live Unity records, so production still stops at G18.
 G4 includes
 login/main reachability, sustained semantic state, RectTransform bounds, top
 EventSystem raycast identity for each action, and a settings-page return loop.
@@ -363,6 +366,28 @@ See [G17 campaign combat admission](g17-campaign-combat-admission-validation-rep
   blocker.
 
 See [G18 ALAS `_goto()` input preview](g18-alas-goto-input-preview-validation-report.md).
+
+## G19 - Original ALAS combat state replay
+
+- Define exactly six increasing post-click phases: battle preparation, combat
+  executing, S result, experience result, enemy searching, and stable map.
+- Run original `_goto()`, `combat_appear()`, `combat()`, preparation, execute,
+  status, enemy-searching, arrival, native map mutation, and path rebuild on an
+  isolated real-ALAS shell.
+- Record only four virtual actions: admitted grid, battle preparation, S
+  result, and experience result. Never call the adapter grid port or ADB.
+- Treat every replay frame as complete. Visible-resource sets are exact, and
+  every false ALAS query must be on the pinned reviewed allowlist; new queries
+  close the replay.
+- Require exact dispatch arguments (`combat_auto`, no submarine,
+  `with_searching`), fleet-on-target flags, six HP/level values, battle `+1`,
+  ammunition `-1`, target wipe, arrival, and path rebuild.
+- Isolate native map dictionaries, config, statistics, interval state, emotion,
+  and all mutable ALAS timers touched by the chain.
+- Keep the production runner at G18 until exact observer paths and top-raycast
+  action mappings exist for all six phases.
+
+See [G19 ALAS combat state replay](g19-alas-combat-state-replay-validation-report.md).
 
 ## Stop or pivot conditions
 
