@@ -52,6 +52,13 @@ fixture and proved J3 cleared with ammo `3 -> 2`. Coverage is now `10/41`;
 blocker review, fleet stats, automation-off switching, and the remaining
 resource mappings are still open, so `production_ready=false` and the
 production runner remains stopped at G18.
+G25 qualifies the original automation-off switch input, four complete
+enemy-searching generations, and ordered six-ship HP/level input. A controlled
+D3 battle compiled a seven-frame real observer fixture and proved D3 cleared
+with ammo `2 -> 1`. Foreground masking now translates only covered Unity
+objects into original ALAS `appear()` semantics. Coverage is `12/41`, fleet
+stats are qualified, but blocker review and 29 defensive resources remain
+open; `production_ready=false` and production still stops at G18.
 G4 includes
 login/main reachability, sustained semantic state, RectTransform bounds, top
 EventSystem raycast identity for each action, and a settings-page return loop.

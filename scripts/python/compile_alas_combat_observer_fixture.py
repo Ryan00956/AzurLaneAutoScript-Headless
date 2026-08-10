@@ -33,6 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--candidates-output", type=Path)
     parser.add_argument("--include-automation-confirm", action="store_true")
+    parser.add_argument("--include-automation-switch", action="store_true")
     parser.add_argument("--include-get-items", action="store_true")
     parser.add_argument("--include-get-mission", action="store_true")
     parser.add_argument(
@@ -67,6 +68,7 @@ def main() -> int:
         raise SystemExit("generations must be comma-separated integers") from exc
     phase_sequence = alas_combat_replay_phase_sequence(
         include_automation_confirm=args.include_automation_confirm,
+        include_automation_switch=args.include_automation_switch,
         include_get_items=args.include_get_items,
         include_get_mission=args.include_get_mission,
     )

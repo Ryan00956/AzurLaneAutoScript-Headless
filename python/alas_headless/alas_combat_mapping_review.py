@@ -11,14 +11,16 @@ import hashlib
 import json
 import re
 from dataclasses import replace
-from typing import Any, Mapping, Sequence, Tuple
+from typing import Any, Mapping, Optional, Sequence, Tuple
 
 from .alas_combat_observer import (
     AlasCombatBlockerMapping,
+    AlasCombatFleetStatsMapping,
     AlasCombatObserverCoverage,
     AlasCombatObserverManifest,
     AlasCombatResourceMapping,
     AlasCombatUnitySelector,
+    alas_combat_fleet_stats,
     alas_combat_observer_manifest_to_json,
     alas_combat_unity_selector_present,
     alas_combat_unity_selector_to_json,
@@ -145,10 +147,42 @@ def _evidence_sha256(
                 for sample in selected
             ],
             "selectors": [
-                alas_combat_unity_selector_to_json(selector) for selector in selectors
+                alas_combat_unity_selector_to_json(
+                    selector,
+                    allow_dynamic_text=(
+                        selector.kind.value == "text" and not selector.text
+                    ),
+                )
+                for selector in selectors
             ],
         }
     )
+
+
+def _review_fleet_stats(value: Any) -> Optional[AlasCombatFleetStatsMapping]:
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) != {
+        "hp_images",
+        "level_texts",
+    }:
+        raise SemanticGateClosed("combat mapping fleet stats schema changed")
+    hp_images = value["hp_images"]
+    level_texts = value["level_texts"]
+    if not isinstance(hp_images, list) or not isinstance(level_texts, list):
+        raise SemanticGateClosed("combat mapping fleet stats are malformed")
+    mapping = AlasCombatFleetStatsMapping(
+        hp_images=tuple(
+            parse_alas_combat_unity_selector(item) for item in hp_images
+        ),
+        level_texts=tuple(
+            parse_alas_combat_unity_selector(item, allow_dynamic_text=True)
+            for item in level_texts
+        ),
+    )
+    if len(mapping.hp_images) != 6 or len(mapping.level_texts) != 6:
+        raise SemanticGateClosed("combat mapping fleet stats are incomplete")
+    return mapping
 
 
 def _prove_all_present(
@@ -178,7 +212,7 @@ def promote_alas_combat_mapping_review(
 ) -> Tuple[AlasCombatObserverManifest, Mapping[str, Any]]:
     """Verify one review against raw frames and return a manifest plus receipt."""
 
-    if not isinstance(review, dict) or set(review) != {
+    required_review_fields = {
         "schema",
         "review_id",
         "trace_sha256",
@@ -186,7 +220,12 @@ def promote_alas_combat_mapping_review(
         "resources",
         "blockers",
         "blocker_review_complete",
-    }:
+    }
+    if (
+        not isinstance(review, dict)
+        or not required_review_fields.issubset(review)
+        or not set(review).issubset(required_review_fields | {"fleet_stats"})
+    ):
         raise SemanticGateClosed("combat mapping review schema changed")
     if review["schema"] != ALAS_COMBAT_MAPPING_REVIEW_SCHEMA:
         raise SemanticGateClosed("combat mapping review version changed")
@@ -217,7 +256,8 @@ def promote_alas_combat_mapping_review(
         validate_alas_combat_observer_snapshot(sample.snapshot, manifest)
     resources = _review_entries(review["resources"], entry_kind="resource")
     blockers = _review_entries(review["blockers"], entry_kind="blocker")
-    if not resources and not blockers:
+    reviewed_stats = _review_fleet_stats(review.get("fleet_stats"))
+    if not resources and not blockers and reviewed_stats is None:
         raise SemanticGateClosed("combat mapping review has no promotions")
     complete = review["blocker_review_complete"]
     if not isinstance(complete, bool):
@@ -291,6 +331,52 @@ def promote_alas_combat_mapping_review(
             }
         )
 
+    fleet_stats_promotion = None
+    promoted_stats = manifest.fleet_stats
+    if reviewed_stats is not None:
+        observed_values = []
+        for sample in selected:
+            hp, levels = alas_combat_fleet_stats(sample.snapshot, reviewed_stats)
+            observed_values.append(
+                {
+                    "generation": sample.snapshot.generation,
+                    "hp": list(hp),
+                    "levels": list(levels),
+                }
+            )
+        selectors = reviewed_stats.hp_images + reviewed_stats.level_texts
+        evidence = _evidence_sha256(
+            mapping_type="fleet_stats",
+            mapping_name="fleet_stats",
+            selectors=selectors,
+            trace_sha256=source_trace_sha256,
+            selected=selected,
+        )
+        promoted_stats = AlasCombatFleetStatsMapping(
+            hp_images=reviewed_stats.hp_images,
+            level_texts=reviewed_stats.level_texts,
+            evidence_sha256=evidence,
+        )
+        if manifest.fleet_stats.qualified and manifest.fleet_stats != promoted_stats:
+            raise SemanticGateClosed(
+                "combat mapping review refuses to overwrite fleet stats"
+            )
+        fleet_stats_promotion = {
+            "match": "six_ordered",
+            "hp_images": [
+                alas_combat_unity_selector_to_json(item)
+                for item in reviewed_stats.hp_images
+            ],
+            "level_texts": [
+                alas_combat_unity_selector_to_json(
+                    item, allow_dynamic_text=True
+                )
+                for item in reviewed_stats.level_texts
+            ],
+            "evidence_sha256": evidence,
+            "values": observed_values,
+        }
+
     promoted = replace(
         manifest,
         resources=tuple(
@@ -298,6 +384,7 @@ def promote_alas_combat_mapping_review(
         ),
         blockers=tuple(blocker_index[name] for name in sorted(blocker_index)),
         blocker_review_complete=complete,
+        fleet_stats=promoted_stats,
     )
     coverage_after = audit_alas_combat_observer_manifest(promoted)
     before_json = alas_combat_observer_manifest_to_json(manifest)
@@ -324,6 +411,8 @@ def promote_alas_combat_mapping_review(
         "coverage_after": _coverage_json(coverage_after),
         "input_injected": False,
     }
+    if fleet_stats_promotion is not None:
+        receipt["fleet_stats_promotion"] = fleet_stats_promotion
     return promoted, receipt
 
 
@@ -336,7 +425,7 @@ def verify_alas_combat_mapping_receipt(
 ) -> Mapping[str, Any]:
     """Re-prove a committed receipt against its raw trace and live manifest."""
 
-    if not isinstance(receipt, dict) or set(receipt) != {
+    required_receipt_fields = {
         "schema",
         "review_id",
         "source_trace_sha256",
@@ -349,7 +438,14 @@ def verify_alas_combat_mapping_receipt(
         "coverage_before",
         "coverage_after",
         "input_injected",
-    }:
+    }
+    if (
+        not isinstance(receipt, dict)
+        or not required_receipt_fields.issubset(receipt)
+        or not set(receipt).issubset(
+            required_receipt_fields | {"fleet_stats_promotion"}
+        )
+    ):
         raise SemanticGateClosed("combat mapping receipt schema changed")
     if receipt["schema"] != ALAS_COMBAT_MAPPING_RECEIPT_SCHEMA:
         raise SemanticGateClosed("combat mapping receipt version changed")
@@ -478,7 +574,63 @@ def verify_alas_combat_mapping_receipt(
     blocker_count = verify_entries(
         receipt["blocker_promotions"], mapping_type="blocker"
     )
-    if resource_count + blocker_count == 0:
+    fleet_stats_verified = False
+    raw_stats = receipt.get("fleet_stats_promotion")
+    if raw_stats is not None:
+        if not isinstance(raw_stats, dict) or set(raw_stats) != {
+            "match",
+            "hp_images",
+            "level_texts",
+            "evidence_sha256",
+            "values",
+        }:
+            raise SemanticGateClosed(
+                "combat mapping receipt fleet stats schema changed"
+            )
+        if raw_stats["match"] != "six_ordered":
+            raise SemanticGateClosed(
+                "combat mapping receipt fleet stats match changed"
+            )
+        reviewed_stats = _review_fleet_stats(
+            {
+                "hp_images": raw_stats["hp_images"],
+                "level_texts": raw_stats["level_texts"],
+            }
+        )
+        assert reviewed_stats is not None
+        values = []
+        for sample in selected:
+            hp, levels = alas_combat_fleet_stats(sample.snapshot, reviewed_stats)
+            values.append(
+                {
+                    "generation": sample.snapshot.generation,
+                    "hp": list(hp),
+                    "levels": list(levels),
+                }
+            )
+        selectors = reviewed_stats.hp_images + reviewed_stats.level_texts
+        evidence = _evidence_sha256(
+            mapping_type="fleet_stats",
+            mapping_name="fleet_stats",
+            selectors=selectors,
+            trace_sha256=source_trace_sha256,
+            selected=selected,
+        )
+        expected_stats = AlasCombatFleetStatsMapping(
+            hp_images=reviewed_stats.hp_images,
+            level_texts=reviewed_stats.level_texts,
+            evidence_sha256=evidence,
+        )
+        if (
+            manifest.fleet_stats != expected_stats
+            or raw_stats["evidence_sha256"] != evidence
+            or raw_stats["values"] != values
+        ):
+            raise SemanticGateClosed(
+                "combat mapping receipt fleet stats evidence changed"
+            )
+        fleet_stats_verified = True
+    if resource_count + blocker_count == 0 and not fleet_stats_verified:
         raise SemanticGateClosed("combat mapping receipt has no verified entries")
     return {
         "schema": "alas-headless.g22-combat-mapping-verification/v1",
@@ -487,6 +639,7 @@ def verify_alas_combat_mapping_receipt(
         "source_frames": len(selected),
         "verified_resources": resource_count,
         "verified_blockers": blocker_count,
+        "verified_fleet_stats": fleet_stats_verified,
         "manifest_sha256": manifest_sha256,
         "production_ready": coverage["production_ready"],
         "input_injected": False,

@@ -1,0 +1,84 @@
+{
+  "schema": "alas-headless.g22-combat-mapping-receipt/v1",
+  "review_id": "g25-12-4-map-enemy-searching",
+  "source_trace_sha256": "71aef13bb927d8006354eb7d842dad86a6fde3edaeddf2fffcf1a76cece1e510",
+  "source_frames": [
+    {
+      "sequence": 34,
+      "captured_at_utc": "2026-08-10T11:09:08.652Z",
+      "generation": 8630,
+      "frame_sha256": "e79a8038b1172126ce9f213c7060176421494df9d5591c5441b299add678cec0"
+    },
+    {
+      "sequence": 35,
+      "captured_at_utc": "2026-08-10T11:09:09.063Z",
+      "generation": 8635,
+      "frame_sha256": "a1a2269f70f891d330cb27ce4b46a7530f7f9ef6cc9c83c073a422280147dd9a"
+    },
+    {
+      "sequence": 36,
+      "captured_at_utc": "2026-08-10T11:09:09.463Z",
+      "generation": 8640,
+      "frame_sha256": "6d104802948e5a77a5f90fb908849739e264dc07ea171d2f5a08d4254b4e4625"
+    }
+  ],
+  "manifest_before_sha256": "306bfeea6a7c1ec01d24b297cafe060e891870e65fac266a296e0cd584599164",
+  "manifest_after_sha256": "a13bdfce373bdc5552f4cab93f1b9f770293659c8f3a219e28e74b3841cec1c0",
+  "resource_promotions": [
+    {
+      "resource_name": "MAP_ENEMY_SEARCHING",
+      "match": "all_of",
+      "selectors": [
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/top/RadarEffectUI(Clone)/wenzi",
+          "name": "wenzi",
+          "sprite": "suodizhong",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/top/RadarEffectUI(Clone)/wangge",
+          "name": "wangge",
+          "sprite": "zhongjian",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/top/RadarEffectUI(Clone)/saomiaoquyu",
+          "name": "saomiaoquyu",
+          "sprite": "xuanzhuan",
+          "text": "",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "7440afd8f02724223356d486afa1bc8683cf58a9288961e098f5ce75b59d69ce",
+      "present_in_all_samples": true
+    }
+  ],
+  "blocker_promotions": [],
+  "blocker_review_complete": false,
+  "coverage_before": {
+    "production_ready": false,
+    "qualified_resources": 11,
+    "total_resources": 41,
+    "qualified_blockers": 1,
+    "total_blockers": 1,
+    "blocker_review_complete": false,
+    "blockers_qualified": false,
+    "fleet_stats_qualified": true
+  },
+  "coverage_after": {
+    "production_ready": false,
+    "qualified_resources": 12,
+    "total_resources": 41,
+    "qualified_blockers": 1,
+    "total_blockers": 1,
+    "blocker_review_complete": false,
+    "blockers_qualified": false,
+    "fleet_stats_qualified": true
+  },
+  "input_injected": false
+}

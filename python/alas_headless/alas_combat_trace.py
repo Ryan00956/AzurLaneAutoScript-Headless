@@ -1,7 +1,7 @@
 """Read-only raw observer traces for qualifying ALAS combat inputs.
 
 The trace contains no trusted phase labels and performs no input.  Reviewers
-select one bounded 6-9 generation sequence only after capture; the compiler
+select one bounded 6-10 generation sequence only after capture; the compiler
 derives the two map projections from those frozen raw endpoint payloads and
 emits G20's hash-bound fixture format.
 """
@@ -278,7 +278,7 @@ def select_alas_combat_observer_trace_samples(
         or any(isinstance(item, bool) or not isinstance(item, int) for item in generations)
         or any(right <= left for left, right in zip(generations, generations[1:]))
     ):
-        raise SemanticGateClosed("combat observer selection requires 6 to 9 generations")
+        raise SemanticGateClosed("combat observer selection requires 6 to 10 generations")
     indexed = {sample.snapshot.generation: sample for sample in trace.samples}
     if len(indexed) != len(trace.samples):
         raise SemanticGateClosed("combat observer trace generations are ambiguous")

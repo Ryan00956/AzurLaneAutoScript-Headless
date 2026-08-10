@@ -37,6 +37,7 @@ from .semantic_oracle import CampaignMapState, SemanticGateClosed
 
 class AlasCombatReplayPhase(str, Enum):
     AUTOMATION_CONFIRM = "automation_confirm"
+    BATTLE_PREPARATION_AUTOMATION_OFF = "battle_preparation_automation_off"
     BATTLE_PREPARATION = "battle_preparation"
     COMBAT_EXECUTING = "combat_executing"
     BATTLE_STATUS = "battle_status_s"
@@ -132,6 +133,7 @@ ALAS_COMBAT_REPLAY_PHASES = (
 def alas_combat_replay_phase_sequence(
     *,
     include_automation_confirm: bool = False,
+    include_automation_switch: bool = False,
     include_get_items: bool = False,
     include_get_mission: bool = False,
 ) -> Tuple[AlasCombatReplayPhase, ...]:
@@ -139,6 +141,7 @@ def alas_combat_replay_phase_sequence(
 
     if (
         not isinstance(include_automation_confirm, bool)
+        or not isinstance(include_automation_switch, bool)
         or not isinstance(include_get_items, bool)
         or not isinstance(include_get_mission, bool)
     ):
@@ -146,6 +149,10 @@ def alas_combat_replay_phase_sequence(
     phases = []
     if include_automation_confirm:
         phases.append(AlasCombatReplayPhase.AUTOMATION_CONFIRM)
+    if include_automation_switch:
+        phases.append(
+            AlasCombatReplayPhase.BATTLE_PREPARATION_AUTOMATION_OFF
+        )
     phases.extend([
         AlasCombatReplayPhase.BATTLE_PREPARATION,
         AlasCombatReplayPhase.COMBAT_EXECUTING,
@@ -168,10 +175,12 @@ def alas_combat_replay_phase_sequence(
 ALAS_COMBAT_REPLAY_PHASE_SEQUENCES = tuple(
     alas_combat_replay_phase_sequence(
         include_automation_confirm=include_automation_confirm,
+        include_automation_switch=include_automation_switch,
         include_get_items=include_get_items,
         include_get_mission=include_get_mission,
     )
     for include_automation_confirm in (False, True)
+    for include_automation_switch in (False, True)
     for include_get_items in (False, True)
     for include_get_mission in (False, True)
 )
@@ -182,6 +191,10 @@ ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES: Mapping[
     AlasCombatReplayPhase.AUTOMATION_CONFIRM: (
         "AUTOMATION_CONFIRM",
         "AUTOMATION_CONFIRM_CHECK",
+    ),
+    AlasCombatReplayPhase.BATTLE_PREPARATION_AUTOMATION_OFF: (
+        "AUTOMATION_OFF",
+        "BATTLE_PREPARATION",
     ),
     AlasCombatReplayPhase.BATTLE_PREPARATION: (
         "AUTOMATION_ON",
@@ -346,16 +359,18 @@ def canonical_alas_campaign_combat_replay(
     admission: AlasCampaignCombatAdmission,
     *,
     include_automation_confirm: bool = False,
+    include_automation_switch: bool = False,
     include_get_items: bool = False,
     include_get_mission: bool = False,
 ) -> AlasCampaignCombatReplay:
-    """Build one of the eight bounded ordinary-combat replay sequences."""
+    """Build one of the sixteen bounded ordinary-combat replay sequences."""
 
     if not isinstance(admission, AlasCampaignCombatAdmission):
         raise SemanticGateClosed("combat replay requires an admission")
     base = admission.input_generation
     phases = alas_combat_replay_phase_sequence(
         include_automation_confirm=include_automation_confirm,
+        include_automation_switch=include_automation_switch,
         include_get_items=include_get_items,
         include_get_mission=include_get_mission,
     )
@@ -372,6 +387,7 @@ def canonical_alas_campaign_combat_replay(
             combat_loading=phase
             in (
                 AlasCombatReplayPhase.AUTOMATION_CONFIRM,
+                AlasCombatReplayPhase.BATTLE_PREPARATION_AUTOMATION_OFF,
                 AlasCombatReplayPhase.BATTLE_PREPARATION,
             ),
             combat_executing=phase
@@ -437,6 +453,14 @@ def _validate_replay(
             raise SemanticGateClosed("combat replay visible resources changed")
         expected_flags = {
             AlasCombatReplayPhase.AUTOMATION_CONFIRM: (
+                False,
+                True,
+                False,
+                False,
+                False,
+                False,
+            ),
+            AlasCombatReplayPhase.BATTLE_PREPARATION_AUTOMATION_OFF: (
                 False,
                 True,
                 False,
@@ -615,6 +639,9 @@ class _ReplayDriver:
         name = getattr(button, "name", None)
         transitions = {
             AlasCombatReplayPhase.AUTOMATION_CONFIRM: "AUTOMATION_CONFIRM",
+            AlasCombatReplayPhase.BATTLE_PREPARATION_AUTOMATION_OFF: (
+                "AUTOMATION_SWITCH"
+            ),
             AlasCombatReplayPhase.BATTLE_PREPARATION: "BATTLE_PREPARATION",
             AlasCombatReplayPhase.BATTLE_STATUS: "BATTLE_STATUS_S",
             AlasCombatReplayPhase.GET_ITEMS: "GET_ITEMS_1",
@@ -622,10 +649,16 @@ class _ReplayDriver:
             AlasCombatReplayPhase.GET_MISSION: "GET_MISSION",
         }
         transition = transitions.get(self.frame.phase)
+        visible_action_state = (
+            "AUTOMATION_OFF"
+            if self.frame.phase
+            is AlasCombatReplayPhase.BATTLE_PREPARATION_AUTOMATION_OFF
+            else name
+        )
         if (
             transition is None
             or name != transition
-            or name not in self.frame.visible_resources
+            or visible_action_state not in self.frame.visible_resources
         ):
             raise SemanticGateClosed(
                 "combat replay attempted an unexpected virtual input: "
@@ -659,6 +692,9 @@ class _ReplayDriver:
             raise SemanticGateClosed("combat replay did not reach the stable map")
         action_by_phase = {
             AlasCombatReplayPhase.AUTOMATION_CONFIRM: "AUTOMATION_CONFIRM",
+            AlasCombatReplayPhase.BATTLE_PREPARATION_AUTOMATION_OFF: (
+                "AUTOMATION_SWITCH"
+            ),
             AlasCombatReplayPhase.BATTLE_PREPARATION: "BATTLE_PREPARATION",
             AlasCombatReplayPhase.BATTLE_STATUS: "BATTLE_STATUS_S",
             AlasCombatReplayPhase.GET_ITEMS: "GET_ITEMS_1",
@@ -675,7 +711,14 @@ class _ReplayDriver:
         )
         if tuple(self.virtual_actions) != expected_actions:
             raise SemanticGateClosed("combat replay virtual action order changed")
-        expected_sleeps = ("(0.25, 0.5)", "(0.25, 0.5)", "1.2", "0.3")
+        expected_sleeps = (
+            (("1",) if any(
+                frame.phase
+                is AlasCombatReplayPhase.BATTLE_PREPARATION_AUTOMATION_OFF
+                for frame in self.replay.frames
+            ) else ())
+            + ("(0.25, 0.5)", "(0.25, 0.5)", "1.2", "0.3")
+        )
         if tuple(self.sleep_calls) != expected_sleeps:
             raise SemanticGateClosed("combat replay virtual sleep order changed")
         unknown = set(self.resource_queries) - _PINNED_RESOURCE_QUERY_ALLOWLIST

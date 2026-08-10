@@ -4,6 +4,28 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G25 combat input closure: switch, radar, and fleet stats pass; production closed
+
+- Original ALAS now owns an optional automation-off branch before its unchanged
+  preparation loop. The ten-phase maximum replay passed with 135 queries over
+  the same 41 names and an original `AUTOMATION_SWITCH` action.
+- Exact live mappings were promoted for `AUTOMATION_OFF` and
+  `MAP_ENEMY_SEARCHING`; six ordered HP bars and levels are also qualified.
+  Coverage is `12/41`, but blocker review remains incomplete and
+  `production_ready=false`.
+- On PID `23161`, original ALAS admitted D3 and the guarded chain advanced
+  preparation, S result, item, and experience pages. A 20 ms trace captured
+  four complete radar generations, and the final map proved D3 cleared with
+  ammunition `2 -> 1`.
+- Active Unity objects hidden behind preparation/result pages are now masked at
+  the observation boundary to match original ALAS foreground `appear()`
+  semantics; no state-machine method was changed.
+- Three real traces compiled into a seven-frame automation-switch fixture. The
+  full suite passes `310/310`; observer build/install and mapping receipt
+  verification passed. Production remains stopped at G18.
+
+See [G25 combat input-closure validation](g25-alas-combat-input-closure-validation-report.md).
+
 ### G24 combat preparation and observer fixture: live chain pass, production closed
 
 - Original ALAS now accepts an optional automation-confirm phase before its

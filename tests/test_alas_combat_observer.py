@@ -24,6 +24,8 @@ from alas_headless import (
     Bounds,
     Point,
     SemanticGateClosed,
+    alas_combat_fleet_stats,
+    alas_combat_unity_selector_to_json,
     audit_alas_combat_observer_manifest,
     analyze_alas_combat_observer_candidates,
     alas_combat_unity_selector_present,
@@ -52,6 +54,7 @@ GAME = "pinned-test-game"
 EVIDENCE = "a" * 64
 ACTION_RESOURCES = {
     "AUTOMATION_CONFIRM",
+    "AUTOMATION_OFF",
     "BATTLE_PREPARATION",
     "BATTLE_STATUS_S",
     "EXP_INFO_S",
@@ -180,7 +183,7 @@ def button_record(name, *, raycast_top=True):
     }
 
 
-def image_record(name, path=None, sprite=None, fill=1.0):
+def image_record(name, path=None, sprite=None, fill=1.0, *, actionable=False):
     return {
         "kind": "image",
         "name": name,
@@ -188,11 +191,12 @@ def image_record(name, path=None, sprite=None, fill=1.0):
         "sprite": sprite or "sprite_" + name.lower(),
         "active_in_hierarchy": True,
         "active_and_enabled": True,
-        "raycast_target": False,
-        "raycast_top": None,
+        "raycast_target": actionable,
+        "raycast_top": True if actionable else None,
         "color": {"red": 1.0, "green": 1.0, "blue": 1.0, "alpha": 1.0},
         "fill_amount": fill,
         "flags": 0,
+        "adb_point": {"x": 690.0, "y": 121.0} if actionable else None,
         "adb_bounds": {
             "left": 10.0,
             "top": 10.0,
@@ -202,7 +206,7 @@ def image_record(name, path=None, sprite=None, fill=1.0):
     }
 
 
-def toggle_record(name, *, checked):
+def toggle_record(name, *, checked, actionable=False):
     return {
         "name": name,
         "path": "Combat/Toggle/" + name,
@@ -210,9 +214,18 @@ def toggle_record(name, *, checked):
         "active_and_enabled": True,
         "interactable": True,
         "checked": checked,
-        "raycast_top": None,
-        "adb_point": None,
-        "adb_bounds": None,
+        "raycast_top": True if actionable else None,
+        "adb_point": {"x": 690.0, "y": 121.0} if actionable else None,
+        "adb_bounds": (
+            {
+                "left": 680.0,
+                "top": 110.0,
+                "right": 700.0,
+                "bottom": 132.0,
+            }
+            if actionable
+            else None
+        ),
     }
 
 
@@ -479,6 +492,31 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         self.assertEqual(replay.frames[1].phase, AlasCombatReplayPhase.BATTLE_PREPARATION)
         self.assertEqual(len(replay.frames), 9)
 
+    def test_optional_automation_switch_is_inferred_before_preparation(self):
+        manifest = qualified_manifest()
+        phases = alas_combat_replay_phase_sequence(
+            include_automation_switch=True,
+            include_get_items=True,
+            include_get_mission=True,
+        )
+        snapshots = load_alas_combat_observer_fixture(
+            self.write_fixture(fixture_value(phases)), manifest
+        )
+
+        replay = build_alas_campaign_combat_replay_from_observer(
+            admission(), snapshots, manifest
+        )
+
+        self.assertEqual(tuple(frame.phase for frame in replay.frames), phases)
+        self.assertEqual(
+            replay.frames[0].phase,
+            AlasCombatReplayPhase.BATTLE_PREPARATION_AUTOMATION_OFF,
+        )
+        self.assertEqual(
+            replay.frames[1].phase, AlasCombatReplayPhase.BATTLE_PREPARATION
+        )
+        self.assertEqual(len(replay.frames), 9)
+
     def test_toggle_state_selector_distinguishes_automation_on_from_off(self):
         manifest = qualified_manifest()
         toggle_selector = AlasCombatUnitySelector(
@@ -535,6 +573,121 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         )
         self.assertFalse(
             alas_combat_unity_selector_present(snapshots[0], off_selector)
+        )
+
+    def test_automation_off_toggle_action_precedes_battle_start(self):
+        manifest = qualified_manifest()
+        toggle_selector = AlasCombatUnitySelector(
+            AlasCombatUnityRecordKind.TOGGLE_OFF,
+            "Combat/Toggle/AUTOMATION_OFF",
+            "AUTOMATION_OFF",
+        )
+        image_selector = AlasCombatUnitySelector(
+            AlasCombatUnityRecordKind.IMAGE,
+            "Combat/Toggle/AUTOMATION_OFF/bg",
+            "bg",
+            "auto_toggle_bg",
+            require_top_raycast=True,
+        )
+        manifest = replace(
+            manifest,
+            resources=tuple(
+                AlasCombatResourceMapping(
+                    name, (toggle_selector, image_selector), EVIDENCE
+                )
+                if name == "AUTOMATION_OFF"
+                else mapping
+                for name, mapping in (
+                    (item.resource_name, item) for item in manifest.resources
+                )
+            ),
+        )
+        phases = alas_combat_replay_phase_sequence(
+            include_automation_switch=True
+        )
+        value = fixture_value(phases)
+        preparation = value["frames"][0]
+        preparation["buttons"]["buttons"] = [
+            item
+            for item in preparation["buttons"]["buttons"]
+            if item["name"] != "AUTOMATION_OFF"
+        ]
+        preparation["buttons"]["button_count"] -= 1
+        preparation["ui"]["toggles"] = [
+            toggle_record("AUTOMATION_OFF", checked=False)
+        ]
+        preparation["ui"]["toggle_count"] = 1
+        preparation["ui"]["images"].append(
+            image_record(
+                "bg",
+                path="Combat/Toggle/AUTOMATION_OFF/bg",
+                sprite="auto_toggle_bg",
+                actionable=True,
+            )
+        )
+        preparation["ui"]["image_count"] += 1
+        payload = {
+            key: preparation[key]
+            for key in ("snapshot", "buttons", "ui", "campaign_map")
+        }
+        preparation["sha256"] = hashlib.sha256(
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        snapshots = load_alas_combat_observer_fixture(
+            self.write_fixture(value), manifest
+        )
+
+        receipt = prepare_alas_combat_resource_action(
+            snapshots[0], manifest, "AUTOMATION_OFF"
+        )
+
+        self.assertEqual(receipt.path, "Combat/Toggle/AUTOMATION_OFF/bg")
+        with self.assertRaisesRegex(SemanticGateClosed, "ambiguous"):
+            prepare_alas_combat_resource_action(
+                snapshots[0], manifest, "BATTLE_PREPARATION"
+            )
+
+    def test_foreground_layers_mask_active_background_resources(self):
+        manifest = qualified_manifest()
+        value = fixture_value()
+        preparation = value["frames"][0]
+        preparation["ui"]["images"].append(image_record("IN_MAP"))
+        preparation["ui"]["image_count"] += 1
+        result = value["frames"][2]
+        result["ui"]["images"].append(image_record("PAUSE"))
+        result["ui"]["image_count"] += 1
+        for item in (preparation, result):
+            payload = {
+                key: item[key]
+                for key in ("snapshot", "buttons", "ui", "campaign_map")
+            }
+            item["sha256"] = hashlib.sha256(
+                json.dumps(
+                    payload,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+        snapshots = load_alas_combat_observer_fixture(
+            self.write_fixture(value), manifest
+        )
+
+        replay = build_alas_campaign_combat_replay_from_observer(
+            admission(), snapshots, manifest
+        )
+
+        self.assertEqual(
+            replay.frames[0].visible_resources,
+            ("AUTOMATION_ON", "BATTLE_PREPARATION"),
+        )
+        self.assertEqual(
+            replay.frames[2].visible_resources, ("BATTLE_STATUS_S",)
         )
 
     def test_unqualified_manifest_cannot_build_replay(self):
@@ -829,7 +982,8 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         coverage = audit_alas_combat_observer_manifest(manifest)
 
         self.assertEqual(coverage.total_resources, 41)
-        self.assertEqual(coverage.qualified_resources, 10)
+        self.assertEqual(coverage.qualified_resources, 12)
+        self.assertTrue(coverage.fleet_stats_qualified)
         self.assertEqual(coverage.qualified_blockers, 1)
         self.assertFalse(coverage.blocker_review_complete)
         self.assertFalse(coverage.blockers_qualified)
@@ -1114,6 +1268,155 @@ class AlasCombatObserverContractTests(unittest.TestCase):
                 changed,
                 source_trace_sha256=EVIDENCE,
             )
+
+    def test_mapping_review_promotes_ordered_clone_fleet_stats(self):
+        manifest = replace(
+            qualified_manifest(), fleet_stats=AlasCombatFleetStatsMapping()
+        )
+        root = "Combat/Fleet/"
+        hp_values = (0.96, 0.85, 0.89, 0.74, 0.99, 0.94)
+        levels = (118, 109, 117, 110, 118, 107)
+        hp_selectors = tuple(
+            AlasCombatUnitySelector(
+                AlasCombatUnityRecordKind.IMAGE,
+                root
+                + branch
+                + "/shiptpl(Clone)/blood/fillarea/green",
+                "green",
+                sprite="blood",
+                ordinal=index,
+                width_scale=66.0,
+            )
+            for branch in ("main", "vanguard")
+            for index in range(3)
+        )
+        level_selectors = tuple(
+            AlasCombatUnitySelector(
+                AlasCombatUnityRecordKind.TEXT,
+                root + branch + "/shiptpl(Clone)/icon_bg/lv/Text",
+                "Text",
+                ordinal=index,
+            )
+            for branch in ("main", "vanguard")
+            for index in range(3)
+        )
+
+        def fleet_frame(generation):
+            value = frame(generation, ())
+            images = []
+            texts = []
+            for position in reversed(range(6)):
+                branch = "main" if position < 3 else "vanguard"
+                top = 200.0 + position * 100.0
+                image = image_record(
+                    "green",
+                    path=root
+                    + branch
+                    + "/shiptpl(Clone)/blood/fillarea/green",
+                    sprite="blood",
+                    fill=0.191,
+                )
+                image["adb_bounds"] = {
+                    "left": 35.0,
+                    "top": top,
+                    "right": 35.0 + 66.0 * hp_values[position],
+                    "bottom": top + 4.0,
+                }
+                images.append(image)
+                texts.append(
+                    {
+                        "kind": "ugui-text",
+                        "name": "Text",
+                        "path": root
+                        + branch
+                        + "/shiptpl(Clone)/icon_bg/lv/Text",
+                        "text": str(levels[position]),
+                        "active_in_hierarchy": True,
+                        "active_and_enabled": True,
+                        "flags": 0,
+                        "adb_bounds": {
+                            "left": 75.0,
+                            "top": top - 80.0,
+                            "right": 102.0,
+                            "bottom": top - 55.0,
+                        },
+                    }
+                )
+            value["ui"]["images"] = images
+            value["ui"]["image_count"] = len(images)
+            value["ui"]["texts"] = texts
+            value["ui"]["text_count"] = len(texts)
+            payload = {
+                key: value[key]
+                for key in ("snapshot", "buttons", "ui", "campaign_map")
+            }
+            value["sha256"] = hashlib.sha256(
+                json.dumps(
+                    payload,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            return value
+
+        frames = tuple(fleet_frame(generation) for generation in (11, 12, 13))
+        trace = parse_alas_combat_observer_trace(
+            build_alas_combat_observer_trace(
+                manifest,
+                tuple(
+                    (
+                        "2026-08-10T08:00:{0:02d}Z".format(index),
+                        value,
+                    )
+                    for index, value in enumerate(frames, start=1)
+                ),
+            ),
+            manifest,
+        )
+        review = {
+            "schema": "alas-headless.g22-combat-mapping-review/v1",
+            "review_id": "unit-fleet-stats",
+            "trace_sha256": EVIDENCE,
+            "generations": [11, 12, 13],
+            "resources": [],
+            "blockers": [],
+            "blocker_review_complete": True,
+            "fleet_stats": {
+                "hp_images": [
+                    alas_combat_unity_selector_to_json(item)
+                    for item in hp_selectors
+                ],
+                "level_texts": [
+                    alas_combat_unity_selector_to_json(
+                        item, allow_dynamic_text=True
+                    )
+                    for item in level_selectors
+                ],
+            },
+        }
+
+        promoted, receipt = promote_alas_combat_mapping_review(
+            manifest,
+            trace,
+            review,
+            source_trace_sha256=EVIDENCE,
+        )
+
+        self.assertTrue(promoted.fleet_stats.qualified)
+        hp, observed_levels = alas_combat_fleet_stats(
+            trace.samples[0].snapshot, promoted.fleet_stats
+        )
+        for actual, expected in zip(hp, hp_values):
+            self.assertAlmostEqual(actual, expected)
+        self.assertEqual(observed_levels, levels)
+        verified = verify_alas_combat_mapping_receipt(
+            promoted,
+            trace,
+            receipt,
+            source_trace_sha256=EVIDENCE,
+        )
+        self.assertTrue(verified["verified_fleet_stats"])
 
 
 if __name__ == "__main__":

@@ -231,6 +231,16 @@ if ! grep -Fq 'ChapterPreCombatUI(Clone)/adapt/right/start' \
   echo "Combat-preparation start Button raycast allowlist is missing" >&2
   exit 1
 fi
+if ! grep -Fq 'ChapterPreCombatUI(Clone)/adapt/middle/auto_toggle' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Combat-preparation automation Toggle raycast allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'ChapterPreCombatUI(Clone)/adapt/middle/auto_toggle/bg' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Combat-preparation automation Image raycast allowlist is missing" >&2
+  exit 1
+fi
 if ! grep -Fq 'Overlay/UIMain/blur_panel/adapt/top/back_btn' \
     "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
   echo "Construction-page back-button allowlist is missing" >&2

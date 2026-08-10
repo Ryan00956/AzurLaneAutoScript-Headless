@@ -1,0 +1,39 @@
+{
+  "schema": "alas-headless.g22-combat-mapping-review/v1",
+  "review_id": "g25-12-4-automation-off",
+  "trace_sha256": "a0d0bd05fc0c0e2ef50637b38e929e5c5414d2e94d9a1b55b2f434d31c54262d",
+  "generations": [3956, 3999, 4063],
+  "resources": [
+    {
+      "resource_name": "AUTOMATION_OFF",
+      "selectors": [
+        {
+          "kind": "toggle_off",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/middle/auto_toggle",
+          "name": "auto_toggle",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/middle/auto_toggle/on",
+          "name": "on",
+          "sprite": "auto_toggle_off",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/middle/auto_toggle/bg",
+          "name": "bg",
+          "sprite": "auto_toggle_bg",
+          "text": "",
+          "require_top_raycast": true
+        }
+      ]
+    }
+  ],
+  "blockers": [],
+  "blocker_review_complete": false
+}

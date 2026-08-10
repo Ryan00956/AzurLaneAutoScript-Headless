@@ -4,9 +4,9 @@ G19 qualified ALAS's original state machine with synthetic phase frames.  This
 module is the boundary that may replace those frames: every ALAS presence
 query must have a reviewed exact Unity selector, every observer slice must be
 complete and hash-bound, and the bounded phases are inferred from records
-rather than accepted as fixture labels. G22 promotes the first real map
-identity but keeps the incomplete resource, blocker, and fleet-stat surface
-fail-closed.
+rather than accepted as fixture labels. G25 adds automation switching, radar
+search, and ordered fleet statistics while the incomplete defensive-resource
+and blocker surface remains fail-closed.
 """
 
 from __future__ import annotations
@@ -62,6 +62,7 @@ _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _ACTION_RESOURCES = frozenset(
     {
         "AUTOMATION_CONFIRM",
+        "AUTOMATION_OFF",
         "BATTLE_PREPARATION",
         "BATTLE_STATUS_S",
         "EXP_INFO_S",
@@ -69,6 +70,9 @@ _ACTION_RESOURCES = frozenset(
         "GET_MISSION",
     }
 )
+_ACTION_PRECEDENCE_ALLOWLIST = {
+    "AUTOMATION_OFF": frozenset({"BATTLE_PREPARATION"}),
+}
 
 
 class AlasCombatUnityRecordKind(str, Enum):
@@ -89,6 +93,8 @@ class AlasCombatUnitySelector:
     sprite: str = ""
     text: str = ""
     require_top_raycast: bool = False
+    ordinal: Optional[int] = None
+    width_scale: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -203,14 +209,20 @@ def unqualified_alas_combat_observer_manifest(
 
 
 def _selector_from_json(value: Any) -> AlasCombatUnitySelector:
-    if not isinstance(value, dict) or set(value) != {
+    required = {
         "kind",
         "path",
         "name",
         "sprite",
         "text",
         "require_top_raycast",
-    }:
+    }
+    optional = {"ordinal", "width_scale"}
+    if (
+        not isinstance(value, dict)
+        or not required.issubset(value)
+        or not set(value).issubset(required | optional)
+    ):
         raise SemanticGateClosed("combat manifest selector schema changed")
     try:
         kind = AlasCombatUnityRecordKind(value["kind"])
@@ -225,15 +237,29 @@ def _selector_from_json(value: Any) -> AlasCombatUnitySelector:
         require_top_raycast=value["require_top_raycast"]
         if isinstance(value["require_top_raycast"], bool)
         else False,
+        ordinal=value.get("ordinal")
+        if isinstance(value.get("ordinal"), int)
+        and not isinstance(value.get("ordinal"), bool)
+        else None,
+        width_scale=float(value["width_scale"])
+        if isinstance(value.get("width_scale"), (int, float))
+        and not isinstance(value.get("width_scale"), bool)
+        else None,
     )
     if not isinstance(value["require_top_raycast"], bool):
         raise SemanticGateClosed("combat manifest selector raycast flag changed")
+    if "ordinal" in value and selector.ordinal is None:
+        raise SemanticGateClosed("combat manifest selector ordinal changed")
+    if "width_scale" in value and selector.width_scale is None:
+        raise SemanticGateClosed("combat manifest selector width scale changed")
     return selector
 
 
-def parse_alas_combat_unity_selector(value: Any) -> AlasCombatUnitySelector:
+def parse_alas_combat_unity_selector(
+    value: Any, *, allow_dynamic_text: bool = False
+) -> AlasCombatUnitySelector:
     selector = _selector_from_json(value)
-    _validate_selector(selector)
+    _validate_selector(selector, allow_dynamic_text=allow_dynamic_text)
     return selector
 
 
@@ -356,7 +382,7 @@ def alas_combat_unity_selector_to_json(
     allow_dynamic_text: bool = False,
 ) -> Mapping[str, Any]:
     _validate_selector(selector, allow_dynamic_text=allow_dynamic_text)
-    return {
+    value = {
         "kind": selector.kind.value,
         "path": selector.path,
         "name": selector.name,
@@ -364,6 +390,11 @@ def alas_combat_unity_selector_to_json(
         "text": selector.text,
         "require_top_raycast": selector.require_top_raycast,
     }
+    if selector.ordinal is not None:
+        value["ordinal"] = selector.ordinal
+    if selector.width_scale is not None:
+        value["width_scale"] = selector.width_scale
+    return value
 
 
 def alas_combat_observer_manifest_to_json(
@@ -469,6 +500,21 @@ def _validate_selector(
         raise SemanticGateClosed("combat Unity selector identity is incomplete")
     if "*" in selector.path or selector.path.endswith("/"):
         raise SemanticGateClosed("combat Unity selector path is not exact")
+    if selector.ordinal is not None and (
+        isinstance(selector.ordinal, bool)
+        or not isinstance(selector.ordinal, int)
+        or not 0 <= selector.ordinal <= 15
+        or selector.kind
+        not in (AlasCombatUnityRecordKind.IMAGE, AlasCombatUnityRecordKind.TEXT)
+    ):
+        raise SemanticGateClosed("combat Unity selector ordinal is invalid")
+    if selector.width_scale is not None and (
+        isinstance(selector.width_scale, bool)
+        or not isinstance(selector.width_scale, (int, float))
+        or not 0.0 < float(selector.width_scale) < 4096.0
+        or selector.kind is not AlasCombatUnityRecordKind.IMAGE
+    ):
+        raise SemanticGateClosed("combat Unity selector width scale is invalid")
     if selector.kind is AlasCombatUnityRecordKind.IMAGE:
         if not selector.sprite or selector.text:
             raise SemanticGateClosed("combat image selector is incomplete")
@@ -480,13 +526,13 @@ def _validate_selector(
         ):
             raise SemanticGateClosed("combat text selector is incomplete")
     elif selector.kind is AlasCombatUnityRecordKind.BUTTON:
-        if selector.sprite or selector.text:
+        if selector.sprite or selector.text or selector.width_scale is not None:
             raise SemanticGateClosed("combat button selector is malformed")
     elif selector.kind in (
         AlasCombatUnityRecordKind.TOGGLE_OFF,
         AlasCombatUnityRecordKind.TOGGLE_ON,
     ):
-        if selector.sprite or selector.text or selector.require_top_raycast:
+        if selector.sprite or selector.text or selector.width_scale is not None:
             raise SemanticGateClosed("combat Toggle selector is malformed")
     else:
         raise SemanticGateClosed("combat Unity selector kind is unsupported")
@@ -504,12 +550,18 @@ def _validate_mapping_shape(mapping: AlasCombatResourceMapping) -> None:
         raise SemanticGateClosed("combat resource evidence hash is malformed")
     if mapping.resource_name in _ACTION_RESOURCES and mapping.qualified:
         if not any(
-            selector.kind is AlasCombatUnityRecordKind.BUTTON
+            selector.kind
+            in (
+                AlasCombatUnityRecordKind.BUTTON,
+                AlasCombatUnityRecordKind.IMAGE,
+                AlasCombatUnityRecordKind.TOGGLE_OFF,
+                AlasCombatUnityRecordKind.TOGGLE_ON,
+            )
             and selector.require_top_raycast
             for selector in mapping.selectors
         ):
             raise SemanticGateClosed(
-                "combat action mapping lacks an exact top-raycast Button"
+                "combat action mapping lacks an exact top-raycast control"
             )
 
 
@@ -538,12 +590,33 @@ def _validate_stats_shape(mapping: AlasCombatFleetStatsMapping) -> None:
         _validate_selector(selector, allow_dynamic_text=True)
         if selector.kind is not AlasCombatUnityRecordKind.TEXT:
             raise SemanticGateClosed("combat level mapping is not Text")
+    selectors = mapping.hp_images + mapping.level_texts
     identities = tuple(
-        (selector.kind, selector.path)
-        for selector in mapping.hp_images + mapping.level_texts
+        (selector.kind, selector.path, selector.ordinal) for selector in selectors
     )
     if len(identities) != len(set(identities)):
         raise SemanticGateClosed("combat fleet stats mapping has duplicate selectors")
+    groups: Dict[Tuple[Any, ...], list[AlasCombatUnitySelector]] = {}
+    for selector in selectors:
+        key = (
+            selector.kind,
+            selector.path,
+            selector.name,
+            selector.sprite,
+            selector.text,
+            selector.width_scale,
+        )
+        groups.setdefault(key, []).append(selector)
+    for group in groups.values():
+        ordinals = tuple(sorted(item.ordinal for item in group if item.ordinal is not None))
+        if len(group) > 1 and ordinals != tuple(range(len(group))):
+            raise SemanticGateClosed(
+                "combat fleet stats clone ordinals are incomplete"
+            )
+        if len(group) == 1 and ordinals:
+            raise SemanticGateClosed(
+                "combat fleet stats singleton must not use an ordinal"
+            )
     if mapping.evidence_sha256 and not _is_sha256(mapping.evidence_sha256):
         raise SemanticGateClosed("combat fleet stats evidence hash is malformed")
 
@@ -622,30 +695,60 @@ def _record_for_selector(
     else:
         records = snapshot.ui_state.toggles
     identities = [record for record in records if record.path == selector.path]
-    if len(identities) > 1:
-        raise SemanticGateClosed("combat Unity selector path is ambiguous")
     if not identities:
         return None
-    record = identities[0]
-    if record.name != selector.name:
+    if any(record.name != selector.name for record in identities):
         raise SemanticGateClosed("combat Unity selector name drifted")
     if selector.kind is AlasCombatUnityRecordKind.IMAGE:
-        if record.truncated:
+        if any(record.truncated for record in identities):
             raise SemanticGateClosed("combat Unity Image identity is truncated")
-        if record.sprite != selector.sprite:
+        if any(record.sprite != selector.sprite for record in identities):
             return None
     elif selector.kind is AlasCombatUnityRecordKind.TEXT:
-        if record.truncated:
+        if any(record.truncated for record in identities):
             raise SemanticGateClosed("combat Unity Text identity is truncated")
-        if selector.text and record.text != selector.text:
+        if selector.text and any(record.text != selector.text for record in identities):
             return None
     elif selector.kind in (
         AlasCombatUnityRecordKind.TOGGLE_OFF,
         AlasCombatUnityRecordKind.TOGGLE_ON,
     ):
         expected_checked = selector.kind is AlasCombatUnityRecordKind.TOGGLE_ON
-        if not isinstance(record, ToggleState) or record.checked is not expected_checked:
+        if any(
+            not isinstance(record, ToggleState)
+            or record.checked is not expected_checked
+            for record in identities
+        ):
             return None
+    if selector.ordinal is None:
+        if len(identities) > 1:
+            raise SemanticGateClosed("combat Unity selector path is ambiguous")
+        return identities[0]
+    if any(record.bounds is None for record in identities):
+        raise SemanticGateClosed("combat Unity selector ordinal lacks bounds")
+    ordered = sorted(
+        identities,
+        key=lambda record: (
+            record.bounds.top,
+            record.bounds.left,
+            record.bounds.bottom,
+            record.bounds.right,
+        ),
+    )
+    geometry = tuple(
+        (
+            record.bounds.top,
+            record.bounds.left,
+            record.bounds.bottom,
+            record.bounds.right,
+        )
+        for record in ordered
+    )
+    if len(geometry) != len(set(geometry)):
+        raise SemanticGateClosed("combat Unity selector ordinal is ambiguous")
+    if selector.ordinal >= len(ordered):
+        return None
+    record = ordered[selector.ordinal]
     return record
 
 
@@ -659,11 +762,36 @@ def _selector_present(
     if not record.active_in_hierarchy or not record.active_and_enabled:
         return False
     if selector.require_top_raycast:
-        if not isinstance(record, ButtonState) or not record.actionable:
+        if not _actionable_control(record):
             raise SemanticGateClosed(
-                "combat action Button is not exact top-raycast actionable"
+                "combat action control is not exact top-raycast actionable"
             )
     return True
+
+
+def _actionable_control(record: Any) -> bool:
+    if isinstance(record, (ButtonState, ToggleState)):
+        return record.actionable
+    if isinstance(record, ImageState):
+        return (
+            record.active_in_hierarchy
+            and record.active_and_enabled
+            and record.raycast_target
+            and record.raycast_top is True
+            and record.bounds is not None
+        )
+    return False
+
+
+def _action_control_point(record: Any) -> Optional[Point]:
+    if isinstance(record, (ButtonState, ToggleState)):
+        return record.point
+    if isinstance(record, ImageState) and record.bounds is not None:
+        return Point(
+            (record.bounds.left + record.bounds.right) / 2.0,
+            (record.bounds.top + record.bounds.bottom) / 2.0,
+        )
+    return None
 
 
 def alas_combat_unity_selector_present(
@@ -717,6 +845,8 @@ def prepare_alas_combat_resource_action(
         for candidate in manifest.resources
         if candidate.resource_name in _ACTION_RESOURCES
         and candidate.resource_name != resource_name
+        and candidate.resource_name
+        not in _ACTION_PRECEDENCE_ALLOWLIST.get(resource_name, frozenset())
         and candidate.qualified
         and _resource_visible(snapshot, candidate)
     )
@@ -725,30 +855,32 @@ def prepare_alas_combat_resource_action(
             "combat action resource is ambiguous with: "
             + ", ".join(competing_actions)
         )
-    button_selectors = tuple(
+    control_selectors = tuple(
         selector
         for selector in mapping.selectors
-        if selector.kind is AlasCombatUnityRecordKind.BUTTON
+        if selector.kind
+        in (
+            AlasCombatUnityRecordKind.BUTTON,
+            AlasCombatUnityRecordKind.IMAGE,
+            AlasCombatUnityRecordKind.TOGGLE_OFF,
+            AlasCombatUnityRecordKind.TOGGLE_ON,
+        )
         and selector.require_top_raycast
     )
-    if len(button_selectors) != 1:
+    if len(control_selectors) != 1:
         raise SemanticGateClosed(
-            "combat action resource must have one exact top-raycast Button"
+            "combat action resource must have one exact top-raycast control"
         )
-    button = _record_for_selector(snapshot, button_selectors[0])
-    if (
-        not isinstance(button, ButtonState)
-        or not button.actionable
-        or button.point is None
-        or button.bounds is None
-    ):
-        raise SemanticGateClosed("combat action Button is not actionable")
+    control = _record_for_selector(snapshot, control_selectors[0])
+    point = _action_control_point(control)
+    if not _actionable_control(control) or point is None or control.bounds is None:
+        raise SemanticGateClosed("combat action control is not actionable")
     return ActionReceipt(
         semantic_id="combat/resource/" + resource_name,
         generation=snapshot.generation,
-        point=button.point,
-        bounds=button.bounds,
-        path=button.path,
+        point=point,
+        bounds=control.bounds,
+        path=control.path,
     )
 
 
@@ -759,10 +891,69 @@ def _resource_visible(
     return all(_selector_present(snapshot, item) for item in mapping.selectors)
 
 
+def _visible_resource_names(
+    snapshot: AlasCombatObserverSnapshot,
+    mappings: Mapping[str, AlasCombatResourceMapping],
+) -> Tuple[str, ...]:
+    """Translate active Unity objects into ALAS's foreground appear semantics."""
+
+    visible = {
+        name
+        for name in ALAS_COMBAT_REPLAY_RESOURCE_NAMES
+        if _resource_visible(snapshot, mappings[name])
+    }
+    if "BATTLE_PREPARATION" in visible:
+        # LevelStageView remains active behind ChapterPreCombatUI, whereas the
+        # original screenshot template does not see IN_MAP through that layer.
+        visible.discard("IN_MAP")
+    if visible.intersection(
+        {"BATTLE_STATUS_S", "GET_ITEMS_1", "EXP_INFO_S"}
+    ):
+        # The battle pause object remains active behind result overlays.
+        visible.discard("PAUSE")
+    if snapshot.campaign_map is not None:
+        # Search and stable-map fixtures carry a fully parsed map model; this
+        # is stronger evidence than a background Image anchor alone.
+        visible.add("IN_MAP")
+    return tuple(
+        name for name in ALAS_COMBAT_REPLAY_RESOURCE_NAMES if name in visible
+    )
+
+
 def _fleet_stats(
     snapshot: AlasCombatObserverSnapshot,
     mapping: AlasCombatFleetStatsMapping,
 ) -> Tuple[Tuple[float, ...], Tuple[int, ...]]:
+    _validate_stats_shape(mapping)
+    for selectors in (mapping.hp_images, mapping.level_texts):
+        groups: Dict[Tuple[Any, ...], list[AlasCombatUnitySelector]] = {}
+        for selector in selectors:
+            key = (
+                selector.kind,
+                selector.path,
+                selector.name,
+                selector.sprite,
+                selector.text,
+                selector.width_scale,
+            )
+            groups.setdefault(key, []).append(selector)
+        for group in groups.values():
+            if len(group) <= 1:
+                continue
+            records = (
+                snapshot.ui_state.images
+                if group[0].kind is AlasCombatUnityRecordKind.IMAGE
+                else snapshot.ui_state.texts
+            )
+            matches = tuple(
+                record
+                for record in records
+                if record.path == group[0].path and record.name == group[0].name
+            )
+            if len(matches) != len(group):
+                raise SemanticGateClosed(
+                    "combat fleet stats clone count changed"
+                )
     hp = []
     for selector in mapping.hp_images:
         record = _record_for_selector(snapshot, selector)
@@ -770,7 +961,14 @@ def _fleet_stats(
             snapshot, selector
         ):
             raise SemanticGateClosed("combat HP Image is absent")
-        value = float(record.fill_amount)
+        if selector.width_scale is None:
+            value = float(record.fill_amount)
+        else:
+            if record.bounds is None:
+                raise SemanticGateClosed("combat HP Image has no bounds")
+            value = float(record.bounds.right - record.bounds.left) / float(
+                selector.width_scale
+            )
         if not 0.0 <= value <= 1.0:
             raise SemanticGateClosed("combat HP fill is outside [0, 1]")
         hp.append(value)
@@ -785,6 +983,17 @@ def _fleet_stats(
             raise SemanticGateClosed("combat fleet level is outside 1..125")
         levels.append(int(record.text))
     return tuple(hp), tuple(levels)
+
+
+def alas_combat_fleet_stats(
+    snapshot: AlasCombatObserverSnapshot,
+    mapping: AlasCombatFleetStatsMapping,
+) -> Tuple[Tuple[float, ...], Tuple[int, ...]]:
+    """Resolve six ordered typed fleet stats for review and replay."""
+
+    if not isinstance(snapshot, AlasCombatObserverSnapshot):
+        raise SemanticGateClosed("combat fleet stats snapshot is not typed")
+    return _fleet_stats(snapshot, mapping)
 
 
 def _map_flags(
@@ -838,7 +1047,7 @@ def build_alas_campaign_combat_replay_from_observer(
     snapshots: Sequence[AlasCombatObserverSnapshot],
     manifest: AlasCombatObserverManifest,
 ) -> AlasCampaignCombatReplay:
-    """Infer one bounded 6-9 frame replay from exact Unity records."""
+    """Infer one bounded 6-10 frame replay from exact Unity records."""
 
     if not isinstance(admission, AlasCampaignCombatAdmission):
         raise SemanticGateClosed("combat observer replay requires an admission")
@@ -850,7 +1059,7 @@ def build_alas_campaign_combat_replay_from_observer(
         )
     allowed_lengths = {len(sequence) for sequence in ALAS_COMBAT_REPLAY_PHASE_SEQUENCES}
     if len(snapshots) not in allowed_lengths:
-        raise SemanticGateClosed("combat observer replay requires 6 to 9 snapshots")
+        raise SemanticGateClosed("combat observer replay requires 6 to 10 snapshots")
     mappings: Dict[str, AlasCombatResourceMapping] = {
         item.resource_name: item for item in manifest.resources
     }
@@ -872,11 +1081,7 @@ def build_alas_campaign_combat_replay_from_observer(
             raise SemanticGateClosed(
                 "combat observer blocker is active: " + ", ".join(active_blockers)
             )
-        visible = tuple(
-            name
-            for name in ALAS_COMBAT_REPLAY_RESOURCE_NAMES
-            if _resource_visible(snapshot, mappings[name])
-        )
+        visible = _visible_resource_names(snapshot, mappings)
         validated.append((snapshot, visible))
     matching_sequences = tuple(
         sequence
@@ -909,6 +1114,7 @@ def build_alas_campaign_combat_replay_from_observer(
                 combat_loading=phase
                 in (
                     AlasCombatReplayPhase.AUTOMATION_CONFIRM,
+                    AlasCombatReplayPhase.BATTLE_PREPARATION_AUTOMATION_OFF,
                     AlasCombatReplayPhase.BATTLE_PREPARATION,
                 ),
                 combat_executing=phase is AlasCombatReplayPhase.COMBAT_EXECUTING,
@@ -1193,7 +1399,7 @@ def load_alas_combat_observer_fixture(
     frames = value.get("frames")
     allowed_lengths = {len(sequence) for sequence in ALAS_COMBAT_REPLAY_PHASE_SEQUENCES}
     if not isinstance(frames, list) or len(frames) not in allowed_lengths:
-        raise SemanticGateClosed("combat observer fixture requires 6 to 9 frames")
+        raise SemanticGateClosed("combat observer fixture requires 6 to 10 frames")
     if any("phase" in frame for frame in frames if isinstance(frame, dict)):
         raise SemanticGateClosed("combat fixture must not provide phase tokens")
     return tuple(

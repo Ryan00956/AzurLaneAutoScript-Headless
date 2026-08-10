@@ -1,0 +1,232 @@
+{
+  "schema": "alas-headless.g22-combat-mapping-receipt/v1",
+  "review_id": "g25-12-4-fleet-stats",
+  "source_trace_sha256": "cb74ca27918d2d394f0fc6f93c6bf06a2b7ad2ba5d0a0a98f6556fa82de28730",
+  "source_frames": [
+    {
+      "sequence": 1,
+      "captured_at_utc": "2026-08-10T10:29:29.513Z",
+      "generation": 19499,
+      "frame_sha256": "eddf02ee124f4b8b283b2e03d91ffb68929ceeb55805a16b518d149c5f1c4706"
+    },
+    {
+      "sequence": 2,
+      "captured_at_utc": "2026-08-10T10:29:29.739Z",
+      "generation": 19502,
+      "frame_sha256": "be5e82d788c2e951f3b54af1366df58740df77216763d232a969e0ad042166a9"
+    },
+    {
+      "sequence": 3,
+      "captured_at_utc": "2026-08-10T10:29:29.957Z",
+      "generation": 19504,
+      "frame_sha256": "fed727912578b8a7676d7d219b37e79613d9ddea16f4f068d920545bc6c4c4d7"
+    }
+  ],
+  "manifest_before_sha256": "7404a49420d9a0d7c0de4d71732ae2df508bf874624d74e82c26a5c3a44666d8",
+  "manifest_after_sha256": "77e399a871ee2f8037ceee9c4b8eee2d1c8d38ac7407547c835701b774122769",
+  "resource_promotions": [],
+  "blocker_promotions": [],
+  "blocker_review_complete": false,
+  "coverage_before": {
+    "production_ready": false,
+    "qualified_resources": 10,
+    "total_resources": 41,
+    "qualified_blockers": 1,
+    "total_blockers": 1,
+    "blocker_review_complete": false,
+    "blockers_qualified": false,
+    "fleet_stats_qualified": false
+  },
+  "coverage_after": {
+    "production_ready": false,
+    "qualified_resources": 10,
+    "total_resources": 41,
+    "qualified_blockers": 1,
+    "total_blockers": 1,
+    "blocker_review_complete": false,
+    "blockers_qualified": false,
+    "fleet_stats_qualified": true
+  },
+  "input_injected": false,
+  "fleet_stats_promotion": {
+    "match": "six_ordered",
+    "hp_images": [
+      {
+        "kind": "image",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/main/shiptpl(Clone)/blood/fillarea/green",
+        "name": "green",
+        "sprite": "blood",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 0,
+        "width_scale": 66.0
+      },
+      {
+        "kind": "image",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/main/shiptpl(Clone)/blood/fillarea/green",
+        "name": "green",
+        "sprite": "blood",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 1,
+        "width_scale": 66.0
+      },
+      {
+        "kind": "image",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/main/shiptpl(Clone)/blood/fillarea/green",
+        "name": "green",
+        "sprite": "blood",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 2,
+        "width_scale": 66.0
+      },
+      {
+        "kind": "image",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/vanguard/shiptpl(Clone)/blood/fillarea/green",
+        "name": "green",
+        "sprite": "blood",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 0,
+        "width_scale": 66.0
+      },
+      {
+        "kind": "image",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/vanguard/shiptpl(Clone)/blood/fillarea/green",
+        "name": "green",
+        "sprite": "blood",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 1,
+        "width_scale": 66.0
+      },
+      {
+        "kind": "image",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/vanguard/shiptpl(Clone)/blood/fillarea/green",
+        "name": "green",
+        "sprite": "blood",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 2,
+        "width_scale": 66.0
+      }
+    ],
+    "level_texts": [
+      {
+        "kind": "text",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/main/shiptpl(Clone)/icon_bg/lv/Text",
+        "name": "Text",
+        "sprite": "",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 0
+      },
+      {
+        "kind": "text",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/main/shiptpl(Clone)/icon_bg/lv/Text",
+        "name": "Text",
+        "sprite": "",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 1
+      },
+      {
+        "kind": "text",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/main/shiptpl(Clone)/icon_bg/lv/Text",
+        "name": "Text",
+        "sprite": "",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 2
+      },
+      {
+        "kind": "text",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/vanguard/shiptpl(Clone)/icon_bg/lv/Text",
+        "name": "Text",
+        "sprite": "",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 0
+      },
+      {
+        "kind": "text",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/vanguard/shiptpl(Clone)/icon_bg/lv/Text",
+        "name": "Text",
+        "sprite": "",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 1
+      },
+      {
+        "kind": "text",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/vanguard/shiptpl(Clone)/icon_bg/lv/Text",
+        "name": "Text",
+        "sprite": "",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 2
+      }
+    ],
+    "evidence_sha256": "7302459d4c4fa0f148ef15de77a58bbc5fd76118c0359b4260277236fcbec4df",
+    "values": [
+      {
+        "generation": 19499,
+        "hp": [
+          0.9617272727272727,
+          0.8483636363636363,
+          0.8862575757575758,
+          0.741530303030303,
+          0.9979090909090909,
+          0.9417272727272727
+        ],
+        "levels": [
+          118,
+          109,
+          117,
+          110,
+          118,
+          107
+        ]
+      },
+      {
+        "generation": 19502,
+        "hp": [
+          0.9617272727272727,
+          0.8483636363636363,
+          0.8862575757575758,
+          0.741530303030303,
+          0.9979090909090909,
+          0.9417272727272727
+        ],
+        "levels": [
+          118,
+          109,
+          117,
+          110,
+          118,
+          107
+        ]
+      },
+      {
+        "generation": 19504,
+        "hp": [
+          0.9617272727272727,
+          0.8483636363636363,
+          0.8862575757575758,
+          0.741530303030303,
+          0.9979090909090909,
+          0.9417272727272727
+        ],
+        "levels": [
+          118,
+          109,
+          117,
+          110,
+          118,
+          107
+        ]
+      }
+    ]
+  }
+}

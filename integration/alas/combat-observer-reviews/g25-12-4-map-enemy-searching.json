@@ -1,0 +1,39 @@
+{
+  "schema": "alas-headless.g22-combat-mapping-review/v1",
+  "review_id": "g25-12-4-map-enemy-searching",
+  "trace_sha256": "71aef13bb927d8006354eb7d842dad86a6fde3edaeddf2fffcf1a76cece1e510",
+  "generations": [8630, 8635, 8640],
+  "resources": [
+    {
+      "resource_name": "MAP_ENEMY_SEARCHING",
+      "selectors": [
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/top/RadarEffectUI(Clone)/wenzi",
+          "name": "wenzi",
+          "sprite": "suodizhong",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/top/RadarEffectUI(Clone)/wangge",
+          "name": "wangge",
+          "sprite": "zhongjian",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/top/RadarEffectUI(Clone)/saomiaoquyu",
+          "name": "saomiaoquyu",
+          "sprite": "xuanzhuan",
+          "text": "",
+          "require_top_raycast": false
+        }
+      ]
+    }
+  ],
+  "blockers": [],
+  "blocker_review_complete": false
+}

@@ -74,8 +74,33 @@
     },
     {
       "resource_name": "AUTOMATION_OFF",
-      "selectors": [],
-      "evidence_sha256": ""
+      "selectors": [
+        {
+          "kind": "toggle_off",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/middle/auto_toggle",
+          "name": "auto_toggle",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/middle/auto_toggle/on",
+          "name": "on",
+          "sprite": "auto_toggle_off",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/middle/auto_toggle/bg",
+          "name": "bg",
+          "sprite": "auto_toggle_bg",
+          "text": "",
+          "require_top_raycast": true
+        }
+      ],
+      "evidence_sha256": "5bc3e4b17782d54690583e46fc349372e21111eff6dde37808b41ae546329fab"
     },
     {
       "resource_name": "AUTOMATION_ON",
@@ -466,8 +491,33 @@
     },
     {
       "resource_name": "MAP_ENEMY_SEARCHING",
-      "selectors": [],
-      "evidence_sha256": ""
+      "selectors": [
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/top/RadarEffectUI(Clone)/wenzi",
+          "name": "wenzi",
+          "sprite": "suodizhong",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/top/RadarEffectUI(Clone)/wangge",
+          "name": "wangge",
+          "sprite": "zhongjian",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/top/RadarEffectUI(Clone)/saomiaoquyu",
+          "name": "saomiaoquyu",
+          "sprite": "xuanzhuan",
+          "text": "",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "7440afd8f02724223356d486afa1bc8683cf58a9288961e098f5ce75b59d69ce"
     },
     {
       "resource_name": "MAP_PREPARATION",
@@ -558,8 +608,124 @@
   ],
   "blocker_review_complete": false,
   "fleet_stats": {
-    "hp_images": [],
-    "level_texts": [],
-    "evidence_sha256": ""
+    "hp_images": [
+      {
+        "kind": "image",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/main/shiptpl(Clone)/blood/fillarea/green",
+        "name": "green",
+        "sprite": "blood",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 0,
+        "width_scale": 66.0
+      },
+      {
+        "kind": "image",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/main/shiptpl(Clone)/blood/fillarea/green",
+        "name": "green",
+        "sprite": "blood",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 1,
+        "width_scale": 66.0
+      },
+      {
+        "kind": "image",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/main/shiptpl(Clone)/blood/fillarea/green",
+        "name": "green",
+        "sprite": "blood",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 2,
+        "width_scale": 66.0
+      },
+      {
+        "kind": "image",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/vanguard/shiptpl(Clone)/blood/fillarea/green",
+        "name": "green",
+        "sprite": "blood",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 0,
+        "width_scale": 66.0
+      },
+      {
+        "kind": "image",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/vanguard/shiptpl(Clone)/blood/fillarea/green",
+        "name": "green",
+        "sprite": "blood",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 1,
+        "width_scale": 66.0
+      },
+      {
+        "kind": "image",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/vanguard/shiptpl(Clone)/blood/fillarea/green",
+        "name": "green",
+        "sprite": "blood",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 2,
+        "width_scale": 66.0
+      }
+    ],
+    "level_texts": [
+      {
+        "kind": "text",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/main/shiptpl(Clone)/icon_bg/lv/Text",
+        "name": "Text",
+        "sprite": "",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 0
+      },
+      {
+        "kind": "text",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/main/shiptpl(Clone)/icon_bg/lv/Text",
+        "name": "Text",
+        "sprite": "",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 1
+      },
+      {
+        "kind": "text",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/main/shiptpl(Clone)/icon_bg/lv/Text",
+        "name": "Text",
+        "sprite": "",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 2
+      },
+      {
+        "kind": "text",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/vanguard/shiptpl(Clone)/icon_bg/lv/Text",
+        "name": "Text",
+        "sprite": "",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 0
+      },
+      {
+        "kind": "text",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/vanguard/shiptpl(Clone)/icon_bg/lv/Text",
+        "name": "Text",
+        "sprite": "",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 1
+      },
+      {
+        "kind": "text",
+        "path": "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/left_stage/fleet/vanguard/shiptpl(Clone)/icon_bg/lv/Text",
+        "name": "Text",
+        "sprite": "",
+        "text": "",
+        "require_top_raycast": false,
+        "ordinal": 2
+      }
+    ],
+    "evidence_sha256": "7302459d4c4fa0f148ef15de77a58bbc5fd76118c0359b4260277236fcbec4df"
   }
 }

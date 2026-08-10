@@ -671,6 +671,11 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
 
 bool ShouldEvaluateToggleTopRaycast(std::string_view name,
                                     std::string_view path) {
+  if (name == "auto_toggle" &&
+      EndsWith(path,
+               "ChapterPreCombatUI(Clone)/adapt/middle/auto_toggle")) {
+    return true;
+  }
   if (name.size() == 5 && name.substr(0, 4) == "item" &&
       name[4] >= '1' && name[4] <= '6' &&
       EndsWith(path,
@@ -717,6 +722,11 @@ bool ShouldEvaluateToggleTopRaycast(std::string_view name,
 
 bool ShouldEvaluateImageTopRaycast(std::string_view name,
                                    std::string_view path) {
+  if (name == "bg" &&
+      EndsWith(path,
+               "ChapterPreCombatUI(Clone)/adapt/middle/auto_toggle/bg")) {
+    return true;
+  }
   if (name == "icon_bg" &&
       path.find("BackYardFeedUI(Clone)/frame/food_5000") !=
           std::string_view::npos) {

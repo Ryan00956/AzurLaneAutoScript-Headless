@@ -67,6 +67,12 @@ pipeline is documented in the
 The first evidence-bound mapping promotion and compound blocker contract are
 documented in the
 [G22 validation report](docs/g22-alas-combat-mapping-promotion-validation-report.md).
+Controlled combat acquisition and result handling are documented in the
+[G23 validation report](docs/g23-alas-controlled-combat-acquisition-validation-report.md),
+combat preparation in the
+[G24 validation report](docs/g24-alas-combat-preparation-observer-validation-report.md),
+and automation switching, radar search, and ordered fleet statistics in the
+[G25 validation report](docs/g25-alas-combat-input-closure-validation-report.md).
 
 G1, G2, G3, and the formal G4 harmless closed loop passed. G4 includes
 EventSystem top-raycast proof for every injected target, not only object state
@@ -114,10 +120,12 @@ phases only from six complete, hash-bound raw Unity snapshots and an exact
 operationally fillable through a versioned mapping manifest, package-verified
 raw trace recorder, exact six-generation selection, and offline map/fixture
 compilation. G22 evidence-binds the first real `IN_MAP` mapping and an exact
-compound `network_down` blocker across three complete raw frames. Coverage is
-honestly `1/38`; blocker review and fleet stats remain incomplete, so
-production remains at the G18 capture boundary and the recurrent network
-dialog still prevents a real battle trace. Lua/game-state coverage,
+compound `network_down` blocker across three complete raw frames. G23-G25 then
+qualify the ordinary result chain, automation confirmation/switching, battle
+start, radar search, and ordered six-ship HP/levels while original ALAS remains
+the behavioral owner. Current coverage is honestly `12/41`; blocker review and
+29 defensive resources remain incomplete, so production remains at the G18
+capture boundary. Lua/game-state coverage,
 formation-layout changes, campaign movement execution, battle state,
 weekly-only end-to-end
 coverage, repeated sorties, and full unattended ALAS task coverage remain
