@@ -239,6 +239,25 @@ fleet stats are qualified, but `production_ready=false` and G18 remains the
 production stop. See
 `docs/g27-alas-action-variant-and-nested-branch-validation-report.md`.
 
+G28 adds a separate Device-free defensive-branch replay. It instantiates the
+pinned real `Campaign`, copies it per scenario, and invokes the original ALAS
+methods for alternate result/experience grades, guild and mission popups,
+retirement, story, and ambush evasion. The virtual boundary rejects unknown
+queries, extra or reordered actions, unowned targets, unexpected Device access,
+and changed source method owners. The checked record binds the ALAS commit and
+the four participating source files:
+
+```powershell
+python scripts/python/verify_alas_combat_defensive_branch_replay.py `
+  --alas-root H:\program\AzurLaneAutoScript-patchcheck
+```
+
+All 16 scenarios pass with source restoration and zero input. This record does
+not contain Unity selectors and explicitly reports
+`live_mapping_promoted=false`; manifest coverage stays canonical `16/41`,
+defensive `18/54`, actions `12/38`, and blockers `1/4`. See
+`docs/g28-alas-defensive-branch-replay-validation-report.md`.
+
 Commission start has a separate integer budget and remains closed by default:
 
 ```powershell

@@ -39,6 +39,16 @@ from .alas_combat_state_replay import (
     canonical_alas_campaign_combat_replay,
     replay_alas_campaign_combat_state_machine,
 )
+from .alas_combat_branch_replay import (
+    ALAS_COMBAT_BRANCH_REPLAY_SCHEMA,
+    ALAS_COMBAT_BRANCH_REPLAY_VERIFICATION_SCHEMA,
+    ALAS_COMBAT_BRANCH_SOURCE_FILES,
+    AlasCombatBranchReplayResult,
+    AlasCombatBranchReplayScenario,
+    alas_combat_branch_replay_to_json,
+    replay_alas_combat_defensive_branches,
+    verify_alas_combat_branch_replay_record,
+)
 from .alas_combat_observer import (
     ALAS_COMBAT_OBSERVER_FIXTURE_SCHEMA,
     ALAS_COMBAT_OBSERVER_MANIFEST_SCHEMA,
@@ -193,6 +203,9 @@ __all__ = (
     "ALAS_COMBAT_MAPPING_RECEIPT_SCHEMA",
     "ALAS_COMBAT_MAPPING_REVIEW_SCHEMA",
     "ALAS_COMBAT_ACTION_TARGET_NAMES",
+    "ALAS_COMBAT_BRANCH_REPLAY_SCHEMA",
+    "ALAS_COMBAT_BRANCH_REPLAY_VERIFICATION_SCHEMA",
+    "ALAS_COMBAT_BRANCH_SOURCE_FILES",
     "ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES",
     "ALAS_COMBAT_NESTED_BRANCH_ROOTS",
     "ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES",
@@ -208,6 +221,8 @@ __all__ = (
     "AlasCampaignCombatStateReplayResult",
     "AlasCombatActionMapping",
     "AlasCombatActionVariant",
+    "AlasCombatBranchReplayResult",
+    "AlasCombatBranchReplayScenario",
     "AlasCombatBlockerMapping",
     "AlasCombatFleetStatsMapping",
     "AlasCombatObserverCoverage",
@@ -227,6 +242,7 @@ __all__ = (
     "AlasCombatUnityRecordKind",
     "AlasCombatUnitySelector",
     "alas_combat_fleet_stats",
+    "alas_combat_branch_replay_to_json",
     "AlasSemanticAdapter",
     "AlasSemanticSession",
     "AlasSemanticUnmapped",
@@ -327,6 +343,7 @@ __all__ = (
     "prepare_alas_combat_resource_action",
     "prove_alas_campaign_combat_transition",
     "replay_alas_campaign_combat_state_machine",
+    "replay_alas_combat_defensive_branches",
     "load_alas_combat_observer_fixture",
     "load_alas_combat_observer_manifest",
     "load_alas_combat_observer_trace",
@@ -340,4 +357,5 @@ __all__ = (
     "unqualified_alas_combat_observer_manifest",
     "validate_alas_combat_observer_snapshot",
     "verify_alas_combat_mapping_receipt",
+    "verify_alas_combat_branch_replay_record",
 )

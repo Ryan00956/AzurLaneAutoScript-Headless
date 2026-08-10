@@ -4,6 +4,27 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G28 defensive branch replay: 16 source paths pass; mappings unchanged
+
+- Sixteen Device-free scenarios now run original ALAS methods for A-D result
+  grades, A/B experience pages, contextual guild/mission popups, retirement,
+  story, and ambush evasion. Exact query, click, sleep, return, and short-circuit
+  order is pinned.
+- The replay record binds ALAS commit `81ccf63` plus four source-file hashes.
+  Independent verification confirms all source files still match, the campaign
+  object is restored, and `input_injected=false`.
+- Existing traces do not contain repeated complete evidence for these inputs:
+  alternate grades are absent, guild popup has only one old observation, and
+  mission/ambush/retirement/story roots have no promotable trace. G28 therefore
+  reports `live_mapping_promoted=false`.
+- Coverage remains canonical `16/41`, defensive `18/54`, actions `12/38`, and
+  blockers `1/4`. Branch and blocker reviews remain incomplete,
+  `production_ready=false`, and production still stops at G18.
+- The full suite passes `318/318`; the maximum original ordinary-combat replay
+  still passes ten phases and 135 calls over the unchanged 41 canonical names.
+
+See [G28 defensive-branch replay validation](g28-alas-defensive-branch-replay-validation-report.md).
+
 ### G27 action variants and nested branches: adapter expanded; production closed
 
 - Manifest v3 represents each original-ALAS action as one or more mutually

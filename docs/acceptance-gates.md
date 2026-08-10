@@ -75,6 +75,13 @@ overlay resources. Current coverage is canonical `16/41`, defensive `18/54`,
 actions `12/38`, and blockers `1/4`. Ambush, retirement, and story branch roots
 are explicit but incomplete, so `production_ready=false` and production still
 stops at G18.
+G28 runs 16 rare result, experience, contextual-popup, retirement, story, and
+ambush scenarios through original ALAS source methods on isolated copies. The
+record is bound to the ALAS commit and four source-file hashes, and exact query,
+action, sleep, return, and short-circuit order is verified. This proves source
+control-flow ownership only: the trace audit found no repeated complete Unity
+evidence for those branches, `live_mapping_promoted=false`, coverage remains
+`16/41`, `18/54`, `12/38`, and `1/4`, and production still stops at G18.
 G4 includes
 login/main reachability, sustained semantic state, RectTransform bounds, top
 EventSystem raycast identity for each action, and a settings-page return loop.

@@ -17,6 +17,7 @@ from alas_headless import (  # noqa: E402
     ALAS_COMBAT_REPLAY_RESOURCE_NAMES,
     audit_alas_combat_observer_manifest,
     load_alas_combat_observer_manifest,
+    verify_alas_combat_branch_replay_record,
 )
 
 
@@ -32,6 +33,13 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="return non-zero while any real combat mapping remains open",
     )
+    parser.add_argument(
+        "--branch-replay-record",
+        type=Path,
+        default=(
+            ROOT / "integration" / "alas" / "combat-defensive-branch-replay-g28.json"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -39,10 +47,17 @@ def main() -> int:
     args = parse_args()
     manifest = load_alas_combat_observer_manifest(args.manifest)
     coverage = audit_alas_combat_observer_manifest(manifest)
+    try:
+        branch_record = json.loads(
+            args.branch_replay_record.read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise SystemExit("cannot read combat branch replay record") from exc
+    branch_verification = verify_alas_combat_branch_replay_record(branch_record)
     print(
         json.dumps(
             {
-                "schema": "alas-headless.g27-combat-observer-coverage/v3",
+                "schema": "alas-headless.g28-combat-observer-coverage/v4",
                 "contract_valid": (
                     coverage.total_resources
                     == len(ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES)
@@ -81,6 +96,13 @@ def main() -> int:
                     branch: roots
                     for branch, roots in ALAS_COMBAT_NESTED_BRANCH_ROOTS.items()
                 },
+                "defensive_branch_replay_passed": branch_verification["passed"],
+                "defensive_branch_scenario_count": branch_verification[
+                    "scenario_count"
+                ],
+                "defensive_branch_live_mapping_promoted": branch_verification[
+                    "live_mapping_promoted"
+                ],
                 "input_injected": False,
             },
             ensure_ascii=False,

@@ -129,7 +129,10 @@ exclusive Unity variants for one original-ALAS action target, and pins ambush,
 retirement, and story branch roots without replacing their handlers. Current
 coverage is canonical `16/41`, defensive `18/54`, actions `12/38`, and blockers
 `1/4`; branch and blocker review remain incomplete, so production remains at
-the G18 capture boundary. Lua/game-state coverage,
+the G18 capture boundary. G28 separately replays 16 rare result, popup,
+retirement, story, and ambush paths through their original ALAS methods with
+virtual inputs and source-hash binding. It confirms control-flow ownership but
+does not promote live Unity mappings. Lua/game-state coverage,
 formation-layout changes, campaign movement execution, battle state,
 weekly-only end-to-end
 coverage, repeated sorties, and full unattended ALAS task coverage remain

@@ -1,0 +1,358 @@
+{
+  "schema": "alas-headless.g28-combat-defensive-branch-replay/v1",
+  "passed": true,
+  "source_restored": true,
+  "input_injected": false,
+  "scenario_count": 16,
+  "scenarios": [
+    {
+      "name": "battle-status-a",
+      "source_method": "module.combat.combat.Combat.handle_battle_status",
+      "returned": true,
+      "resource_queries": [
+        "PAUSE",
+        "BATTLE_STATUS_S",
+        "BATTLE_STATUS_A"
+      ],
+      "virtual_actions": [
+        "BATTLE_STATUS_A"
+      ],
+      "virtual_sleeps": [
+        "(0.25, 0.5)"
+      ],
+      "call_order": [
+        "query:PAUSE",
+        "query:BATTLE_STATUS_S",
+        "query:BATTLE_STATUS_A",
+        "device.sleep((0.25, 0.5))",
+        "device.click(BATTLE_STATUS_A)"
+      ]
+    },
+    {
+      "name": "battle-status-b",
+      "source_method": "module.combat.combat.Combat.handle_battle_status",
+      "returned": true,
+      "resource_queries": [
+        "PAUSE",
+        "BATTLE_STATUS_S",
+        "BATTLE_STATUS_A",
+        "BATTLE_STATUS_B"
+      ],
+      "virtual_actions": [
+        "BATTLE_STATUS_B"
+      ],
+      "virtual_sleeps": [
+        "(0.25, 0.5)"
+      ],
+      "call_order": [
+        "query:PAUSE",
+        "query:BATTLE_STATUS_S",
+        "query:BATTLE_STATUS_A",
+        "query:BATTLE_STATUS_B",
+        "device.sleep((0.25, 0.5))",
+        "device.click(BATTLE_STATUS_B)"
+      ]
+    },
+    {
+      "name": "battle-status-c",
+      "source_method": "module.combat.combat.Combat.handle_battle_status",
+      "returned": true,
+      "resource_queries": [
+        "PAUSE",
+        "BATTLE_STATUS_S",
+        "BATTLE_STATUS_A",
+        "BATTLE_STATUS_B",
+        "BATTLE_STATUS_C"
+      ],
+      "virtual_actions": [
+        "BATTLE_STATUS_C"
+      ],
+      "virtual_sleeps": [
+        "(0.25, 0.5)"
+      ],
+      "call_order": [
+        "query:PAUSE",
+        "query:BATTLE_STATUS_S",
+        "query:BATTLE_STATUS_A",
+        "query:BATTLE_STATUS_B",
+        "query:BATTLE_STATUS_C",
+        "device.sleep((0.25, 0.5))",
+        "device.click(BATTLE_STATUS_C)"
+      ]
+    },
+    {
+      "name": "battle-status-d",
+      "source_method": "module.combat.combat.Combat.handle_battle_status",
+      "returned": true,
+      "resource_queries": [
+        "PAUSE",
+        "BATTLE_STATUS_S",
+        "BATTLE_STATUS_A",
+        "BATTLE_STATUS_B",
+        "BATTLE_STATUS_C",
+        "BATTLE_STATUS_D"
+      ],
+      "virtual_actions": [
+        "BATTLE_STATUS_D"
+      ],
+      "virtual_sleeps": [
+        "(0.25, 0.5)"
+      ],
+      "call_order": [
+        "query:PAUSE",
+        "query:BATTLE_STATUS_S",
+        "query:BATTLE_STATUS_A",
+        "query:BATTLE_STATUS_B",
+        "query:BATTLE_STATUS_C",
+        "query:BATTLE_STATUS_D",
+        "device.sleep((0.25, 0.5))",
+        "device.click(BATTLE_STATUS_D)"
+      ]
+    },
+    {
+      "name": "exp-info-a",
+      "source_method": "module.combat.combat.Combat.handle_exp_info",
+      "returned": true,
+      "resource_queries": [
+        "PAUSE",
+        "EXP_INFO_S",
+        "EXP_INFO_A"
+      ],
+      "virtual_actions": [
+        "EXP_INFO_A"
+      ],
+      "virtual_sleeps": [
+        "(0.25, 0.5)"
+      ],
+      "call_order": [
+        "query:PAUSE",
+        "query:EXP_INFO_S",
+        "query:EXP_INFO_A",
+        "device.click(EXP_INFO_A)",
+        "device.sleep((0.25, 0.5))"
+      ]
+    },
+    {
+      "name": "exp-info-b",
+      "source_method": "module.combat.combat.Combat.handle_exp_info",
+      "returned": true,
+      "resource_queries": [
+        "PAUSE",
+        "EXP_INFO_S",
+        "EXP_INFO_A",
+        "EXP_INFO_B"
+      ],
+      "virtual_actions": [
+        "EXP_INFO_B"
+      ],
+      "virtual_sleeps": [
+        "(0.25, 0.5)"
+      ],
+      "call_order": [
+        "query:PAUSE",
+        "query:EXP_INFO_S",
+        "query:EXP_INFO_A",
+        "query:EXP_INFO_B",
+        "device.click(EXP_INFO_B)",
+        "device.sleep((0.25, 0.5))"
+      ]
+    },
+    {
+      "name": "guild-popup-confirm",
+      "source_method": "module.handler.info_handler.InfoHandler.handle_guild_popup_confirm",
+      "returned": true,
+      "resource_queries": [
+        "GUILD_POPUP_CANCEL",
+        "GUILD_POPUP_CONFIRM"
+      ],
+      "virtual_actions": [
+        "GUILD_POPUP_CONFIRM"
+      ],
+      "virtual_sleeps": [],
+      "call_order": [
+        "query:GUILD_POPUP_CANCEL",
+        "query:GUILD_POPUP_CONFIRM",
+        "device.click(GUILD_POPUP_CONFIRM)"
+      ]
+    },
+    {
+      "name": "guild-popup-cancel",
+      "source_method": "module.handler.info_handler.InfoHandler.handle_guild_popup_cancel",
+      "returned": true,
+      "resource_queries": [
+        "GUILD_POPUP_CONFIRM",
+        "GUILD_POPUP_CANCEL"
+      ],
+      "virtual_actions": [
+        "GUILD_POPUP_CANCEL"
+      ],
+      "virtual_sleeps": [],
+      "call_order": [
+        "query:GUILD_POPUP_CONFIRM",
+        "query:GUILD_POPUP_CANCEL",
+        "device.click(GUILD_POPUP_CANCEL)"
+      ]
+    },
+    {
+      "name": "mission-popup-go",
+      "source_method": "module.handler.info_handler.InfoHandler.handle_mission_popup_go",
+      "returned": true,
+      "resource_queries": [
+        "MISSION_POPUP_ACK",
+        "MISSION_POPUP_GO"
+      ],
+      "virtual_actions": [
+        "MISSION_POPUP_GO"
+      ],
+      "virtual_sleeps": [],
+      "call_order": [
+        "query:MISSION_POPUP_ACK",
+        "query:MISSION_POPUP_GO",
+        "device.click(MISSION_POPUP_GO)"
+      ]
+    },
+    {
+      "name": "mission-popup-ack",
+      "source_method": "module.handler.info_handler.InfoHandler.handle_mission_popup_ack",
+      "returned": true,
+      "resource_queries": [
+        "MISSION_POPUP_GO",
+        "MISSION_POPUP_ACK"
+      ],
+      "virtual_actions": [
+        "MISSION_POPUP_ACK"
+      ],
+      "virtual_sleeps": [],
+      "call_order": [
+        "query:MISSION_POPUP_GO",
+        "query:MISSION_POPUP_ACK",
+        "device.click(MISSION_POPUP_ACK)"
+      ]
+    },
+    {
+      "name": "retirement-entry",
+      "source_method": "module.retire.retirement.Retirement.handle_retirement",
+      "returned": false,
+      "resource_queries": [
+        "RETIRE_APPEAR_1"
+      ],
+      "virtual_actions": [
+        "RETIRE_APPEAR_1"
+      ],
+      "virtual_sleeps": [],
+      "call_order": [
+        "handle_game_tips:false",
+        "query:RETIRE_APPEAR_1",
+        "device.click(RETIRE_APPEAR_1)",
+        "interval_clear:IN_RETIREMENT_CHECK",
+        "interval_reset:AUTO_SEARCH_MAP_OPTION_OFF,AUTO_SEARCH_MAP_OPTION_ON"
+      ]
+    },
+    {
+      "name": "retirement-dispatch",
+      "source_method": "module.retire.retirement.Retirement.handle_retirement",
+      "returned": true,
+      "resource_queries": [
+        "RETIRE_APPEAR_1",
+        "IN_RETIREMENT_CHECK"
+      ],
+      "virtual_actions": [],
+      "virtual_sleeps": [],
+      "call_order": [
+        "handle_game_tips:false",
+        "query:RETIRE_APPEAR_1",
+        "query:IN_RETIREMENT_CHECK",
+        "retire_handler:None",
+        "interval_reset:IN_RETIREMENT_CHECK"
+      ]
+    },
+    {
+      "name": "story-letters-only",
+      "source_method": "module.handler.info_handler.InfoHandler.story_skip",
+      "returned": true,
+      "resource_queries": [
+        "STORY_LETTERS_ONLY"
+      ],
+      "virtual_actions": [
+        "STORY_LETTERS_ONLY"
+      ],
+      "virtual_sleeps": [],
+      "call_order": [
+        "story_black:true",
+        "query:STORY_LETTERS_ONLY",
+        "device.click(STORY_LETTERS_ONLY)"
+      ]
+    },
+    {
+      "name": "story-skip",
+      "source_method": "module.handler.info_handler.InfoHandler.story_skip",
+      "returned": true,
+      "resource_queries": [
+        "STORY_SKIP_3"
+      ],
+      "virtual_actions": [
+        "STORY_SKIP"
+      ],
+      "virtual_sleeps": [],
+      "call_order": [
+        "story_black:false",
+        "query:STORY_SKIP_3",
+        "interval_reset:STORY_SKIP_3",
+        "device.click(STORY_SKIP)"
+      ]
+    },
+    {
+      "name": "story-close",
+      "source_method": "module.handler.info_handler.InfoHandler.story_skip",
+      "returned": true,
+      "resource_queries": [
+        "STORY_SKIP_3",
+        "STORY_CLOSE"
+      ],
+      "virtual_actions": [
+        "STORY_CLOSE"
+      ],
+      "virtual_sleeps": [],
+      "call_order": [
+        "story_black:false",
+        "query:STORY_SKIP_3",
+        "query:STORY_CLOSE",
+        "device.click(STORY_CLOSE)"
+      ]
+    },
+    {
+      "name": "ambush-evade-success",
+      "source_method": "module.handler.ambush.AmbushHandler.handle_ambush",
+      "returned": false,
+      "resource_queries": [
+        "MAP_AMBUSH_EVADE",
+        "MAP_AMBUSH_EVADE",
+        "MAP_AMBUSH_EVADE"
+      ],
+      "virtual_actions": [
+        "MAP_AMBUSH_EVADE"
+      ],
+      "virtual_sleeps": [],
+      "call_order": [
+        "query:MAP_AMBUSH_EVADE",
+        "query:MAP_AMBUSH_EVADE",
+        "wait_until_appear:MAP_AMBUSH_EVADE",
+        "handle_info_bar",
+        "info_bar_count:0",
+        "query:MAP_AMBUSH_EVADE",
+        "device.click(MAP_AMBUSH_EVADE)",
+        "device.screenshot",
+        "info_bar_count:1",
+        "image_crop:info_bar"
+      ]
+    }
+  ],
+  "alas_commit": "81ccf63b4540f00241628c82a58c02c7a2bb11af",
+  "config": "semantic_e2e",
+  "source_files_sha256": {
+    "module/combat/combat.py": "b9dca471e8454dd95d802e0e63d76e26f90e7d3e3196ed1bc6997e0523898bfa",
+    "module/handler/info_handler.py": "455e3a20776eaa8176e7320c3d6b0b161d5eda96bbcfd789ba1acf2125c07241",
+    "module/handler/ambush.py": "c6ead02b8c3e54a82ff45f350fe3ab7116a41418bd4fdc7645cd33397123c6c5",
+    "module/retire/retirement.py": "c205ec99c80da3855a6c2756ade1e8a883f77c372a5b9d81952b1fc8beb63471"
+  }
+}
