@@ -50,10 +50,11 @@ planning are documented in the
 [G14 validation report](docs/g14-alas-map-sync-validation-report.md). The
 passive semantic-marker to ALAS fleet-index reconciliation is documented in
 the [G15 validation report](docs/g15-campaign-fleet-index-validation-report.md).
-The original-ALAS decision preview and the separately budgeted, still
-preflight-only combat admission are documented in the
+The original-ALAS decision preview, separately budgeted combat admission, and
+captured original `_goto()` input prefix are documented in the
 [G16 validation report](docs/g16-alas-campaign-decision-preview-validation-report.md)
-and [G17 validation report](docs/g17-campaign-combat-admission-validation-report.md).
+and [G17 validation report](docs/g17-campaign-combat-admission-validation-report.md),
+plus the [G18 validation report](docs/g18-alas-goto-input-preview-validation-report.md).
 
 G1, G2, G3, and the formal G4 harmless closed loop passed. G4 includes
 EventSystem top-raycast proof for every injected target, not only object state
@@ -90,8 +91,10 @@ displayed marker from the exact top-stage fleet number and current roster,
 including ALAS's reversed-fleet rule, and populates native indexed locations.
 Movement remains structurally closed because the patched runner stops before
 `goto()`. G17 defines a default-zero, decision-bound exact grid-input lease and
-post-battle proof, but does not spend that lease until ALAS's original
-`_goto()` and combat observation chain is complete. Lua/game-state coverage,
+post-battle proof. G18 now runs ALAS's original `_goto()` retreat/fleet/camera/
+conversion prefix on an isolated shell and captures its own
+`device.click(grid)` call without spending that lease or injecting input. The
+post-click combat observation chain remains closed. Lua/game-state coverage,
 formation-layout changes, campaign movement execution, battle state,
 weekly-only end-to-end
 coverage, repeated sorties, and full unattended ALAS task coverage remain
@@ -219,3 +222,7 @@ map is given to ALAS's original `battle_function()`, and the first public
 `battle_0`, fleet `1`, and the fighting enemy at `D6`; no movement, combat,
 retreat, or map reward input is enabled. See the
 [G16 validation report](docs/g16-alas-campaign-decision-preview-validation-report.md).
+G17 binds that decision to one exact default-closed D6 combat lease, and G18
+runs the original `_goto()` prefix through its exact click statement using
+typed fleet/camera/grid observations. The click is captured before dispatch,
+so this remains a zero-input preflight rather than a movement or battle pass.

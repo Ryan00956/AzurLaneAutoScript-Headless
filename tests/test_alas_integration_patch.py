@@ -241,14 +241,24 @@ class AlasIntegrationPatchTests(unittest.TestCase):
         self.assertNotIn("self.campaign.goto(decision", self.patch_text)
         self.assertNotIn("self.campaign._goto(decision", self.patch_text)
 
-    def test_campaign_combat_admission_stops_before_alas_execution(self):
+    def test_campaign_combat_admission_runs_captured_native_goto_prefix(self):
         self.assertIn(
             "semantic_adapter.authorize_campaign_combat(",
             self.patch_text,
         )
         self.assertIn("Semantic ALAS combat admission:", self.patch_text)
         self.assertIn(
-            "Semantic campaign combat admission validation complete",
+            "preview_alas_campaign_goto_input,",
+            self.patch_text,
+        )
+        self.assertIn(
+            "goto_input = preview_alas_campaign_goto_input(",
+            self.patch_text,
+        )
+        self.assertIn("Semantic ALAS goto input preview:", self.patch_text)
+        self.assertIn("goto_input.call_order", self.patch_text)
+        self.assertIn(
+            "Semantic ALAS goto input preview validation complete",
             self.patch_text,
         )
         self.assertNotIn("self.campaign.goto(decision", self.patch_text)

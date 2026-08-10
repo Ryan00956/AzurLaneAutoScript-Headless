@@ -104,13 +104,16 @@ default:
 $env:ALAS_SEMANTIC_CAMPAIGN_COMBAT_BUDGET = '1'
 ```
 
-G17 uses this value only to prepare one decision-bound, zero-distance
+G17 uses this value to prepare one decision-bound, zero-distance
 fighting-enemy admission. It revalidates the exact Unity cell path, geometry,
-top raycast, foreground, and blockers, then the patched runner raises
-`ScriptEnd` before `goto()`; no grid tap is injected. The dynamic input port
-accepts only the global cell annotation written by ALAS's original `_goto()`
-at `device.click(grid)`, and its one-use budget/post-battle proof are ready for
-a later gate. Do not treat the positive G17 budget as live combat enablement.
+top raycast, foreground, and blockers. G18 then runs ALAS's original `_goto()`
+on an isolated shell through the low-HP check, original fleet ensure,
+visibility/focus/centering, global-to-local conversion, color initialization,
+and its own `device.click(grid)` statement. That call is captured and aborted;
+the dynamic adapter input port is not invoked, the budget is not consumed, and
+no grid tap is injected. The runner logs the eight-call prefix and raises
+`ScriptEnd`. Do not treat a positive budget as live combat enablement until
+the post-click ALAS combat observation chain is also qualified.
 
 Commission start has a separate integer budget and remains closed by default:
 

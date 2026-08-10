@@ -13,6 +13,10 @@ or combat input is enabled.
 G17 adds a default-zero, decision-bound combat admission contract and an exact
 dynamic grid-input port, but the patched runner still stops after preflight.
 It is not a movement or battle execution pass.
+G18 runs the original ALAS `_goto()` prefix through its existing
+`device.click(grid)` statement with semantic fleet/camera/grid inputs, then
+captures and aborts before dispatch. The lease remains unspent and the
+post-click combat chain remains closed.
 G4 includes
 login/main reachability, sustained semantic state, RectTransform bounds, top
 EventSystem raycast identity for each action, and a settings-page return loop.
@@ -336,6 +340,29 @@ See [G16 ALAS campaign decision preview](g16-alas-campaign-decision-preview-vali
   budget therefore proves readiness but injects no live input in G17.
 
 See [G17 campaign combat admission](g17-campaign-combat-admission-validation-report.md).
+
+## G18 - Original ALAS `_goto()` input preview
+
+- Revalidate the exact G17 admission against the same current projection,
+  decision, typed map state, fleet/enemy identity, and Unity cell geometry.
+- Execute ALAS's original `_goto(target, expected)` on an isolated shell; do
+  not implement a second navigation or combat controller.
+- Supply only typed current/displayed fleet, centered zero-distance
+  camera/view, exact local-grid binding, and a neutral pre-click ambush color
+  baseline. Keep original fleet ensure, visibility, focus, centering, and
+  coordinate-conversion methods in the call chain.
+- Capture only the exact `device.click(grid)` call after `_goto()` writes its
+  global-location annotation. Do not call the adapter input port, consume the
+  campaign budget, or inject ADB input.
+- Reject retreat, index/state/geometry drift, any real camera swipe, premature
+  Device access, changed annotation, unexpected ordering, or a second click.
+- Restore exact class-level map/grid dictionaries and leave the campaign,
+  projected map, configuration, admission, and budget unchanged.
+- Require a pinned real-ALAS qualification, negative tests, source compile,
+  clean patch application/matching, and honest disclosure of the current live
+  blocker.
+
+See [G18 ALAS `_goto()` input preview](g18-alas-goto-input-preview-validation-report.md).
 
 ## Stop or pivot conditions
 

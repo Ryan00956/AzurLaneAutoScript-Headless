@@ -4,6 +4,30 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G18 original ALAS `_goto()` prefix: pinned zero-input pass
+
+- After the G17 admission, an isolated campaign shell now calls the original
+  `_goto(target, expected)` and captures its own `device.click(grid)` boundary.
+  The adapter click port is never invoked, the budget remains unspent, and no
+  ADB input occurs.
+- ALAS owns the exact sequence: low-HP retreat check, original
+  `fleet_ensure()`, visibility/focus, zero-vector map swipe, grid centering,
+  global-to-local conversion, color-baseline ordering, and final grid click.
+  Only the fleet/camera/view/color inputs are supplied semantically.
+- Low-HP retreat, fleet/index drift, stale map or decision data, native target
+  drift, early Device access, changed grid annotation, any real swipe, and any
+  second click fail before input.
+- Real pinned `campaign_12_4.Campaign` reproduced D6 as local D3 with sight
+  `(-3, 0, 3, 2)`, reached all eight expected calls, restored the exact native
+  map/grid dictionaries, and left the projected map unchanged.
+- A fresh read-only live request at generations `91862..91863` remained
+  complete (`96` Buttons, `60` Texts, `320` Images) and still showed the exact
+  `[NetworkDown]` prompt. No current live execution is claimed.
+- The full suite passes `261/261`; sources compile; the canonical patch applies
+  cleanly and exactly matches the exercised checkout diff.
+
+See [G18 ALAS `_goto()` input preview](g18-alas-goto-input-preview-validation-report.md).
+
 ### G17 campaign combat admission: contract pass, live execution still closed
 
 - A separate `ALAS_SEMANTIC_CAMPAIGN_COMBAT_BUDGET` now defaults to `0`; the

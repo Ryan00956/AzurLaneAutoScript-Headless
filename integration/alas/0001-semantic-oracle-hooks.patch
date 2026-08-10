@@ -165,7 +165,7 @@ index 45e8179..55ba834 100644
          timeout = Timer(1, count=2).start()
          while 1:
 diff --git a/module/campaign/run.py b/module/campaign/run.py
-index 5703330..95b27a0 100644
+index 5703330..584a196 100644
 --- a/module/campaign/run.py
 +++ b/module/campaign/run.py
 @@ -366,6 +366,16 @@ class CampaignRun(CampaignEvent):
@@ -193,7 +193,7 @@ index 5703330..95b27a0 100644
          name, folder = self.handle_stage_name(name, folder, mode=mode)
          self.config.override(Campaign_Name=name, Campaign_Event=folder)
          self.load_campaign(name, folder=folder)
-@@ -399,6 +410,92 @@ class CampaignRun(CampaignEvent):
+@@ -399,6 +410,114 @@ class CampaignRun(CampaignEvent):
                  self.device.screenshot()
              self.campaign.device.image = self.device.image
              if self.campaign.is_in_map():
@@ -213,6 +213,7 @@ index 5703330..95b27a0 100644
 +                    )
 +                    from alas_headless import (
 +                        preview_alas_campaign_decision,
++                        preview_alas_campaign_goto_input,
 +                        synchronize_alas_campaign_map,
 +                    )
 +                    projection = synchronize_alas_campaign_map(
@@ -279,14 +280,35 @@ index 5703330..95b27a0 100644
 +                            f'generation={admission.generation}'
 +                            f'->{admission.input_generation}'
 +                        )
++                        goto_input = preview_alas_campaign_goto_input(
++                            self.campaign,
++                            projection,
++                            decision,
++                            admission,
++                            state,
++                        )
++                        logger.info(
++                            'Semantic ALAS goto input preview: '
++                            f'battle={goto_input.battle_count}, '
++                            f'fleet={goto_input.fleet_index}:'
++                            f'{goto_input.fleet_marker}, '
++                            f'target={goto_input.target_node}, '
++                            f'camera={goto_input.camera_node}, '
++                            f'local={goto_input.local_location}, '
++                            f'sight={goto_input.sight}, '
++                            f'path={goto_input.cell_path}, '
++                            f'calls={list(goto_input.call_order)}, '
++                            f'generation={goto_input.generation}'
++                            f'->{goto_input.input_generation}'
++                        )
 +                        raise ScriptEnd(
-+                            'Semantic campaign combat admission validation complete'
++                            'Semantic ALAS goto input preview validation complete'
 +                        )
 +                    return True
                  logger.info('Already in map, retreating.')
                  try:
                      self.campaign.withdraw()
-@@ -435,6 +532,12 @@ class CampaignRun(CampaignEvent):
+@@ -435,6 +554,12 @@ class CampaignRun(CampaignEvent):
              self.device.stuck_record_clear()
              self.device.click_record_clear()
              try:

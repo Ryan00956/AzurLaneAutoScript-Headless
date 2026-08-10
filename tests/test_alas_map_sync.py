@@ -13,7 +13,9 @@ from alas_headless import (
     CampaignMapState,
     Point,
     SemanticGateClosed,
+    prepare_alas_campaign_combat_admission,
     preview_alas_campaign_decision,
+    preview_alas_campaign_goto_input,
     synchronize_alas_campaign_map,
 )
 
@@ -41,6 +43,8 @@ class FakeGrid:
         self.is_fleet = False
         self.is_current_fleet = False
         self.is_enemy = False
+        self.is_siren = False
+        self.is_portal = False
         self.is_ammo = False
         self.enemy_scale = 0
         self.enemy_genre = None
@@ -54,6 +58,7 @@ class FakeMap:
     def __init__(self):
         self.name = "12-4"
         self.shape = (2, 1)
+        self.camera_sight = (-3, -1, 3, 2)
         self.grids = {
             (0, 0): FakeGrid((0, 0), may_enemy=True),
             (1, 0): FakeGrid((1, 0), is_land=True),
@@ -76,6 +81,10 @@ class FakeMap:
             for grid in self
             if all(getattr(grid, name) == value for name, value in attributes.items())
         ]
+
+    def grid_covered(self, grid, location=None):
+        del grid, location
+        return []
 
     def reset(self):
         for grid in self:
@@ -185,6 +194,117 @@ class FakeCampaign:
         return True
 
 
+class FakeGotoCampaign(FakeCampaign):
+    def __init__(self):
+        super().__init__()
+        self.config.HpControl_UseLowHpRetreat = False
+        self.config.HpControl_LowHpRetreatThreshold = 0.2
+        self.config.MAP_GRID_CENTER_TOLERANCE = 0.1
+        self.fleet_submarine_location = ()
+        self.hp = (1.0,)
+        self.hp_has_ship = (True,)
+
+    @property
+    def _walk_sight(self):
+        sight = self.map.camera_sight
+        return sight[0], 0, sight[2], sight[3]
+
+    def hp_retreat_triggered(self):
+        return bool(
+            self.config.HpControl_UseLowHpRetreat
+            and any(
+                hp < self.config.HpControl_LowHpRetreatThreshold
+                for hp, has_ship in zip(self.hp, self.hp_has_ship)
+                if has_ship
+            )
+        )
+
+    def withdraw(self):
+        self.device.screenshot()
+
+    def fleet_set(self, index=None, skip_first_screenshot=True):
+        del index, skip_first_screenshot
+        self.device.screenshot()
+
+    def fleet_ensure(self, index):
+        return self.fleet_set(index=index)
+
+    def focus_to(self, location):
+        location = tuple(location)
+        if location != tuple(self.camera):
+            self.device.swipe_vector((1, 1))
+
+    def in_sight(self, location, sight=None):
+        location = tuple(location)
+        sight = self.map.camera_sight if sight is None else tuple(sight)
+        diff = (location[0] - self.camera[0], location[1] - self.camera[1])
+        x = max(sight[0], min(sight[2], diff[0]))
+        y = max(sight[1], min(sight[3], diff[1]))
+        self.focus_to((location[0] - x, location[1] - y))
+
+    def focus_to_grid_center(self, tolerance=None):
+        tolerance = (
+            self.config.MAP_GRID_CENTER_TOLERANCE
+            if tolerance is None
+            else tolerance
+        )
+        if any(abs(value - 0.5) > tolerance for value in self.view.center_offset):
+            self.device.swipe_vector((0, 0))
+            return True
+        return False
+
+    def convert_global_to_local(self, location):
+        local = (
+            int(location[0] - self.camera[0] + self.view.center_loca[0]),
+            int(location[1] - self.camera[1] + self.view.center_loca[1]),
+        )
+        if local in self.view:
+            return self.view[local]
+        self.focus_to(location)
+        return self.view[local]
+
+    def ambush_color_initial(self):
+        del self.device.image
+
+    def enemy_searching_color_initial(self):
+        pass
+
+    def grid_annotation(self, location):
+        return location
+
+    def before_grid_click(self):
+        pass
+
+    def _goto(self, location, expected=""):
+        del expected
+        location = tuple(location)
+        self.movable_before = self.map.select(is_siren=True)
+        self.movable_before_normal = self.map.select(is_enemy=True)
+        if self.hp_retreat_triggered():
+            self.withdraw()
+        is_portal = self.map[location].is_portal
+        del is_portal
+        may_submarine_icon = self.map.grid_covered(
+            self.map[location], location=[(0, -1)]
+        )
+        may_submarine_icon = (
+            may_submarine_icon
+            and self.fleet_submarine_location
+            == may_submarine_icon[0].location
+        )
+        del may_submarine_icon
+        self.fleet_ensure(self.fleet_current_index)
+        self.in_sight(location, sight=self._walk_sight)
+        self.focus_to_grid_center()
+        grid = self.convert_global_to_local(location)
+        self.ambush_color_initial()
+        self.enemy_searching_color_initial()
+        grid.__str__ = self.grid_annotation(location)
+        self.before_grid_click()
+        self.device.click(grid)
+        self.device.screenshot()
+
+
 def make_state(pickup_node="C1"):
     cells = []
     for row, column, node in (
@@ -240,6 +360,18 @@ def make_state(pickup_node="C1"):
         displayed_fleet_index=1,
         current_fleet_marker="alpha",
         current_fleet_roster_sprites=("alpha", "support"),
+    )
+
+
+def make_zero_distance_state():
+    state = make_state()
+    return replace(
+        state,
+        fleets=(
+            CampaignMapFleetState("alpha", "A1", 5, 5),
+            CampaignMapFleetState("beta", "B2", 4, 5),
+        ),
+        enemies=(replace(state.enemies[0], fighting=True),),
     )
 
 
@@ -493,6 +625,139 @@ class AlasCampaignDecisionPreviewTests(unittest.TestCase):
 
         with self.assertRaisesRegex(SemanticGateClosed, "route disagrees"):
             preview_alas_campaign_decision(campaign, bad_projection)
+
+
+class AlasCampaignGotoInputPreviewTests(unittest.TestCase):
+    @staticmethod
+    def prepare(campaign=None):
+        campaign = campaign or FakeGotoCampaign()
+        state = make_zero_distance_state()
+        projection = synchronize_alas_campaign_map(campaign, state)
+        decision = preview_alas_campaign_decision(campaign, projection)
+        admission = prepare_alas_campaign_combat_admission(
+            decision, state, input_generation=state.generation
+        )
+        return campaign, state, projection, decision, admission
+
+    def test_runs_original_goto_prefix_and_captures_exact_click_without_input(self):
+        campaign, state, projection, decision, admission = self.prepare()
+        source_map_dict = campaign.MAP.__dict__
+        source_grid_dicts = {
+            location: grid.__dict__
+            for location, grid in campaign.MAP.grids.items()
+        }
+        campaign_snapshot = campaign.__dict__.copy()
+        config_snapshot = campaign.config.__dict__.copy()
+
+        preview = preview_alas_campaign_goto_input(
+            campaign, projection, decision, admission, state
+        )
+
+        self.assertEqual(preview.target_node, "A1")
+        self.assertEqual(preview.expected, "combat")
+        self.assertEqual(preview.fleet_index, 1)
+        self.assertEqual(preview.fleet_marker, "alpha")
+        self.assertFalse(preview.retreat_triggered)
+        self.assertEqual(preview.sight, (-3, 0, 3, 2))
+        self.assertEqual(preview.camera_node, "A1")
+        self.assertEqual(preview.local_location, (3, 2))
+        self.assertEqual(preview.cell_path, admission.cell_path)
+        self.assertEqual(preview.point, admission.point)
+        self.assertEqual(preview.bounds, admission.bounds)
+        self.assertEqual(
+            preview.call_order,
+            (
+                "hp_retreat_triggered",
+                "fleet_set",
+                "in_sight",
+                "focus_to_grid_center",
+                "convert_global_to_local",
+                "ambush_color_initial",
+                "enemy_searching_color_initial",
+                "device.click",
+            ),
+        )
+        self.assertEqual(campaign.__dict__, campaign_snapshot)
+        self.assertEqual(campaign.config.__dict__, config_snapshot)
+        self.assertIs(campaign.MAP.__dict__, source_map_dict)
+        for location, grid_dict in source_grid_dicts.items():
+            self.assertIs(campaign.MAP[location].__dict__, grid_dict)
+
+    def test_rejects_stale_map_state_before_goto(self):
+        campaign, state, projection, decision, admission = self.prepare()
+        stale = replace(state, generation=state.generation + 1)
+
+        with self.assertRaisesRegex(SemanticGateClosed, "identity changed"):
+            preview_alas_campaign_goto_input(
+                campaign, projection, decision, admission, stale
+            )
+
+    def test_rejects_changed_decision_before_goto(self):
+        campaign, state, projection, decision, admission = self.prepare()
+        changed = replace(decision, expected="combat_boss")
+
+        with self.assertRaisesRegex(SemanticGateClosed, "decision changed"):
+            preview_alas_campaign_goto_input(
+                campaign, projection, changed, admission, state
+            )
+
+    def test_rejects_fleet_index_drift_before_goto(self):
+        campaign, state, projection, decision, admission = self.prepare()
+        campaign.fleet_show_index = 2
+
+        with self.assertRaisesRegex(SemanticGateClosed, "fleet indexes changed"):
+            preview_alas_campaign_goto_input(
+                campaign, projection, decision, admission, state
+            )
+
+    def test_rejects_low_hp_retreat_path_before_device_input(self):
+        campaign = FakeGotoCampaign()
+        campaign.config.HpControl_UseLowHpRetreat = True
+        campaign.hp = (0.1,)
+        campaign, state, projection, decision, admission = self.prepare(campaign)
+
+        with self.assertRaisesRegex(SemanticGateClosed, "withdraw"):
+            preview_alas_campaign_goto_input(
+                campaign, projection, decision, admission, state
+            )
+
+    def test_rejects_device_access_before_captured_click(self):
+        class ScreenshotCampaign(FakeGotoCampaign):
+            def before_grid_click(self):
+                self.device.screenshot()
+
+        campaign, state, projection, decision, admission = self.prepare(
+            ScreenshotCampaign()
+        )
+
+        with self.assertRaisesRegex(SemanticGateClosed, "Device access"):
+            preview_alas_campaign_goto_input(
+                campaign, projection, decision, admission, state
+            )
+
+    def test_rejects_changed_global_grid_annotation(self):
+        class WrongAnnotationCampaign(FakeGotoCampaign):
+            def grid_annotation(self, location):
+                del location
+                return 1, 1
+
+        campaign, state, projection, decision, admission = self.prepare(
+            WrongAnnotationCampaign()
+        )
+
+        with self.assertRaisesRegex(SemanticGateClosed, "annotation changed"):
+            preview_alas_campaign_goto_input(
+                campaign, projection, decision, admission, state
+            )
+
+    def test_rejects_native_target_state_drift(self):
+        campaign, state, projection, decision, admission = self.prepare()
+        campaign.map[(0, 0)].is_current_fleet = False
+
+        with self.assertRaisesRegex(SemanticGateClosed, "native target state"):
+            preview_alas_campaign_goto_input(
+                campaign, projection, decision, admission, state
+            )
 
 if __name__ == "__main__":
     unittest.main()
