@@ -47,6 +47,7 @@ from .semantic_oracle import (
     SemanticGateClosed,
     SemanticOracle,
     TextState,
+    ToggleState,
     UiState,
 )
 
@@ -60,6 +61,7 @@ ALAS_COMBAT_OBSERVER_MANIFEST_SCHEMA = (
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _ACTION_RESOURCES = frozenset(
     {
+        "AUTOMATION_CONFIRM",
         "BATTLE_PREPARATION",
         "BATTLE_STATUS_S",
         "EXP_INFO_S",
@@ -73,6 +75,8 @@ class AlasCombatUnityRecordKind(str, Enum):
     BUTTON = "button"
     IMAGE = "image"
     TEXT = "text"
+    TOGGLE_OFF = "toggle_off"
+    TOGGLE_ON = "toggle_on"
 
 
 @dataclass(frozen=True)
@@ -478,6 +482,12 @@ def _validate_selector(
     elif selector.kind is AlasCombatUnityRecordKind.BUTTON:
         if selector.sprite or selector.text:
             raise SemanticGateClosed("combat button selector is malformed")
+    elif selector.kind in (
+        AlasCombatUnityRecordKind.TOGGLE_OFF,
+        AlasCombatUnityRecordKind.TOGGLE_ON,
+    ):
+        if selector.sprite or selector.text or selector.require_top_raycast:
+            raise SemanticGateClosed("combat Toggle selector is malformed")
     else:
         raise SemanticGateClosed("combat Unity selector kind is unsupported")
 
@@ -607,8 +617,10 @@ def _record_for_selector(
         records: Iterable[Any] = snapshot.oracle_state.buttons
     elif selector.kind is AlasCombatUnityRecordKind.IMAGE:
         records = snapshot.ui_state.images
-    else:
+    elif selector.kind is AlasCombatUnityRecordKind.TEXT:
         records = snapshot.ui_state.texts
+    else:
+        records = snapshot.ui_state.toggles
     identities = [record for record in records if record.path == selector.path]
     if len(identities) > 1:
         raise SemanticGateClosed("combat Unity selector path is ambiguous")
@@ -626,6 +638,13 @@ def _record_for_selector(
         if record.truncated:
             raise SemanticGateClosed("combat Unity Text identity is truncated")
         if selector.text and record.text != selector.text:
+            return None
+    elif selector.kind in (
+        AlasCombatUnityRecordKind.TOGGLE_OFF,
+        AlasCombatUnityRecordKind.TOGGLE_ON,
+    ):
+        expected_checked = selector.kind is AlasCombatUnityRecordKind.TOGGLE_ON
+        if not isinstance(record, ToggleState) or record.checked is not expected_checked:
             return None
     return record
 
@@ -819,7 +838,7 @@ def build_alas_campaign_combat_replay_from_observer(
     snapshots: Sequence[AlasCombatObserverSnapshot],
     manifest: AlasCombatObserverManifest,
 ) -> AlasCampaignCombatReplay:
-    """Infer one bounded 6-8 frame replay from exact Unity records."""
+    """Infer one bounded 6-9 frame replay from exact Unity records."""
 
     if not isinstance(admission, AlasCampaignCombatAdmission):
         raise SemanticGateClosed("combat observer replay requires an admission")
@@ -831,7 +850,7 @@ def build_alas_campaign_combat_replay_from_observer(
         )
     allowed_lengths = {len(sequence) for sequence in ALAS_COMBAT_REPLAY_PHASE_SEQUENCES}
     if len(snapshots) not in allowed_lengths:
-        raise SemanticGateClosed("combat observer replay requires 6 to 8 snapshots")
+        raise SemanticGateClosed("combat observer replay requires 6 to 9 snapshots")
     mappings: Dict[str, AlasCombatResourceMapping] = {
         item.resource_name: item for item in manifest.resources
     }
@@ -887,7 +906,11 @@ def build_alas_campaign_combat_replay_from_observer(
                 phase=phase,
                 visible_resources=tuple(sorted(visible)),
                 in_map=in_map,
-                combat_loading=phase is AlasCombatReplayPhase.BATTLE_PREPARATION,
+                combat_loading=phase
+                in (
+                    AlasCombatReplayPhase.AUTOMATION_CONFIRM,
+                    AlasCombatReplayPhase.BATTLE_PREPARATION,
+                ),
                 combat_executing=phase is AlasCombatReplayPhase.COMBAT_EXECUTING,
                 enemy_searching=phase is AlasCombatReplayPhase.MAP_SEARCHING,
                 fleet_on_target=fleet_on_target,
@@ -1170,7 +1193,7 @@ def load_alas_combat_observer_fixture(
     frames = value.get("frames")
     allowed_lengths = {len(sequence) for sequence in ALAS_COMBAT_REPLAY_PHASE_SEQUENCES}
     if not isinstance(frames, list) or len(frames) not in allowed_lengths:
-        raise SemanticGateClosed("combat observer fixture requires 6 to 8 frames")
+        raise SemanticGateClosed("combat observer fixture requires 6 to 9 frames")
     if any("phase" in frame for frame in frames if isinstance(frame, dict)):
         raise SemanticGateClosed("combat fixture must not provide phase tokens")
     return tuple(

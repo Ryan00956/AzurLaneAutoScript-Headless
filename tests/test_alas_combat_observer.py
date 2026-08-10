@@ -26,6 +26,7 @@ from alas_headless import (
     SemanticGateClosed,
     audit_alas_combat_observer_manifest,
     analyze_alas_combat_observer_candidates,
+    alas_combat_unity_selector_present,
     alas_combat_replay_phase_sequence,
     build_alas_combat_observer_trace,
     build_alas_combat_trace_frame,
@@ -34,6 +35,7 @@ from alas_headless import (
     compile_alas_combat_observer_fixture,
     load_alas_combat_observer_fixture,
     load_alas_combat_observer_manifest,
+    merge_alas_combat_observer_traces,
     parse_alas_combat_observer_fixture_frame,
     parse_alas_combat_observer_trace,
     prepare_alas_combat_resource_action,
@@ -49,6 +51,7 @@ DRIVER = "b" * 40
 GAME = "pinned-test-game"
 EVIDENCE = "a" * 64
 ACTION_RESOURCES = {
+    "AUTOMATION_CONFIRM",
     "BATTLE_PREPARATION",
     "BATTLE_STATUS_S",
     "EXP_INFO_S",
@@ -196,6 +199,20 @@ def image_record(name, path=None, sprite=None, fill=1.0):
             "right": 20.0,
             "bottom": 20.0,
         },
+    }
+
+
+def toggle_record(name, *, checked):
+    return {
+        "name": name,
+        "path": "Combat/Toggle/" + name,
+        "active_in_hierarchy": True,
+        "active_and_enabled": True,
+        "interactable": True,
+        "checked": checked,
+        "raycast_top": None,
+        "adb_point": None,
+        "adb_bounds": None,
     }
 
 
@@ -391,14 +408,14 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
         return path
 
-    def test_unqualified_manifest_is_honestly_zero_of_40(self):
+    def test_unqualified_manifest_is_honestly_zero_of_41(self):
         coverage = audit_alas_combat_observer_manifest(
             unqualified_alas_combat_observer_manifest(
                 driver_revision=DRIVER, game_fingerprint=GAME
             )
         )
 
-        self.assertEqual(coverage.total_resources, 40)
+        self.assertEqual(coverage.total_resources, 41)
         self.assertEqual(coverage.qualified_resources, 0)
         self.assertFalse(coverage.production_ready)
         self.assertEqual(
@@ -442,11 +459,89 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         self.assertEqual(replay.frames[5].phase, AlasCombatReplayPhase.GET_MISSION)
         self.assertEqual(len(replay.frames), 8)
 
+    def test_optional_automation_confirmation_is_inferred_before_preparation(self):
+        manifest = qualified_manifest()
+        phases = alas_combat_replay_phase_sequence(
+            include_automation_confirm=True,
+            include_get_items=True,
+            include_get_mission=True,
+        )
+        snapshots = load_alas_combat_observer_fixture(
+            self.write_fixture(fixture_value(phases)), manifest
+        )
+
+        replay = build_alas_campaign_combat_replay_from_observer(
+            admission(), snapshots, manifest
+        )
+
+        self.assertEqual(tuple(frame.phase for frame in replay.frames), phases)
+        self.assertEqual(replay.frames[0].phase, AlasCombatReplayPhase.AUTOMATION_CONFIRM)
+        self.assertEqual(replay.frames[1].phase, AlasCombatReplayPhase.BATTLE_PREPARATION)
+        self.assertEqual(len(replay.frames), 9)
+
+    def test_toggle_state_selector_distinguishes_automation_on_from_off(self):
+        manifest = qualified_manifest()
+        toggle_selector = AlasCombatUnitySelector(
+            AlasCombatUnityRecordKind.TOGGLE_ON,
+            "Combat/Toggle/AUTOMATION_ON",
+            "AUTOMATION_ON",
+        )
+        manifest = replace(
+            manifest,
+            resources=tuple(
+                AlasCombatResourceMapping(name, (toggle_selector,), EVIDENCE)
+                if name == "AUTOMATION_ON"
+                else mapping
+                for name, mapping in (
+                    (item.resource_name, item) for item in manifest.resources
+                )
+            ),
+        )
+        value = fixture_value()
+        preparation = value["frames"][0]
+        preparation["ui"]["images"] = [
+            item
+            for item in preparation["ui"]["images"]
+            if item["name"] != "AUTOMATION_ON"
+        ]
+        preparation["ui"]["image_count"] -= 1
+        preparation["ui"]["toggles"] = [
+            toggle_record("AUTOMATION_ON", checked=True)
+        ]
+        preparation["ui"]["toggle_count"] = 1
+        payload = {
+            key: preparation[key]
+            for key in ("snapshot", "buttons", "ui", "campaign_map")
+        }
+        preparation["sha256"] = hashlib.sha256(
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+
+        snapshots = load_alas_combat_observer_fixture(
+            self.write_fixture(value), manifest
+        )
+        replay = build_alas_campaign_combat_replay_from_observer(
+            admission(), snapshots, manifest
+        )
+
+        self.assertEqual(replay.frames[0].phase, AlasCombatReplayPhase.BATTLE_PREPARATION)
+        off_selector = replace(
+            toggle_selector, kind=AlasCombatUnityRecordKind.TOGGLE_OFF
+        )
+        self.assertFalse(
+            alas_combat_unity_selector_present(snapshots[0], off_selector)
+        )
+
     def test_unqualified_manifest_cannot_build_replay(self):
         manifest = unqualified_alas_combat_observer_manifest(
             driver_revision=DRIVER, game_fingerprint=GAME
         )
-        with self.assertRaisesRegex(SemanticGateClosed, "0/40"):
+        with self.assertRaisesRegex(SemanticGateClosed, "0/41"):
             build_alas_campaign_combat_replay_from_observer(
                 admission(), (), manifest
             )
@@ -733,8 +828,8 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         )
         coverage = audit_alas_combat_observer_manifest(manifest)
 
-        self.assertEqual(coverage.total_resources, 40)
-        self.assertEqual(coverage.qualified_resources, 6)
+        self.assertEqual(coverage.total_resources, 41)
+        self.assertEqual(coverage.qualified_resources, 10)
         self.assertEqual(coverage.qualified_blockers, 1)
         self.assertFalse(coverage.blocker_review_complete)
         self.assertFalse(coverage.blockers_qualified)
@@ -845,6 +940,38 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         self.assertEqual(report["phases"][0]["phase"], "battle_preparation")
         self.assertTrue(report["phases"][0]["actionable_buttons"])
 
+    def test_adjacent_trace_merge_requires_one_identity_and_increasing_generations(self):
+        manifest, frames, _ = self.trace_frames()
+        first = parse_alas_combat_observer_trace(
+            build_alas_combat_observer_trace(
+                manifest,
+                tuple(
+                    ("2026-08-10T06:10:{0:02d}Z".format(index), frame)
+                    for index, frame in enumerate(frames[:3], start=1)
+                ),
+            ),
+            manifest,
+        )
+        second = parse_alas_combat_observer_trace(
+            build_alas_combat_observer_trace(
+                manifest,
+                tuple(
+                    ("2026-08-10T06:11:{0:02d}Z".format(index), frame)
+                    for index, frame in enumerate(frames[3:], start=1)
+                ),
+            ),
+            manifest,
+        )
+
+        merged = merge_alas_combat_observer_traces((first, second))
+
+        self.assertEqual(merged.generations, tuple(range(11, 17)))
+        self.assertEqual(
+            tuple(sample.sequence for sample in merged.samples), tuple(range(1, 7))
+        )
+        with self.assertRaisesRegex(SemanticGateClosed, "not increasing"):
+            merge_alas_combat_observer_traces((second, first))
+
     def test_trace_rejects_input_claim_and_phase_token(self):
         manifest, frames, _ = self.trace_frames()
         samples = tuple(
@@ -946,7 +1073,7 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         coverage = audit_alas_combat_observer_manifest(promoted)
 
         self.assertEqual(receipt["schema"], ALAS_COMBAT_MAPPING_RECEIPT_SCHEMA)
-        self.assertEqual(coverage.qualified_resources, 40)
+        self.assertEqual(coverage.qualified_resources, 41)
         self.assertEqual(coverage.qualified_blockers, 1)
         self.assertFalse(coverage.blockers_qualified)
         self.assertFalse(coverage.production_ready)

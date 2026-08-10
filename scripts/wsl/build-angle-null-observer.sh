@@ -219,6 +219,18 @@ if ! grep -Fq 'NewBattleResultStatisticsPage(Clone)/bottom/confirmBtn' \
   echo "Combat EXP confirm Button raycast allowlist is missing" >&2
   exit 1
 fi
+if ! grep -Fq 'LevelStageView(Clone)/right_stage/event/collapse/' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp" || \
+   ! grep -Fq 'LevelStageView(Clone)/bottom_stage/Normal/' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Campaign map-control Button raycast allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'ChapterPreCombatUI(Clone)/adapt/right/start' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Combat-preparation start Button raycast allowlist is missing" >&2
+  exit 1
+fi
 if ! grep -Fq 'Overlay/UIMain/blur_panel/adapt/top/back_btn' \
     "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
   echo "Construction-page back-button allowlist is missing" >&2

@@ -1015,6 +1015,7 @@ class AlasCampaignCombatReplayContractTests(unittest.TestCase):
         _, state, _, _, admission, _ = self.prepare()
         replay = canonical_alas_campaign_combat_replay(
             admission,
+            include_automation_confirm=True,
             include_get_items=True,
             include_get_mission=True,
         )
@@ -1022,13 +1023,14 @@ class AlasCampaignCombatReplayContractTests(unittest.TestCase):
         self.assertEqual(
             tuple(frame.phase for frame in replay.frames),
             alas_combat_replay_phase_sequence(
+                include_automation_confirm=True,
                 include_get_items=True,
                 include_get_mission=True,
             ),
         )
         self.assertEqual(
             tuple(frame.generation for frame in replay.frames),
-            tuple(range(state.generation + 1, state.generation + 9)),
+            tuple(range(state.generation + 1, state.generation + 10)),
         )
 
     def test_rejects_reordered_phase_trace_before_campaign_interface(self):

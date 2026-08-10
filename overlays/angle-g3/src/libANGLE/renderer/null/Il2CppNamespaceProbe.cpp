@@ -482,6 +482,24 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
                "NewBattleResultStatisticsPage(Clone)/bottom/confirmBtn")) {
     return true;
   }
+  if (name == "lock_fleet" &&
+      EndsWith(path,
+               "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/"
+               "right_stage/event/collapse/lock_fleet")) {
+    return true;
+  }
+  if (name == "retreat_button" &&
+      EndsWith(path,
+               "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/"
+               "bottom_stage/Normal/retreat_button")) {
+    return true;
+  }
+  if (name == "start" &&
+      EndsWith(path,
+               "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/"
+               "adapt/right/start")) {
+    return true;
+  }
   if ((name == "start_button" &&
        EndsWith(path, "LevelStageInfoView(Clone)/panel/start_button")) ||
       (name == "btnBack" &&
@@ -1686,6 +1704,14 @@ const UiProbeResult &ProbeUnityUi(const Il2CppDynamicProbe &probe,
               std::string_view::npos ||
           path.find("LevelFleetSelectView(Clone)/panel/ShipList/") !=
               std::string_view::npos ||
+          EndsWith(path,
+                   "LevelStageView(Clone)/right_stage/event/collapse/"
+                   "lock_fleet") ||
+          EndsWith(path,
+                   "LevelStageView(Clone)/bottom_stage/Normal/"
+                   "retreat_button") ||
+          EndsWith(path,
+                   "ChapterPreCombatUI(Clone)/adapt/right/start") ||
           EndsWith(path,
                    "LevelFleetSelectView(Clone)/panel/Fixed/btnBack") ||
           EndsWith(path,

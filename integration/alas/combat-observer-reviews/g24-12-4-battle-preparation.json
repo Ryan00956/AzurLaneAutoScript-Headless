@@ -1,0 +1,47 @@
+{
+  "schema": "alas-headless.g22-combat-mapping-review/v1",
+  "review_id": "g24-12-4-battle-preparation",
+  "trace_sha256": "b500c371d29136bb7e22ff3ff055f68099f75455e7a79fa54713285e9ffce07a",
+  "generations": [3825, 3831, 3838],
+  "resources": [
+    {
+      "resource_name": "BATTLE_PREPARATION",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/right/start",
+          "name": "start",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/right/start",
+          "name": "start",
+          "sprite": "btn_formation_sel",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/right/start/text_en",
+          "name": "text_en",
+          "sprite": "",
+          "text": "WEIGH ANCHOR",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/right/start/text",
+          "name": "text",
+          "sprite": "",
+          "text": "出击",
+          "require_top_raycast": false
+        }
+      ]
+    }
+  ],
+  "blockers": [],
+  "blocker_review_complete": false
+}

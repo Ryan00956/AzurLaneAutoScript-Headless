@@ -188,6 +188,23 @@ review and fleet stats remain incomplete, so production replay and the G18
 runner stop remain fail-closed. See
 `docs/g23-alas-controlled-combat-acquisition-validation-report.md`.
 
+G24 adds only observer inputs and qualification tooling; it does not change the
+canonical ALAS patch or move the production stop. The bounded replay can place
+an optional automation-confirm phase before preparation, so original
+`handle_combat_automation_confirm()` owns the exact `知道了` action. The union
+query surface is now 41 resources.
+
+`AUTOMATION_ON` is an exact typed Toggle state (`checked=true`), while
+`AUTOMATION_CONFIRM` and `BATTLE_PREPARATION` remain exact top-raycast Button
+actions. Three reviewed receipts raise checked-in coverage to `10/41`.
+Adjacent same-PID read-only traces can be identity-checked and merged by the
+fixture compiler, which produced a seven-frame J3 evidence fixture. Blocker
+review and fleet stats are still incomplete; `AUTOMATION_OFF`, automation
+switching, `MAP_ENEMY_SEARCHING`, and the remaining defensive resources remain
+unqualified. Therefore `production_ready=false` and the G18 runner stop is
+unchanged. See
+`docs/g24-alas-combat-preparation-observer-validation-report.md`.
+
 Commission start has a separate integer budget and remains closed by default:
 
 ```powershell

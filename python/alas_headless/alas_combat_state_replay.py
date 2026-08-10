@@ -36,6 +36,7 @@ from .semantic_oracle import CampaignMapState, SemanticGateClosed
 
 
 class AlasCombatReplayPhase(str, Enum):
+    AUTOMATION_CONFIRM = "automation_confirm"
     BATTLE_PREPARATION = "battle_preparation"
     COMBAT_EXECUTING = "combat_executing"
     BATTLE_STATUS = "battle_status_s"
@@ -130,20 +131,26 @@ ALAS_COMBAT_REPLAY_PHASES = (
 
 def alas_combat_replay_phase_sequence(
     *,
+    include_automation_confirm: bool = False,
     include_get_items: bool = False,
     include_get_mission: bool = False,
 ) -> Tuple[AlasCombatReplayPhase, ...]:
     """Return one bounded original-ALAS post-battle input sequence."""
 
-    if not isinstance(include_get_items, bool) or not isinstance(
-        include_get_mission, bool
+    if (
+        not isinstance(include_automation_confirm, bool)
+        or not isinstance(include_get_items, bool)
+        or not isinstance(include_get_mission, bool)
     ):
         raise SemanticGateClosed("combat replay optional phase flags are invalid")
-    phases = [
+    phases = []
+    if include_automation_confirm:
+        phases.append(AlasCombatReplayPhase.AUTOMATION_CONFIRM)
+    phases.extend([
         AlasCombatReplayPhase.BATTLE_PREPARATION,
         AlasCombatReplayPhase.COMBAT_EXECUTING,
         AlasCombatReplayPhase.BATTLE_STATUS,
-    ]
+    ])
     if include_get_items:
         phases.append(AlasCombatReplayPhase.GET_ITEMS)
     phases.append(AlasCombatReplayPhase.EXP_INFO)
@@ -160,9 +167,11 @@ def alas_combat_replay_phase_sequence(
 
 ALAS_COMBAT_REPLAY_PHASE_SEQUENCES = tuple(
     alas_combat_replay_phase_sequence(
+        include_automation_confirm=include_automation_confirm,
         include_get_items=include_get_items,
         include_get_mission=include_get_mission,
     )
+    for include_automation_confirm in (False, True)
     for include_get_items in (False, True)
     for include_get_mission in (False, True)
 )
@@ -170,6 +179,10 @@ ALAS_COMBAT_REPLAY_PHASE_SEQUENCES = tuple(
 ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES: Mapping[
     AlasCombatReplayPhase, Tuple[str, ...]
 ] = MappingProxyType({
+    AlasCombatReplayPhase.AUTOMATION_CONFIRM: (
+        "AUTOMATION_CONFIRM",
+        "AUTOMATION_CONFIRM_CHECK",
+    ),
     AlasCombatReplayPhase.BATTLE_PREPARATION: (
         "AUTOMATION_ON",
         "BATTLE_PREPARATION",
@@ -191,6 +204,7 @@ ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES: Mapping[
 # adding *or removing* a query is upstream control-flow drift that must be
 # reviewed before a live Unity mapping can be considered complete.
 ALAS_COMBAT_REPLAY_RESOURCE_NAMES = (
+    "AUTOMATION_CONFIRM",
     "AUTOMATION_CONFIRM_CHECK",
     "AUTOMATION_OFF",
     "AUTOMATION_ON",
@@ -315,6 +329,11 @@ def _expected_resource_query_names(
 ) -> frozenset[str]:
     expected = set(ALAS_COMBAT_REPLAY_RESOURCE_NAMES)
     if not any(
+        frame.phase is AlasCombatReplayPhase.AUTOMATION_CONFIRM
+        for frame in replay.frames
+    ):
+        expected.discard("AUTOMATION_CONFIRM")
+    if not any(
         frame.phase is AlasCombatReplayPhase.GET_MISSION
         for frame in replay.frames
     ):
@@ -326,15 +345,17 @@ def _expected_resource_query_names(
 def canonical_alas_campaign_combat_replay(
     admission: AlasCampaignCombatAdmission,
     *,
+    include_automation_confirm: bool = False,
     include_get_items: bool = False,
     include_get_mission: bool = False,
 ) -> AlasCampaignCombatReplay:
-    """Build one of the four bounded ordinary-combat replay sequences."""
+    """Build one of the eight bounded ordinary-combat replay sequences."""
 
     if not isinstance(admission, AlasCampaignCombatAdmission):
         raise SemanticGateClosed("combat replay requires an admission")
     base = admission.input_generation
     phases = alas_combat_replay_phase_sequence(
+        include_automation_confirm=include_automation_confirm,
         include_get_items=include_get_items,
         include_get_mission=include_get_mission,
     )
@@ -349,7 +370,10 @@ def canonical_alas_campaign_combat_replay(
                 AlasCombatReplayPhase.MAP_STABLE,
             ),
             combat_loading=phase
-            is AlasCombatReplayPhase.BATTLE_PREPARATION,
+            in (
+                AlasCombatReplayPhase.AUTOMATION_CONFIRM,
+                AlasCombatReplayPhase.BATTLE_PREPARATION,
+            ),
             combat_executing=phase
             is AlasCombatReplayPhase.COMBAT_EXECUTING,
             enemy_searching=phase is AlasCombatReplayPhase.MAP_SEARCHING,
@@ -412,6 +436,14 @@ def _validate_replay(
         ):
             raise SemanticGateClosed("combat replay visible resources changed")
         expected_flags = {
+            AlasCombatReplayPhase.AUTOMATION_CONFIRM: (
+                False,
+                True,
+                False,
+                False,
+                False,
+                False,
+            ),
             AlasCombatReplayPhase.BATTLE_PREPARATION: (
                 False,
                 True,
@@ -578,10 +610,11 @@ class _ReplayDriver:
                 )
             self.virtual_actions.append("campaign_grid:" + self.admission.target_node)
             self.call_order.append("device.click(grid)")
-            self.advance(AlasCombatReplayPhase.BATTLE_PREPARATION)
+            self.advance(self.replay.frames[0].phase)
             return
         name = getattr(button, "name", None)
         transitions = {
+            AlasCombatReplayPhase.AUTOMATION_CONFIRM: "AUTOMATION_CONFIRM",
             AlasCombatReplayPhase.BATTLE_PREPARATION: "BATTLE_PREPARATION",
             AlasCombatReplayPhase.BATTLE_STATUS: "BATTLE_STATUS_S",
             AlasCombatReplayPhase.GET_ITEMS: "GET_ITEMS_1",
@@ -625,6 +658,7 @@ class _ReplayDriver:
         if self.frame.phase is not AlasCombatReplayPhase.MAP_STABLE:
             raise SemanticGateClosed("combat replay did not reach the stable map")
         action_by_phase = {
+            AlasCombatReplayPhase.AUTOMATION_CONFIRM: "AUTOMATION_CONFIRM",
             AlasCombatReplayPhase.BATTLE_PREPARATION: "BATTLE_PREPARATION",
             AlasCombatReplayPhase.BATTLE_STATUS: "BATTLE_STATUS_S",
             AlasCombatReplayPhase.GET_ITEMS: "GET_ITEMS_1",

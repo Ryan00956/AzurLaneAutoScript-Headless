@@ -836,6 +836,44 @@ class SemanticOracleTests(unittest.TestCase):
         )
         self.assertTrue(oracle.campaign_page_is_normal())
 
+    def test_campaign_page_uses_one_button_snapshot_for_page_identity(self):
+        root = "root/UICamera/Canvas/UIMain/LevelMainScene(Clone)/"
+        stage_root = root + "float/levels/items/Chapter_1204"
+        back = make_button(
+            "back_button", root + "top/top_chapter/back_button", 58, 54
+        )
+        stage = make_button(
+            "main", stage_root + "/main", 905, 553, raycast_top=True
+        )
+        backend = FakeBackend([back, stage])
+        backend.buttons_sequence = [
+            make_buttons([back, stage], generation=10),
+            make_buttons([back, stage], generation=13),
+        ]
+        backend.ui = make_ui(
+            [
+                make_text(
+                    "马里亚纳风云上",
+                    root + "top/top_chapter/title_chapter/name",
+                ),
+                make_text(
+                    "12-4",
+                    stage_root + "/main/info/bk/title_form/title_index",
+                ),
+                make_text(
+                    "TF58，翱翔于天际",
+                    stage_root + "/main/info/bk/title_form/title",
+                ),
+            ],
+            generation=11,
+        )
+
+        state = make_oracle(backend).campaign_page_state()
+
+        self.assertEqual(state.chapter_name, "马里亚纳风云上")
+        self.assertEqual([item.stage_code for item in state.stages], ["12-4"])
+        self.assertEqual(len(backend.buttons_sequence), 1)
+
     def test_campaign_stage_click_requires_exact_typed_identity_and_top_raycast(self):
         root = "root/UICamera/Canvas/UIMain/LevelMainScene(Clone)/"
         stage_root = root + "float/levels/items/Chapter_1204"
@@ -1242,8 +1280,16 @@ class SemanticOracleTests(unittest.TestCase):
             )
         )
         backend.ui["image_count"] += 1
-        with self.assertRaisesRegex(SemanticGateClosed, "identity is absent"):
-            make_oracle(backend).campaign_map_entry_state()
+        dual_state = make_oracle(backend).campaign_map_entry_state()
+        self.assertIn(retreat, dual_state.button_paths)
+        self.assertIn(
+            map_root + "/DragLayer/op1/retreat", dual_state.button_paths
+        )
+        self.assertIn(retreat, dual_state.image_paths)
+        self.assertIn(
+            map_root + "/DragLayer/op1/retreat/retreat",
+            dual_state.image_paths,
+        )
 
     def test_campaign_map_model_is_complete_stable_and_uses_alas_topology(self):
         backend = make_campaign_map_backend()

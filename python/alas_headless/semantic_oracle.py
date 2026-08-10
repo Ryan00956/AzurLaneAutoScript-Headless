@@ -3964,7 +3964,7 @@ class SemanticOracle:
         )
         if (
             stage_back_matches != 1
-            or len(retreat_variant_matches) != 1
+            or not retreat_variant_matches
             or not grid_button_paths
             or any(
                 len(matches) != 1 or matches[0].sprite != sprite
@@ -3972,8 +3972,9 @@ class SemanticOracle:
             )
         ):
             raise SemanticGateClosed("campaign map-scene identity is absent")
-        retreat_button_path, retreat_image_path = retreat_variant_matches[0]
-        fixed_button_paths = (retreat_button_path, stage_back_button_path)
+        retreat_button_paths = tuple(item[0] for item in retreat_variant_matches)
+        retreat_image_paths = tuple(item[1] for item in retreat_variant_matches)
+        fixed_button_paths = (*retreat_button_paths, stage_back_button_path)
         if any(
             marker in item.path
             for marker in preparation_markers
@@ -3987,7 +3988,7 @@ class SemanticOracle:
             generation=button_state.generation,
             root_path=grid_root,
             button_paths=tuple(sorted((*fixed_button_paths, *grid_button_paths))),
-            image_paths=tuple(sorted((*required_image_paths, retreat_image_path))),
+            image_paths=tuple(sorted((*required_image_paths, *retreat_image_paths))),
         )
 
     @staticmethod
@@ -4586,7 +4587,7 @@ class SemanticOracle:
             button_state, "campaign-menu/page/back"
         ):
             raise SemanticGateClosed("campaign page identity is not proven")
-        if self.exists("campaign-menu/normal"):
+        if self._matches(button_state, "campaign-menu/normal"):
             raise SemanticGateClosed("campaign entrance is not a chapter page")
         ui_state = self.read_ui_state()
         if (

@@ -17,6 +17,7 @@ from alas_headless import (  # noqa: E402
     compile_alas_combat_observer_fixture,
     load_alas_combat_observer_manifest,
     load_alas_combat_observer_trace,
+    merge_alas_combat_observer_traces,
     select_alas_combat_observer_trace_samples,
 )
 
@@ -26,11 +27,12 @@ PINNED_ALAS_SHA = "81ccf63b4540f00241628c82a58c02c7a2bb11af"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--trace", required=True, type=Path)
+    parser.add_argument("--trace", required=True, type=Path, action="append")
     parser.add_argument("--generations", required=True)
     parser.add_argument("--alas-root", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--candidates-output", type=Path)
+    parser.add_argument("--include-automation-confirm", action="store_true")
     parser.add_argument("--include-get-items", action="store_true")
     parser.add_argument("--include-get-mission", action="store_true")
     parser.add_argument(
@@ -53,11 +55,18 @@ def write_json(path: Path, value) -> None:
 
 def main() -> int:
     args = parse_args()
+    args.trace = [path.resolve() for path in args.trace]
+    args.alas_root = args.alas_root.resolve()
+    args.output = args.output.resolve()
+    args.manifest = args.manifest.resolve()
+    if args.candidates_output is not None:
+        args.candidates_output = args.candidates_output.resolve()
     try:
         generations = tuple(int(item) for item in args.generations.split(","))
     except ValueError as exc:
         raise SystemExit("generations must be comma-separated integers") from exc
     phase_sequence = alas_combat_replay_phase_sequence(
+        include_automation_confirm=args.include_automation_confirm,
         include_get_items=args.include_get_items,
         include_get_mission=args.include_get_mission,
     )
@@ -66,7 +75,9 @@ def main() -> int:
             "generation count does not match the selected combat phase sequence"
         )
     manifest = load_alas_combat_observer_manifest(args.manifest)
-    trace = load_alas_combat_observer_trace(args.trace, manifest)
+    trace = merge_alas_combat_observer_traces(
+        tuple(load_alas_combat_observer_trace(path, manifest) for path in args.trace)
+    )
     selected = select_alas_combat_observer_trace_samples(trace, generations)
     candidates = analyze_alas_combat_observer_candidates(
         selected, phase_sequence=phase_sequence
@@ -76,7 +87,7 @@ def main() -> int:
     )
     write_json(candidates_output, candidates)
 
-    alas_root = args.alas_root.resolve()
+    alas_root = args.alas_root
     completed = subprocess.run(
         ["git", "-C", str(alas_root), "rev-parse", "HEAD"],
         check=True,
@@ -109,7 +120,7 @@ def main() -> int:
             {
                 "schema": "alas-headless.g21-combat-fixture-compile-result/v1",
                 "passed": True,
-                "trace": str(args.trace.resolve()),
+                "traces": [str(path.resolve()) for path in args.trace],
                 "fixture": str(args.output.resolve()),
                 "candidates": str(candidates_output.resolve()),
                 "generations": generations,

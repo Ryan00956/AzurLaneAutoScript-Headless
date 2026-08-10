@@ -4,6 +4,28 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G24 combat preparation and observer fixture: live chain pass, production closed
+
+- Original ALAS now accepts an optional automation-confirm phase before its
+  unchanged preparation loop. The full nine-phase Device-free qualification
+  passed with 135 queries over 41 names and seven virtual actions.
+- Exact live mappings were promoted for `AUTOMATION_CONFIRM`,
+  `AUTOMATION_CONFIRM_CHECK`, `AUTOMATION_ON`, and `BATTLE_PREPARATION`.
+  Coverage is `10/41`; blockers and fleet stats remain incomplete, so
+  `production_ready=false`.
+- On PID `19079`, original ALAS admitted and clicked J3, then one-use exact
+  action commits advanced preparation, S result, item, and experience pages.
+  The stable map proved J3 cleared and ammunition `3 -> 2`.
+- Three adjacent traces compiled into a phase-label-free seven-frame fixture.
+  Generation `8017` captured `RadarEffectUI(Clone)` and `8034` captured the
+  stable map. Only one radar generation was available, so
+  `MAP_ENEMY_SEARCHING` remains unpromoted.
+- The full suite passes `306/306`; the observer APK verifies. Each new mapping
+  receipt was verified at promotion time, and the final receipt verifies the
+  current `10/41` manifest. The production runner remains stopped at G18.
+
+See [G24 combat preparation and observer validation](g24-alas-combat-preparation-observer-validation-report.md).
+
 ### G23 controlled combat acquisition: E5 closure pass, production still closed
 
 - Original ALAS selected and reached E5 over `C6,C5,D5,E5`; one exact

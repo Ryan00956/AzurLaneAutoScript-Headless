@@ -1,0 +1,84 @@
+{
+  "schema": "alas-headless.g22-combat-mapping-receipt/v1",
+  "review_id": "g24-12-4-automation-on",
+  "source_trace_sha256": "d137f11bdd4cd563bb4e4e2f07cc5cdf19df004e70fc678dbc4061bee1aff97d",
+  "source_frames": [
+    {
+      "sequence": 7,
+      "captured_at_utc": "2026-08-10T09:51:37.978Z",
+      "generation": 8267,
+      "frame_sha256": "14b0920546a1797afc577a0a8c1944160eabe5207f75a7cecf22cbb10154bc42"
+    },
+    {
+      "sequence": 9,
+      "captured_at_utc": "2026-08-10T09:51:38.604Z",
+      "generation": 8272,
+      "frame_sha256": "e670e67186b17cf54331edf19e9a8a6f6f8903d4effcb5c19f0d8550cceede64"
+    },
+    {
+      "sequence": 10,
+      "captured_at_utc": "2026-08-10T09:51:38.961Z",
+      "generation": 8274,
+      "frame_sha256": "0693a47cb143151a58ccd666fd95d65a697674cdb82cb7a5b64769d875256949"
+    }
+  ],
+  "manifest_before_sha256": "af76a3d905e36d165fef895d33b8102303f5e031465ec443a1eda2f9b906180c",
+  "manifest_after_sha256": "e93f58c0c3ad76fca68388299cee3a6c6efe6a0dabb18a483f7a929112a5ac52",
+  "resource_promotions": [
+    {
+      "resource_name": "AUTOMATION_ON",
+      "match": "all_of",
+      "selectors": [
+        {
+          "kind": "toggle_on",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/middle/auto_toggle",
+          "name": "auto_toggle",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/middle/auto_toggle/off",
+          "name": "off",
+          "sprite": "auto_toggle_on",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/middle/auto_toggle/bg",
+          "name": "bg",
+          "sprite": "auto_toggle_bg",
+          "text": "",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "99c6849af86aff329a88f7d28cc36c826552fdb84bc0da75701b4fa0f0497e18",
+      "present_in_all_samples": true
+    }
+  ],
+  "blocker_promotions": [],
+  "blocker_review_complete": false,
+  "coverage_before": {
+    "production_ready": false,
+    "qualified_resources": 8,
+    "total_resources": 41,
+    "qualified_blockers": 1,
+    "total_blockers": 1,
+    "blocker_review_complete": false,
+    "blockers_qualified": false,
+    "fleet_stats_qualified": false
+  },
+  "coverage_after": {
+    "production_ready": false,
+    "qualified_resources": 9,
+    "total_resources": 41,
+    "qualified_blockers": 1,
+    "total_blockers": 1,
+    "blocker_review_complete": false,
+    "blockers_qualified": false,
+    "fleet_stats_qualified": false
+  },
+  "input_injected": false
+}

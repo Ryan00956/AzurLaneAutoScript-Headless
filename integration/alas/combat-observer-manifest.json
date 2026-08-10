@@ -4,15 +4,172 @@
   "driver_revision": "be80ce591a481c12d60c50d6040d40c035b40a2b",
   "game_fingerprint": "9.7.10:9710:x86_64:e6d3ef4baac2509cc97a289b91bfd5f9d0dcd7ad8994880a192298983208699f:e3f1cfc442b67f1d4c9877fd9ceaedc3d68f2842ad677445241b9cc9c05d1c67",
   "resources": [
-    {"resource_name": "AUTOMATION_CONFIRM_CHECK", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "AUTOMATION_OFF", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "AUTOMATION_ON", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "AUTO_SEARCH_MENU_EXIT", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "BATTLE_PREPARATION", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "BATTLE_STATUS_A", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "BATTLE_STATUS_B", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "BATTLE_STATUS_C", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "BATTLE_STATUS_D", "selectors": [], "evidence_sha256": ""},
+    {
+      "resource_name": "AUTOMATION_CONFIRM",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
+          "name": "custom_button_1(Clone)",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/help_panel/list/help_tpl/icon",
+          "name": "icon",
+          "sprite": "zilv",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)/pic",
+          "name": "pic",
+          "sprite": "",
+          "text": "知道了",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/top/bg/infomation/title_en",
+          "name": "title_en",
+          "sprite": "",
+          "text": "INFORMATION",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "b1154ef08edb1c25dd6fcf5340d6edf2ba0ba660024d296adc26991addd2491b"
+    },
+    {
+      "resource_name": "AUTOMATION_CONFIRM_CHECK",
+      "selectors": [
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/help_panel/list/help_tpl/icon",
+          "name": "icon",
+          "sprite": "zilv",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)/pic",
+          "name": "pic",
+          "sprite": "",
+          "text": "知道了",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/top/bg/infomation/title_en",
+          "name": "title_en",
+          "sprite": "",
+          "text": "INFORMATION",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "723f5c6c1715cb5a1d638bbd4ca8250123f28e05dbc6fa6fd134f239ac90d353"
+    },
+    {
+      "resource_name": "AUTOMATION_OFF",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "AUTOMATION_ON",
+      "selectors": [
+        {
+          "kind": "toggle_on",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/middle/auto_toggle",
+          "name": "auto_toggle",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/middle/auto_toggle/off",
+          "name": "off",
+          "sprite": "auto_toggle_on",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/middle/auto_toggle/bg",
+          "name": "bg",
+          "sprite": "auto_toggle_bg",
+          "text": "",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "99c6849af86aff329a88f7d28cc36c826552fdb84bc0da75701b4fa0f0497e18"
+    },
+    {
+      "resource_name": "AUTO_SEARCH_MENU_EXIT",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "BATTLE_PREPARATION",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/right/start",
+          "name": "start",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/right/start",
+          "name": "start",
+          "sprite": "btn_formation_sel",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/right/start/text_en",
+          "name": "text_en",
+          "sprite": "",
+          "text": "WEIGH ANCHOR",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/right/start/text",
+          "name": "text",
+          "sprite": "",
+          "text": "出击",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "15a0fccb4e5e87f93455788b17b6014f185616fce68f8b8d2223f9c5a70e2eef"
+    },
+    {
+      "resource_name": "BATTLE_STATUS_A",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "BATTLE_STATUS_B",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "BATTLE_STATUS_C",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "BATTLE_STATUS_D",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
     {
       "resource_name": "BATTLE_STATUS_S",
       "selectors": [
@@ -59,10 +216,26 @@
       ],
       "evidence_sha256": "c7637c4cc3cebf3765f226a58ffee83c3354a7344ddfe0f86965eb906828633d"
     },
-    {"resource_name": "CAMPAIGN_CHECK", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "EVENT_CHECK", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "EXP_INFO_A", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "EXP_INFO_B", "selectors": [], "evidence_sha256": ""},
+    {
+      "resource_name": "CAMPAIGN_CHECK",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "EVENT_CHECK",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "EXP_INFO_A",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "EXP_INFO_B",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
     {
       "resource_name": "EXP_INFO_S",
       "selectors": [
@@ -109,10 +282,26 @@
       ],
       "evidence_sha256": "e6db62a249cfb05500feb2566d49f8751f3e3a2b0417e3550df3b82a2767ee5f"
     },
-    {"resource_name": "FLEET_PREPARATION", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "GAME_TIPS", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "GAME_TIPS3", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "GAME_TIPS4", "selectors": [], "evidence_sha256": ""},
+    {
+      "resource_name": "FLEET_PREPARATION",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "GAME_TIPS",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "GAME_TIPS3",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "GAME_TIPS4",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
     {
       "resource_name": "GET_ITEMS_1",
       "selectors": [
@@ -151,8 +340,16 @@
       ],
       "evidence_sha256": "20330544a5f71922227467423586fabed77ba03df0d10ef9eba44afc1037b78b"
     },
-    {"resource_name": "GET_ITEMS_2", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "GET_ITEMS_3", "selectors": [], "evidence_sha256": ""},
+    {
+      "resource_name": "GET_ITEMS_2",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "GET_ITEMS_3",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
     {
       "resource_name": "GET_MISSION",
       "selectors": [
@@ -207,8 +404,16 @@
       ],
       "evidence_sha256": "53941f9135539e7d480e07c64214fce8068c961c8078e580335562703ee27664"
     },
-    {"resource_name": "GET_SHIP", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "GUILD_POPUP_CONFIRM", "selectors": [], "evidence_sha256": ""},
+    {
+      "resource_name": "GET_SHIP",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "GUILD_POPUP_CONFIRM",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
     {
       "resource_name": "IN_MAP",
       "selectors": [
@@ -239,13 +444,41 @@
       ],
       "evidence_sha256": "bb889cce779285bd23d7e8a226c931a5583d83ac4083dd3d95a5a621eb6615d3"
     },
-    {"resource_name": "IN_RETIREMENT_CHECK", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "MAP_AMBUSH_EVADE", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "MAP_CAT_ATTACK", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "MAP_CAT_ATTACK_MIRROR", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "MAP_ENEMY_SEARCHING", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "MAP_PREPARATION", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "MISSION_POPUP_GO", "selectors": [], "evidence_sha256": ""},
+    {
+      "resource_name": "IN_RETIREMENT_CHECK",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "MAP_AMBUSH_EVADE",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "MAP_CAT_ATTACK",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "MAP_CAT_ATTACK_MIRROR",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "MAP_ENEMY_SEARCHING",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "MAP_PREPARATION",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "MISSION_POPUP_GO",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
     {
       "resource_name": "PAUSE",
       "selectors": [
@@ -260,12 +493,36 @@
       ],
       "evidence_sha256": "6601a6cf9e5c4e30d8a348834f72aeaaa8e908223e3c95c631c8c952af6292b2"
     },
-    {"resource_name": "POPUP_CANCEL", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "POPUP_CONFIRM_WHITE", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "RETIRE_APPEAR_1", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "SP_CHECK", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "STORY_CLOSE", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "STORY_SKIP_3", "selectors": [], "evidence_sha256": ""}
+    {
+      "resource_name": "POPUP_CANCEL",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "POPUP_CONFIRM_WHITE",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "RETIRE_APPEAR_1",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "SP_CHECK",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "STORY_CLOSE",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "STORY_SKIP_3",
+      "selectors": [],
+      "evidence_sha256": ""
+    }
   ],
   "blockers": [
     {

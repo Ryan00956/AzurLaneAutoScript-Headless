@@ -77,6 +77,7 @@ from .alas_combat_trace import (
     build_alas_combat_trace_frame,
     compile_alas_combat_observer_fixture,
     load_alas_combat_observer_trace,
+    merge_alas_combat_observer_traces,
     parse_alas_combat_observer_trace,
     select_alas_combat_observer_trace_samples,
 )
@@ -315,6 +316,7 @@ __all__ = (
     "load_alas_combat_observer_fixture",
     "load_alas_combat_observer_manifest",
     "load_alas_combat_observer_trace",
+    "merge_alas_combat_observer_traces",
     "parse_alas_combat_observer_fixture_frame",
     "parse_alas_combat_unity_selector",
     "parse_alas_combat_observer_trace",

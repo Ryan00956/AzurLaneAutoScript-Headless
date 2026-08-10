@@ -1,0 +1,124 @@
+{
+  "schema": "alas-headless.g22-combat-mapping-receipt/v1",
+  "review_id": "g24-12-4-automation-confirm",
+  "source_trace_sha256": "6eb9043ed54138571cdc19522eab5ae29a5e9b259ba9db2f74e9ef138e56e4e9",
+  "source_frames": [
+    {
+      "sequence": 37,
+      "captured_at_utc": "2026-08-10T09:50:03.435Z",
+      "generation": 7608,
+      "frame_sha256": "b918694fae9bfe669829932df99ed6fec348c5e043879a0dc60b6beb0c20ed79"
+    },
+    {
+      "sequence": 38,
+      "captured_at_utc": "2026-08-10T09:50:04.106Z",
+      "generation": 7613,
+      "frame_sha256": "04c959250cb2e82a7281b84f5251e3687874292f0a951addd5c7c1054bee4cb1"
+    },
+    {
+      "sequence": 39,
+      "captured_at_utc": "2026-08-10T09:50:05.066Z",
+      "generation": 7618,
+      "frame_sha256": "9463a0230293e752395a10e6c1421e8d1cc85477ae40af59ea471e0d5346f145"
+    }
+  ],
+  "manifest_before_sha256": "4d47b0247760f22c887cb72dd9423ba95eea1029b5ecfba37d1594b37e18bf9c",
+  "manifest_after_sha256": "af76a3d905e36d165fef895d33b8102303f5e031465ec443a1eda2f9b906180c",
+  "resource_promotions": [
+    {
+      "resource_name": "AUTOMATION_CONFIRM",
+      "match": "all_of",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
+          "name": "custom_button_1(Clone)",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/help_panel/list/help_tpl/icon",
+          "name": "icon",
+          "sprite": "zilv",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)/pic",
+          "name": "pic",
+          "sprite": "",
+          "text": "知道了",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/top/bg/infomation/title_en",
+          "name": "title_en",
+          "sprite": "",
+          "text": "INFORMATION",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "b1154ef08edb1c25dd6fcf5340d6edf2ba0ba660024d296adc26991addd2491b",
+      "present_in_all_samples": true
+    },
+    {
+      "resource_name": "AUTOMATION_CONFIRM_CHECK",
+      "match": "all_of",
+      "selectors": [
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/help_panel/list/help_tpl/icon",
+          "name": "icon",
+          "sprite": "zilv",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)/pic",
+          "name": "pic",
+          "sprite": "",
+          "text": "知道了",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/top/bg/infomation/title_en",
+          "name": "title_en",
+          "sprite": "",
+          "text": "INFORMATION",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "723f5c6c1715cb5a1d638bbd4ca8250123f28e05dbc6fa6fd134f239ac90d353",
+      "present_in_all_samples": true
+    }
+  ],
+  "blocker_promotions": [],
+  "blocker_review_complete": false,
+  "coverage_before": {
+    "production_ready": false,
+    "qualified_resources": 6,
+    "total_resources": 41,
+    "qualified_blockers": 1,
+    "total_blockers": 1,
+    "blocker_review_complete": false,
+    "blockers_qualified": false,
+    "fleet_stats_qualified": false
+  },
+  "coverage_after": {
+    "production_ready": false,
+    "qualified_resources": 8,
+    "total_resources": 41,
+    "qualified_blockers": 1,
+    "total_blockers": 1,
+    "blocker_review_complete": false,
+    "blockers_qualified": false,
+    "fleet_stats_qualified": false
+  },
+  "input_injected": false
+}

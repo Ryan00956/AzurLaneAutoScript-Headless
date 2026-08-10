@@ -1,7 +1,7 @@
 """Read-only raw observer traces for qualifying ALAS combat inputs.
 
 The trace contains no trusted phase labels and performs no input.  Reviewers
-select one bounded 6-8 generation sequence only after capture; the compiler
+select one bounded 6-9 generation sequence only after capture; the compiler
 derives the two map projections from those frozen raw endpoint payloads and
 emits G20's hash-bound fixture format.
 """
@@ -216,6 +216,57 @@ def load_alas_combat_observer_trace(
     return parse_alas_combat_observer_trace(value, manifest)
 
 
+def merge_alas_combat_observer_traces(
+    traces: Sequence[AlasCombatObserverTrace],
+) -> AlasCombatObserverTrace:
+    """Join adjacent read-only captures without weakening identity checks."""
+
+    if not traces or any(
+        not isinstance(trace, AlasCombatObserverTrace) for trace in traces
+    ):
+        raise SemanticGateClosed("combat observer trace merge input is malformed")
+    first = traces[0]
+    identity = (
+        first.package,
+        first.driver_revision,
+        first.game_fingerprint,
+        first.pid,
+    )
+    if any(
+        (
+            trace.package,
+            trace.driver_revision,
+            trace.game_fingerprint,
+            trace.pid,
+        )
+        != identity
+        for trace in traces[1:]
+    ):
+        raise SemanticGateClosed("combat observer trace merge identity changed")
+    flattened = tuple(sample for trace in traces for sample in trace.samples)
+    generations = tuple(sample.snapshot.generation for sample in flattened)
+    if any(right <= left for left, right in zip(generations, generations[1:])):
+        raise SemanticGateClosed(
+            "combat observer trace merge generations are not increasing"
+        )
+    samples = tuple(
+        AlasCombatObserverTraceSample(
+            sequence=index,
+            captured_at_utc=sample.captured_at_utc,
+            frame=sample.frame,
+            snapshot=sample.snapshot,
+        )
+        for index, sample in enumerate(flattened, start=1)
+    )
+    return AlasCombatObserverTrace(
+        package=first.package,
+        driver_revision=first.driver_revision,
+        game_fingerprint=first.game_fingerprint,
+        pid=first.pid,
+        samples=samples,
+    )
+
+
 def select_alas_combat_observer_trace_samples(
     trace: AlasCombatObserverTrace,
     generations: Sequence[int],
@@ -227,7 +278,7 @@ def select_alas_combat_observer_trace_samples(
         or any(isinstance(item, bool) or not isinstance(item, int) for item in generations)
         or any(right <= left for left, right in zip(generations, generations[1:]))
     ):
-        raise SemanticGateClosed("combat observer selection requires 6 to 8 generations")
+        raise SemanticGateClosed("combat observer selection requires 6 to 9 generations")
     indexed = {sample.snapshot.generation: sample for sample in trace.samples}
     if len(indexed) != len(trace.samples):
         raise SemanticGateClosed("combat observer trace generations are ambiguous")
@@ -248,6 +299,17 @@ def _active_records(snapshot: AlasCombatObserverSnapshot) -> Tuple[Mapping[str, 
                     "name": button.name,
                     "value": "",
                     "actionable": button.actionable,
+                }
+            )
+    for toggle in snapshot.ui_state.toggles:
+        if toggle.active_in_hierarchy and toggle.active_and_enabled:
+            records.append(
+                {
+                    "kind": "toggle_on" if toggle.checked else "toggle_off",
+                    "path": toggle.path,
+                    "name": toggle.name,
+                    "value": "true" if toggle.checked else "false",
+                    "actionable": toggle.actionable,
                 }
             )
     for image in snapshot.ui_state.images:

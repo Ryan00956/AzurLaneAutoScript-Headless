@@ -45,6 +45,13 @@ now admits only the observed 6-8 phase variants and expands the union surface
 to 40 resources. Current mapping coverage is `6/40`; blockers and fleet stats
 remain incomplete, `production_ready=false`, and the production runner still
 stops at G18.
+G24 qualifies the optional automation-confirm input, typed automation-on
+state, and exact battle-preparation start action while retaining original ALAS
+control flow. A controlled J3 battle compiled a seven-frame raw observer
+fixture and proved J3 cleared with ammo `3 -> 2`. Coverage is now `10/41`;
+blocker review, fleet stats, automation-off switching, and the remaining
+resource mappings are still open, so `production_ready=false` and the
+production runner remains stopped at G18.
 G4 includes
 login/main reachability, sustained semantic state, RectTransform bounds, top
 EventSystem raycast identity for each action, and a settings-page return loop.

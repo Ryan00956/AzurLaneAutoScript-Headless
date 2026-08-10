@@ -1,0 +1,92 @@
+{
+  "schema": "alas-headless.g22-combat-mapping-receipt/v1",
+  "review_id": "g24-12-4-battle-preparation",
+  "source_trace_sha256": "b500c371d29136bb7e22ff3ff055f68099f75455e7a79fa54713285e9ffce07a",
+  "source_frames": [
+    {
+      "sequence": 37,
+      "captured_at_utc": "2026-08-10T10:10:18.898Z",
+      "generation": 3825,
+      "frame_sha256": "e7905ad2b3a3eab3005af1d9524b85554542755e3d4f4bb51ad0a44046fb9e62"
+    },
+    {
+      "sequence": 38,
+      "captured_at_utc": "2026-08-10T10:10:19.701Z",
+      "generation": 3831,
+      "frame_sha256": "6cb6b8340f68a8c46e4df2923cb6372d036179aab5a975ff677716ae8f15651b"
+    },
+    {
+      "sequence": 39,
+      "captured_at_utc": "2026-08-10T10:10:20.502Z",
+      "generation": 3838,
+      "frame_sha256": "425335712fdb66a9b204dcea5ba7d06e191adc2a6f15cfba78e37de029262055"
+    }
+  ],
+  "manifest_before_sha256": "e93f58c0c3ad76fca68388299cee3a6c6efe6a0dabb18a483f7a929112a5ac52",
+  "manifest_after_sha256": "7404a49420d9a0d7c0de4d71732ae2df508bf874624d74e82c26a5c3a44666d8",
+  "resource_promotions": [
+    {
+      "resource_name": "BATTLE_PREPARATION",
+      "match": "all_of",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/right/start",
+          "name": "start",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/right/start",
+          "name": "start",
+          "sprite": "btn_formation_sel",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/right/start/text_en",
+          "name": "text_en",
+          "sprite": "",
+          "text": "WEIGH ANCHOR",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/right/start/text",
+          "name": "text",
+          "sprite": "",
+          "text": "出击",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "15a0fccb4e5e87f93455788b17b6014f185616fce68f8b8d2223f9c5a70e2eef",
+      "present_in_all_samples": true
+    }
+  ],
+  "blocker_promotions": [],
+  "blocker_review_complete": false,
+  "coverage_before": {
+    "production_ready": false,
+    "qualified_resources": 9,
+    "total_resources": 41,
+    "qualified_blockers": 1,
+    "total_blockers": 1,
+    "blocker_review_complete": false,
+    "blockers_qualified": false,
+    "fleet_stats_qualified": false
+  },
+  "coverage_after": {
+    "production_ready": false,
+    "qualified_resources": 10,
+    "total_resources": 41,
+    "qualified_blockers": 1,
+    "total_blockers": 1,
+    "blocker_review_complete": false,
+    "blockers_qualified": false,
+    "fleet_stats_qualified": false
+  },
+  "input_injected": false
+}

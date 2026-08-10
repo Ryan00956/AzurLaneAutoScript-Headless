@@ -184,7 +184,12 @@ def main() -> int:
             os.chdir(str(args.alas_root))
             alas = AzurLaneAutoScript(config_name=args.config)
             alas.config.bind("Main")
-            alas.config.override(Emulator_Serial=args.serial)
+            alas.config.override(
+                Emulator_Serial=args.serial,
+                Campaign_UseAutoSearch=False,
+                Campaign_Use2xBook=False,
+                Submarine_Mode="do_not_use",
+            )
             try:
                 alas.run("main")
             except ScriptEnd as exc:
