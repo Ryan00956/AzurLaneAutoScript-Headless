@@ -994,6 +994,24 @@ def alas_combat_unity_selector_present(
     return _selector_present(snapshot, selector)
 
 
+def alas_combat_active_blocker_names(
+    snapshot: AlasCombatObserverSnapshot,
+    manifest: AlasCombatObserverManifest,
+) -> Tuple[str, ...]:
+    """Return exact qualified blockers active in one coherent snapshot."""
+
+    _validate_snapshot(snapshot, manifest)
+    return tuple(
+        blocker.blocker_name
+        for blocker in manifest.blockers
+        if blocker.qualified
+        and all(
+            _selector_present(snapshot, selector)
+            for selector in blocker.selectors
+        )
+    )
+
+
 def _visible_action_variants(
     snapshot: AlasCombatObserverSnapshot,
     mapping: AlasCombatActionMapping,

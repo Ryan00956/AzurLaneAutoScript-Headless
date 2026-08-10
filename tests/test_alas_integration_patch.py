@@ -40,6 +40,15 @@ class AlasIntegrationPatchTests(unittest.TestCase):
         ):
             self.assertIn(operation, self.patch_text)
 
+    def test_login_hook_brackets_original_handler_state_machine(self):
+        self.assertIn(
+            "diff --git a/module/handler/login.py",
+            self.patch_text,
+        )
+        self.assertIn("semantic_adapter.begin_login()", self.patch_text)
+        self.assertIn("semantic_adapter.end_login()", self.patch_text)
+        self.assertIn("+                self._handle_app_login()", self.patch_text)
+
     def test_ocr_layer_uses_context_bound_typed_text(self):
         self.assertIn("diff --git a/module/ocr/ocr.py", self.patch_text)
         self.assertIn("bind_semantic_session", self.patch_text)

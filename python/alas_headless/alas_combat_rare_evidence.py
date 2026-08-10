@@ -17,6 +17,7 @@ from .alas_combat_observer import (
     AlasCombatObserverManifest,
     AlasCombatUnityRecordKind,
     AlasCombatUnitySelector,
+    alas_combat_active_blocker_names,
     alas_combat_unity_selector_to_json,
     validate_alas_combat_observer_snapshot,
 )
@@ -248,7 +249,10 @@ def analyze_alas_combat_rare_surface_evidence(
     matched = []
     ambiguous_generations = []
     for sample in trace.samples:
-        controls, ambiguous = _frame_controls(sample, profile)
+        if alas_combat_active_blocker_names(sample.snapshot, manifest):
+            controls, ambiguous = None, False
+        else:
+            controls, ambiguous = _frame_controls(sample, profile)
         matched.append(controls)
         if ambiguous:
             ambiguous_generations.append(sample.snapshot.generation)

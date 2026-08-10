@@ -20,6 +20,7 @@ from .alas_combat_admission import (
     prove_alas_campaign_combat_transition,
 )
 from .alas_decision_preview import AlasCampaignDecisionPreview
+from .alas_package_process_lease import AlasPackageProcessLease
 from .semantic_oracle import (
     ActionReceipt,
     AdbObserverBridge,
@@ -71,6 +72,7 @@ PINNED_CN_GAME_FINGERPRINT = AndroidPackageFingerprint(
 # These aliases are intentionally asymmetric.  For example, BACK_ARROW is not
 # mapped to settings/back because ALAS reuses that asset on many unrelated pages.
 DEFAULT_ALAS_BUTTON_TARGETS: Mapping[str, str] = {
+    "LOGIN_CHECK": "login/enter",
     "MAIN_GOTO_CAMPAIGN": "main/battle",
     "MAIN_GOTO_CAMPAIGN_WHITE": "main/battle",
     "MAIN_GOTO_FLEET": "main/formation",
@@ -481,6 +483,12 @@ class _MissionFlowContext:
 
 
 @dataclass
+class _LoginFlowContext:
+    passive_transition_until: float = 0.0
+    entry_receipt: Optional[ActionReceipt] = None
+
+
+@dataclass
 class _MailFlowContext:
     entry_clicked: bool = False
     mutations_allowed: bool = False
@@ -598,6 +606,17 @@ class PinnedPackageGate:
     expected: AndroidPackageFingerprint = PINNED_CN_GAME_FINGERPRINT
     _verified_pid: Optional[int] = None
 
+    def accept_process_lease(self, lease: AlasPackageProcessLease) -> None:
+        if not isinstance(lease, AlasPackageProcessLease):
+            raise SemanticGateClosed("package process lease is not verified")
+        if (
+            self.bridge.pid is None
+            or lease.pid != self.bridge.pid
+            or lease.package != self.bridge.package
+        ):
+            raise SemanticGateClosed("package process lease PID changed")
+        self._verified_pid = lease.pid
+
     def __call__(self) -> None:
         if self.bridge.pid is None:
             raise SemanticGateClosed("ADB observer bridge is not open")
@@ -679,6 +698,7 @@ class AlasSemanticAdapter:
         self._campaign_sortie_budget = campaign_sortie_budget
         self._campaign_combat_budget = campaign_combat_budget
         self._mission_context: Optional[_MissionFlowContext] = None
+        self._login_context: Optional[_LoginFlowContext] = None
         self._mail_context: Optional[_MailFlowContext] = None
         self._commission_context: Optional[_CommissionFlowContext] = None
         self._research_context: Optional[_ResearchFlowContext] = None
@@ -746,6 +766,7 @@ class AlasSemanticAdapter:
         if any(
             context is not None
             for context in (
+                self._login_context,
                 self._research_context,
                 self._dorm_context,
                 self._build_context,
@@ -758,6 +779,31 @@ class AlasSemanticAdapter:
             weekly=bool(weekly),
             claim_budget=(1 if self._allow_mission_claim_once else 0),
         )
+
+    def begin_login(self) -> None:
+        """Open one original ALAS LoginHandler invocation."""
+
+        self._package_gate()
+        if any(
+            context is not None
+            for context in (
+                self._login_context,
+                self._mission_context,
+                self._mail_context,
+                self._commission_context,
+                self._research_context,
+                self._dorm_context,
+                self._build_context,
+                self._campaign_context,
+            )
+        ):
+            raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
+        self._login_context = _LoginFlowContext(
+            passive_transition_until=time.monotonic() + 20.0
+        )
+
+    def end_login(self) -> None:
+        self._login_context = None
 
     def end_mission_reward(self) -> None:
         """Close the ALAS-owned mission invocation and discard all cached state."""
@@ -781,6 +827,7 @@ class AlasSemanticAdapter:
         self._package_gate()
         if (
             self._mail_context is not None
+            or self._login_context is not None
             or self._mission_context is not None
             or self._research_context is not None
             or self._dorm_context is not None
@@ -802,6 +849,7 @@ class AlasSemanticAdapter:
         self._package_gate()
         if (
             self._commission_context is not None
+            or self._login_context is not None
             or self._mail_context is not None
             or self._mission_context is not None
             or self._research_context is not None
@@ -823,6 +871,7 @@ class AlasSemanticAdapter:
         self._package_gate()
         if (
             self._commission_context is not None
+            or self._login_context is not None
             or self._mail_context is not None
             or self._mission_context is not None
             or self._research_context is not None
@@ -843,6 +892,7 @@ class AlasSemanticAdapter:
         if any(
             context is not None
             for context in (
+                self._login_context,
                 self._mission_context,
                 self._mail_context,
                 self._commission_context,
@@ -867,6 +917,7 @@ class AlasSemanticAdapter:
         if any(
             context is not None
             for context in (
+                self._login_context,
                 self._mission_context,
                 self._mail_context,
                 self._commission_context,
@@ -891,6 +942,7 @@ class AlasSemanticAdapter:
         if any(
             context is not None
             for context in (
+                self._login_context,
                 self._mission_context,
                 self._mail_context,
                 self._commission_context,
@@ -922,6 +974,7 @@ class AlasSemanticAdapter:
         if any(
             context is not None
             for context in (
+                self._login_context,
                 self._mission_context,
                 self._mail_context,
                 self._commission_context,
@@ -1368,6 +1421,20 @@ class AlasSemanticAdapter:
             )
         )
 
+    def _known_login_surface_exists(self) -> bool:
+        try:
+            # False is still a reviewed login/main/campaign startup surface.
+            self.oracle.campaign_is_in_map()
+        except SemanticGateClosed:
+            return any(
+                self.oracle.enabled(target)
+                for target in (
+                    "overlay/bulletin/close",
+                    "overlay/network-reconnect/confirm",
+                )
+            )
+        return True
+
     def _record_mission_transition(self, receipt: ActionReceipt) -> ActionReceipt:
         context = self._mission_context
         if context is not None and receipt.semantic_id in (
@@ -1522,6 +1589,14 @@ class AlasSemanticAdapter:
 
     def _active_flow_allows_passive_probe(self) -> bool:
         now = time.monotonic()
+        if (
+            self._login_context is not None
+            and (
+                now <= self._login_context.passive_transition_until
+                or self._known_login_surface_exists()
+            )
+        ):
+            return True
         if (
             self._mission_context is not None
             and (
@@ -1722,6 +1797,7 @@ class AlasSemanticAdapter:
         ):
             if (
                 self._mission_context is None
+                and self._login_context is None
                 and self._mail_context is None
                 and self._commission_context is None
                 and self._research_context is None
@@ -1733,6 +1809,12 @@ class AlasSemanticAdapter:
                     "ALAS resource is not semantically mapped: {0}".format(name)
                 )
             self._package_gate()
+            if (
+                self._login_context is not None
+                and time.monotonic()
+                <= self._login_context.passive_transition_until
+            ):
+                return False
             if (
                 self._mission_context is not None
                 and time.monotonic()
@@ -1770,6 +1852,9 @@ class AlasSemanticAdapter:
             ):
                 return False
             if (
+                self._login_context is not None
+                and self._known_login_surface_exists()
+            ) or (
                 self._mission_context is not None
                 and self._known_mission_surface_exists()
             ) or (
@@ -2062,7 +2147,13 @@ class AlasSemanticAdapter:
                     and self.oracle.enabled("tactical/course/confirm")
                 )
         if semantic_id is None and name == "CAMPAIGN_MENU_CHECK":
-            return self.oracle.campaign_menu_is_entry()
+            if self.oracle.campaign_menu_is_entry():
+                return True
+            # MAIN_GOTO_CAMPAIGN resumes an unfinished sortie directly into
+            # LevelGrid.  Treat that exact map root as completion of the UI
+            # graph's campaign-menu hop; CampaignRun immediately performs its
+            # own IN_MAP branch and retains state-machine ownership.
+            return self.oracle.campaign_is_in_map()
         if semantic_id is None and name == "CAMPAIGN_CHECK":
             if self._campaign_context is not None:
                 if self._campaign_preparation_kind() is not None:
@@ -3737,6 +3828,11 @@ class AlasSemanticAdapter:
             if semantic_id == "main/more" and self._mission_context is not None:
                 self._mission_context.summary_entry_clicked = True
                 self._mission_context.summary_entry_receipt = receipt
+            if semantic_id == "login/enter" and self._login_context is not None:
+                self._login_context.entry_receipt = receipt
+                self._login_context.passive_transition_until = (
+                    time.monotonic() + 20.0
+                )
             if semantic_id == "main/mail" and self._mail_context is not None:
                 self._mail_context.entry_clicked = True
             receipt = self._record_mission_transition(receipt)
@@ -4227,11 +4323,30 @@ class AlasSemanticSession:
         campaign_fleet_mutation_budget: int = 0,
         campaign_sortie_budget: int = 0,
         campaign_combat_budget: int = 0,
+        adb_command_timeout_seconds: int = 10,
+        observer_max_age_ms: int = 2500,
+        package_process_lease: Optional[AlasPackageProcessLease] = None,
     ) -> None:
         if not serial:
             raise ValueError("semantic ALAS mode requires an ADB serial")
         if not self._REVISION_PATTERN.fullmatch(driver_revision):
             raise ValueError("semantic ALAS mode requires a pinned ANGLE revision")
+        if (
+            isinstance(adb_command_timeout_seconds, bool)
+            or not isinstance(adb_command_timeout_seconds, int)
+            or not 1 <= adb_command_timeout_seconds <= 120
+        ):
+            raise ValueError("semantic ALAS ADB timeout must be in [1, 120]")
+        if (
+            isinstance(observer_max_age_ms, bool)
+            or not isinstance(observer_max_age_ms, int)
+            or not 1 <= observer_max_age_ms <= 300000
+        ):
+            raise ValueError("semantic ALAS observer max age must be in [1, 300000]")
+        if package_process_lease is not None and not isinstance(
+            package_process_lease, AlasPackageProcessLease
+        ):
+            raise ValueError("semantic ALAS package lease is not verified")
         self.serial = serial
         self.driver_revision = driver_revision
         self.package = package
@@ -4273,7 +4388,14 @@ class AlasSemanticSession:
         self.campaign_fleet_mutation_budget = campaign_fleet_mutation_budget
         self.campaign_sortie_budget = campaign_sortie_budget
         self.campaign_combat_budget = campaign_combat_budget
-        self.bridge = AdbObserverBridge(serial, package, adb=adb)
+        self.package_process_lease = package_process_lease
+        self.observer_max_age_ms = observer_max_age_ms
+        self.bridge = AdbObserverBridge(
+            serial,
+            package,
+            adb=adb,
+            command_timeout_seconds=float(adb_command_timeout_seconds),
+        )
         self.adapter: Optional[AlasSemanticAdapter] = None
 
     @classmethod
@@ -4282,6 +4404,9 @@ class AlasSemanticSession:
             raise SemanticGateClosed("ALAS semantic mode is not explicitly enabled")
         revision = os.environ.get("ALAS_SEMANTIC_DRIVER_REVISION", "").lower()
         adb = os.environ.get("ALAS_SEMANTIC_ADB", "adb")
+        raw_adb_timeout = os.environ.get(
+            "ALAS_SEMANTIC_ADB_COMMAND_TIMEOUT_SECONDS", "10"
+        )
         raw_start_budget = os.environ.get(
             "ALAS_SEMANTIC_COMMISSION_START_BUDGET", "0"
         )
@@ -4319,6 +4444,7 @@ class AlasSemanticSession:
             "ALAS_SEMANTIC_CAMPAIGN_COMBAT_BUDGET", "0"
         )
         for label, value in (
+            ("ADB command timeout", raw_adb_timeout),
             ("tactical assign", raw_tactical_assign_budget),
             ("commission reward", raw_reward_budget),
             ("commission start", raw_start_budget),
@@ -4369,6 +4495,7 @@ class AlasSemanticSession:
             ),
             campaign_sortie_budget=int(raw_campaign_sortie_budget),
             campaign_combat_budget=int(raw_campaign_combat_budget),
+            adb_command_timeout_seconds=int(raw_adb_timeout),
         )
 
     def open(self) -> AlasSemanticAdapter:
@@ -4377,7 +4504,17 @@ class AlasSemanticSession:
         try:
             self.bridge.open()
             package_gate = PinnedPackageGate(self.bridge)
-            package_gate()
+            if self.package_process_lease is None:
+                package_gate()
+            else:
+                if (
+                    self.package_process_lease.driver_revision
+                    != self.driver_revision
+                ):
+                    raise SemanticGateClosed(
+                        "package process lease driver revision changed"
+                    )
+                package_gate.accept_process_lease(self.package_process_lease)
             oracle = SemanticOracle(
                 self.bridge.request,
                 self.bridge.foreground_component,
@@ -4387,6 +4524,7 @@ class AlasSemanticSession:
                     component=self.component,
                     driver_revision=self.driver_revision,
                     expected_pid=self.bridge.pid,
+                    max_age_ms=self.observer_max_age_ms,
                 ),
                 swipe=self.bridge.swipe,
             )
@@ -4748,6 +4886,13 @@ class AlasSemanticSession:
 
     def begin_mission_reward(self, daily: bool, weekly: bool) -> None:
         self.open().begin_mission_reward(daily=daily, weekly=weekly)
+
+    def begin_login(self) -> None:
+        self.open().begin_login()
+
+    def end_login(self) -> None:
+        if self.adapter is not None:
+            self.adapter.end_login()
 
     def end_mission_reward(self) -> None:
         if self.adapter is not None:

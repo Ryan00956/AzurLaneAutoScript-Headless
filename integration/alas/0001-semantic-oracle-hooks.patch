@@ -1598,3 +1598,31 @@ index 0e518a4..d794d42 100644
  
          if self.tactical_finish:
              self.config.task_delay(target=self.tactical_finish)
+diff --git a/module/handler/login.py b/module/handler/login.py
+index 57deabe..1d2e7d4 100644
+--- a/module/handler/login.py
++++ b/module/handler/login.py
+@@ -144,12 +144,19 @@ class LoginHandler(UI):
+             GameTooManyClickError:
+             GameNotRunningError:
+         """
+-        logger.info('handle_app_login')
+-        self.device.screenshot_interval_set(1.0)
++        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
++        if semantic_adapter is not None:
++            semantic_adapter.begin_login()
+         try:
+-            self._handle_app_login()
++            logger.info('handle_app_login')
++            self.device.screenshot_interval_set(1.0)
++            try:
++                self._handle_app_login()
++            finally:
++                self.device.screenshot_interval_set()
+         finally:
+-            self.device.screenshot_interval_set()
++            if semantic_adapter is not None:
++                semantic_adapter.end_login()
+ 
+     def app_stop(self):
+         logger.hr('App stop')

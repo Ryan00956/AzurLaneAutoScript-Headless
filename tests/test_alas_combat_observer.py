@@ -2,7 +2,8 @@ import hashlib
 import json
 import tempfile
 import unittest
-from dataclasses import replace
+from dataclasses import FrozenInstanceError, replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -22,6 +23,7 @@ from alas_headless import (
     AlasCombatBlockerMapping,
     AlasCombatFleetStatsMapping,
     AlasCombatObserverManifest,
+    AlasPackageProcessLease,
     AlasCombatResourceMapping,
     AlasCombatUnityRecordKind,
     AlasCombatUnitySelector,
@@ -35,6 +37,7 @@ from alas_headless import (
     analyze_alas_combat_observer_candidates,
     alas_combat_unity_selector_present,
     alas_combat_replay_phase_sequence,
+    alas_package_process_lease_from_trace,
     build_alas_combat_observer_trace,
     build_alas_combat_trace_frame,
     build_alas_campaign_combat_replay_from_observer,
@@ -1275,6 +1278,78 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         self.assertEqual(len(report["phases"]), 6)
         self.assertEqual(report["phases"][0]["phase"], "battle_preparation")
         self.assertTrue(report["phases"][0]["actionable_buttons"])
+
+    def test_package_process_lease_uses_recent_verified_trace_identity(self):
+        manifest, frames, _ = self.trace_frames()
+        trace = parse_alas_combat_observer_trace(
+            build_alas_combat_observer_trace(
+                manifest,
+                tuple(
+                    ("2026-08-10T06:00:{0:02d}Z".format(index), frame)
+                    for index, frame in enumerate(frames, start=1)
+                ),
+            ),
+            manifest,
+        )
+
+        lease = alas_package_process_lease_from_trace(
+            trace,
+            manifest,
+            now=datetime(2026, 8, 10, 6, 0, 7, tzinfo=timezone.utc),
+        )
+
+        self.assertIsInstance(lease, AlasPackageProcessLease)
+        self.assertEqual(lease.package, manifest.package)
+        self.assertEqual(lease.pid, trace.pid)
+        self.assertEqual(lease.generation, trace.generations[-1])
+        with self.assertRaises(FrozenInstanceError):
+            lease.pid = trace.pid + 1
+
+    def test_package_process_lease_rejects_stale_or_changed_proof(self):
+        manifest, frames, _ = self.trace_frames()
+        trace = parse_alas_combat_observer_trace(
+            build_alas_combat_observer_trace(
+                manifest,
+                tuple(
+                    ("2026-08-10T06:00:{0:02d}Z".format(index), frame)
+                    for index, frame in enumerate(frames, start=1)
+                ),
+            ),
+            manifest,
+        )
+        captured = datetime(2026, 8, 10, 6, 0, 6, tzinfo=timezone.utc)
+
+        with self.assertRaisesRegex(SemanticGateClosed, "identity changed"):
+            alas_package_process_lease_from_trace(
+                trace,
+                replace(manifest, package="changed.package"),
+                now=captured,
+            )
+        with self.assertRaisesRegex(SemanticGateClosed, "stale"):
+            alas_package_process_lease_from_trace(
+                trace,
+                manifest,
+                now=captured + timedelta(seconds=901),
+            )
+        with self.assertRaisesRegex(SemanticGateClosed, "age bound"):
+            alas_package_process_lease_from_trace(
+                trace,
+                manifest,
+                maximum_age_seconds=True,
+                now=captured,
+            )
+
+    def test_package_process_lease_cannot_be_forged_directly(self):
+        with self.assertRaisesRegex(TypeError, "verified trace"):
+            AlasPackageProcessLease(
+                package=PACKAGE,
+                driver_revision=DRIVER,
+                game_fingerprint=GAME,
+                pid=123,
+                generation=5,
+                captured_at_utc="2026-08-10T06:00:00Z",
+                _token=object(),
+            )
 
     def test_adjacent_trace_merge_requires_one_identity_and_increasing_generations(self):
         manifest, frames, _ = self.trace_frames()

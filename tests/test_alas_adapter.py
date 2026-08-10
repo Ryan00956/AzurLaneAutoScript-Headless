@@ -767,6 +767,23 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertEqual(receipt.semantic_id, "main/formation")
         self.assertEqual(len(gate_calls), 2)
 
+    def test_original_login_handler_uses_exact_semantic_entry_context(self):
+        adapter, oracle, _ = self.make_adapter()
+
+        adapter.begin_login()
+        self.assertTrue(adapter.match_template_color(NamedButton("LOGIN_CHECK")))
+        receipt = adapter.click(NamedButton("LOGIN_CHECK"))
+        self.assertFalse(adapter.appear(NamedButton("ANDROID_NO_RESPOND")))
+
+        self.assertEqual(receipt.semantic_id, "login/enter")
+        self.assertEqual(oracle.click_calls, ["login/enter"])
+        with self.assertRaisesRegex(SemanticGateClosed, "nested semantic"):
+            adapter.begin_campaign_pre_sortie("12-4")
+
+        adapter.end_login()
+        with self.assertRaises(AlasSemanticUnmapped):
+            adapter.appear(NamedButton("ANDROID_NO_RESPOND"))
+
     def test_network_reconnect_popup_uses_only_exact_semantic_targets(self):
         adapter, oracle, _ = self.make_adapter()
         oracle.enabled_values.update(
@@ -1339,6 +1356,12 @@ class AlasSemanticAdapterTests(unittest.TestCase):
             with self.assertRaisesRegex(SemanticGateClosed, "identity is not proven"):
                 adapter.appear(NamedButton("CAMPAIGN_CHECK"))
         adapter.end_campaign_pre_sortie()
+
+    def test_resumed_map_completes_campaign_menu_navigation_hop(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.campaign_in_map_value = True
+
+        self.assertTrue(adapter.appear(NamedButton("CAMPAIGN_MENU_CHECK")))
 
     def test_campaign_chapter_check_and_back_require_typed_page_identity(self):
         adapter, oracle, _ = self.make_adapter()
@@ -3018,6 +3041,49 @@ class AlasSemanticAdapterTests(unittest.TestCase):
             session = AlasSemanticSession.from_environment("emulator-test")
 
         self.assertTrue(session.allow_mission_claim_once)
+
+    def test_environment_factory_bounds_explicit_adb_timeout(self):
+        environment = {
+            "ALAS_SEMANTIC_MODE": "1",
+            "ALAS_SEMANTIC_DRIVER_REVISION": (
+                "be80ce591a481c12d60c50d6040d40c035b40a2b"
+            ),
+            "ALAS_SEMANTIC_ADB_COMMAND_TIMEOUT_SECONDS": "30",
+        }
+        with patch.dict("os.environ", environment, clear=True):
+            session = AlasSemanticSession.from_environment("emulator-test")
+        self.assertEqual(session.bridge.command_timeout_seconds, 30.0)
+
+        for malformed in ("030", "0", "121"):
+            environment["ALAS_SEMANTIC_ADB_COMMAND_TIMEOUT_SECONDS"] = malformed
+            with self.subTest(value=malformed):
+                with patch.dict("os.environ", environment, clear=True):
+                    with self.assertRaises((SemanticGateClosed, ValueError)):
+                        AlasSemanticSession.from_environment("emulator-test")
+
+    def test_session_bounds_observer_freshness_and_process_lease_types(self):
+        revision = "be80ce591a481c12d60c50d6040d40c035b40a2b"
+        session = AlasSemanticSession(
+            "emulator-test",
+            revision,
+            observer_max_age_ms=300000,
+        )
+        self.assertEqual(session.observer_max_age_ms, 300000)
+
+        for malformed in (True, 0, 300001):
+            with self.subTest(value=malformed):
+                with self.assertRaisesRegex(ValueError, "observer max age"):
+                    AlasSemanticSession(
+                        "emulator-test",
+                        revision,
+                        observer_max_age_ms=malformed,
+                    )
+        with self.assertRaisesRegex(ValueError, "package lease"):
+            AlasSemanticSession(
+                "emulator-test",
+                revision,
+                package_process_lease=object(),
+            )
 
     def test_environment_factory_parses_commission_reward_budget(self):
         environment = {

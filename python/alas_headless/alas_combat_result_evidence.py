@@ -17,6 +17,7 @@ from .alas_combat_observer import (
     AlasCombatObserverManifest,
     AlasCombatUnityRecordKind,
     AlasCombatUnitySelector,
+    alas_combat_active_blocker_names,
     alas_combat_unity_selector_present,
     alas_combat_unity_selector_to_json,
     validate_alas_combat_observer_snapshot,
@@ -30,6 +31,12 @@ ALAS_COMBAT_RESULT_SURFACE_EVIDENCE_SCHEMA = (
 )
 ALAS_COMBAT_RESULT_SURFACE_VERIFICATION_SCHEMA = (
     "alas-headless.g30-combat-result-surface-verification/v1"
+)
+ALAS_COMBAT_RESULT_CONTROL_EVIDENCE_SCHEMA = (
+    "alas-headless.g32-combat-result-control-evidence/v1"
+)
+ALAS_COMBAT_RESULT_CONTROL_VERIFICATION_SCHEMA = (
+    "alas-headless.g32-combat-result-control-verification/v1"
 )
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 
@@ -130,6 +137,11 @@ def _exp_profile(grade: str) -> AlasCombatResultSurfaceProfile:
 ALAS_COMBAT_RESULT_SURFACE_PROFILES = tuple(
     _battle_profile(grade) for grade in ("A", "B", "C", "D")
 ) + tuple(_exp_profile(grade) for grade in ("A", "B"))
+
+ALAS_COMBAT_RESULT_CONTROL_PROFILES = (
+    _battle_profile("S"),
+    _exp_profile("S"),
+)
 
 
 def _profile(profile_id: str) -> AlasCombatResultSurfaceProfile:
@@ -280,7 +292,11 @@ def analyze_alas_combat_result_surface_evidence(
     for sample in trace.samples:
         validate_alas_combat_observer_snapshot(sample.snapshot, manifest)
 
-    visible = tuple(_profile_visible(sample, profile) for sample in trace.samples)
+    visible = tuple(
+        not alas_combat_active_blocker_names(sample.snapshot, manifest)
+        and _profile_visible(sample, profile)
+        for sample in trace.samples
+    )
     ambiguous_generations = []
     for sample, target_visible in zip(trace.samples, visible):
         if not target_visible:
@@ -457,6 +473,144 @@ def verify_alas_combat_result_surface_evidence(
         raise SemanticGateClosed("combat result surface evidence record changed")
     return {
         "schema": ALAS_COMBAT_RESULT_SURFACE_VERIFICATION_SCHEMA,
+        "passed": True,
+        "profile_id": record["profile_id"],
+        "evidence_complete": record["evidence_complete"],
+        "selected_frame_count": len(record["selected_generations"]),
+        "input_injected": False,
+        "auto_promoted": False,
+    }
+
+
+def _control_profile(profile_id: str) -> AlasCombatResultSurfaceProfile:
+    matches = tuple(
+        profile
+        for profile in ALAS_COMBAT_RESULT_CONTROL_PROFILES
+        if profile.profile_id == profile_id
+    )
+    if len(matches) != 1:
+        raise SemanticGateClosed("combat result control profile is unknown")
+    return matches[0]
+
+
+def analyze_alas_combat_result_control_evidence(
+    manifest: AlasCombatObserverManifest,
+    trace: AlasCombatObserverTrace,
+    *,
+    profile_id: str,
+    source_trace_sha256: str,
+    minimum_consecutive_frames: int = 3,
+) -> Mapping[str, Any]:
+    """Re-prove an already-qualified S page in one read-only live trace.
+
+    Unlike the G30 alternate-grade analyzer, this emits no mapping draft.  It
+    is a positive control binding a controlled episode to the checked-in S
+    selectors and their stable action geometry.
+    """
+
+    if not isinstance(trace, AlasCombatObserverTrace):
+        raise SemanticGateClosed("combat result control trace is not typed")
+    if (
+        trace.package != manifest.package
+        or trace.driver_revision != manifest.driver_revision
+        or trace.game_fingerprint != manifest.game_fingerprint
+    ):
+        raise SemanticGateClosed("combat result control identity changed")
+    if (
+        not isinstance(source_trace_sha256, str)
+        or _SHA256_PATTERN.fullmatch(source_trace_sha256) is None
+    ):
+        raise SemanticGateClosed("combat result control trace hash is malformed")
+    if (
+        isinstance(minimum_consecutive_frames, bool)
+        or not isinstance(minimum_consecutive_frames, int)
+        or not 3 <= minimum_consecutive_frames <= 20
+    ):
+        raise SemanticGateClosed("combat result control frame threshold is malformed")
+    profile = _control_profile(profile_id)
+    _validate_reference_contract(manifest, profile)
+    for sample in trace.samples:
+        validate_alas_combat_observer_snapshot(sample.snapshot, manifest)
+
+    visible = tuple(
+        not alas_combat_active_blocker_names(sample.snapshot, manifest)
+        and _profile_visible(sample, profile)
+        for sample in trace.samples
+    )
+    selected: Tuple[AlasCombatObserverTraceSample, ...] = ()
+    for start in range(len(trace.samples) - minimum_consecutive_frames + 1):
+        candidate = trace.samples[start : start + minimum_consecutive_frames]
+        if not all(visible[start : start + minimum_consecutive_frames]):
+            continue
+        if any(
+            _profile_visible(sample, alternate)
+            for sample in candidate
+            for alternate in ALAS_COMBAT_RESULT_SURFACE_PROFILES
+        ):
+            continue
+        if not _action_geometry_stable(candidate, profile.action_selector):
+            continue
+        selected = candidate
+        break
+
+    action_bounds = None
+    if selected:
+        action = _action_button(selected[0], profile.action_selector)
+        assert action is not None and action.bounds is not None
+        action_bounds = _bounds_json(action.bounds)
+    return {
+        "schema": ALAS_COMBAT_RESULT_CONTROL_EVIDENCE_SCHEMA,
+        "profile_id": profile.profile_id,
+        "resource_name": profile.resource_name,
+        "action_name": profile.action_name,
+        "package": trace.package,
+        "driver_revision": trace.driver_revision,
+        "game_fingerprint": trace.game_fingerprint,
+        "pid": trace.pid,
+        "source_trace_sha256": source_trace_sha256,
+        "minimum_consecutive_frames": minimum_consecutive_frames,
+        "input_injected": False,
+        "already_qualified": True,
+        "evidence_complete": bool(selected),
+        "selected_generations": [
+            sample.snapshot.generation for sample in selected
+        ],
+        "source_frames": [
+            {
+                "sequence": sample.sequence,
+                "generation": sample.snapshot.generation,
+                "frame_sha256": sample.frame["sha256"],
+            }
+            for sample in selected
+        ],
+        "action_bounds": action_bounds,
+        "review_draft": None,
+        "auto_promoted": False,
+    }
+
+
+def verify_alas_combat_result_control_evidence(
+    manifest: AlasCombatObserverManifest,
+    trace: AlasCombatObserverTrace,
+    record: Any,
+    *,
+    source_trace_sha256: str,
+) -> Mapping[str, Any]:
+    if not isinstance(record, dict):
+        raise SemanticGateClosed("combat result control evidence is malformed")
+    if record.get("schema") != ALAS_COMBAT_RESULT_CONTROL_EVIDENCE_SCHEMA:
+        raise SemanticGateClosed("combat result control evidence version changed")
+    expected = analyze_alas_combat_result_control_evidence(
+        manifest,
+        trace,
+        profile_id=record.get("profile_id"),
+        source_trace_sha256=source_trace_sha256,
+        minimum_consecutive_frames=record.get("minimum_consecutive_frames"),
+    )
+    if record != expected:
+        raise SemanticGateClosed("combat result control evidence record changed")
+    return {
+        "schema": ALAS_COMBAT_RESULT_CONTROL_VERIFICATION_SCHEMA,
         "passed": True,
         "profile_id": record["profile_id"],
         "evidence_complete": record["evidence_complete"],

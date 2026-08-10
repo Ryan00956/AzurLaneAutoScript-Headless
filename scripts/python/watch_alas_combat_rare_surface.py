@@ -17,6 +17,7 @@ from alas_headless import (  # noqa: E402
     ALAS_COMBAT_RARE_SURFACE_PROFILES,
     ALAS_COMBAT_RESULT_SURFACE_PROFILES,
     AlasSemanticSession,
+    ObserverTransportError,
     PINNED_CN_GAME_FINGERPRINT,
     SemanticGateClosed,
     alas_combat_surface_multiplex_candidate_present,
@@ -30,6 +31,8 @@ from alas_headless import (  # noqa: E402
     verify_alas_combat_rare_surface_evidence,
     verify_alas_combat_result_surface_evidence,
     verify_alas_combat_surface_multiplex_evidence,
+    alas_package_process_lease_from_trace,
+    load_alas_combat_observer_trace,
 )
 
 
@@ -59,7 +62,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--minimum-consecutive-frames", type=int, default=3)
     parser.add_argument("--context-frames", type=int, default=2)
     parser.add_argument("--post-match-samples", type=int, default=2)
+    parser.add_argument(
+        "--continue-after-match",
+        action="store_true",
+        help="keep the read-only trace running after the first matched surface",
+    )
     parser.add_argument("--adb", default="adb")
+    parser.add_argument("--adb-command-timeout-seconds", type=int, default=10)
+    parser.add_argument("--verified-trace", type=Path)
     return parser.parse_args()
 
 
@@ -104,6 +114,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise SystemExit("post-match samples must be in [0, 20]")
     if not 3 <= args.max_samples <= 5000:
         raise SystemExit("max samples must be in [3, 5000]")
+    if not 1 <= args.adb_command_timeout_seconds <= 120:
+        raise SystemExit("ADB command timeout must be in [1, 120]")
 
 
 def main() -> int:
@@ -118,6 +130,14 @@ def main() -> int:
             else verify_alas_combat_rare_surface_evidence
         )
     manifest = load_alas_combat_observer_manifest(args.manifest)
+    process_lease = None
+    if args.verified_trace is not None:
+        verified_trace = load_alas_combat_observer_trace(
+            args.verified_trace.resolve(), manifest
+        )
+        process_lease = alas_package_process_lease_from_trace(
+            verified_trace, manifest
+        )
     game = PINNED_CN_GAME_FINGERPRINT
     fingerprint = ":".join(
         (
@@ -136,6 +156,8 @@ def main() -> int:
         driver_revision=manifest.driver_revision,
         adb=args.adb,
         package=manifest.package,
+        adb_command_timeout_seconds=args.adb_command_timeout_seconds,
+        package_process_lease=process_lease,
     )
     samples = []
     rejected = 0
@@ -218,11 +240,12 @@ def main() -> int:
                         if matched_at_sample_count is None:
                             matched_at_sample_count = len(samples)
                         if (
-                            len(samples) - matched_at_sample_count
+                            not args.continue_after_match
+                            and len(samples) - matched_at_sample_count
                             >= args.post_match_samples
                         ):
                             break
-            except SemanticGateClosed as exc:
+            except (SemanticGateClosed, ObserverTransportError) as exc:
                 rejected += 1
                 reason = str(exc)
                 rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
@@ -230,7 +253,12 @@ def main() -> int:
             if remaining > 0:
                 time.sleep(remaining)
     finally:
-        session.close()
+        try:
+            session.close()
+        except ObserverTransportError as exc:
+            rejected += 1
+            reason = "observer close failed: " + str(exc)
+            rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
 
     if not samples or final_digest is None:
         raise SystemExit(

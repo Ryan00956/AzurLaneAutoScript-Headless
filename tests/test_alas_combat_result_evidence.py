@@ -3,11 +3,13 @@ import unittest
 from dataclasses import replace
 
 from alas_headless import (
+    ALAS_COMBAT_RESULT_CONTROL_PROFILES,
     ALAS_COMBAT_RESULT_SURFACE_PROFILES,
     AlasCombatActionMapping,
     AlasCombatResourceMapping,
     AlasCombatUnityRecordKind,
     SemanticGateClosed,
+    analyze_alas_combat_result_control_evidence,
     analyze_alas_combat_result_surface_evidence,
     audit_alas_combat_result_surface_mappings,
     build_alas_combat_observer_trace,
@@ -15,6 +17,7 @@ from alas_headless import (
     parse_alas_combat_observer_trace,
     unqualified_alas_combat_observer_manifest,
     verify_alas_combat_result_surface_evidence,
+    verify_alas_combat_result_control_evidence,
 )
 
 
@@ -389,6 +392,58 @@ class AlasCombatResultEvidenceTests(unittest.TestCase):
                 drifted,
                 self.target_trace(item),
                 profile_id=item.profile_id,
+                source_trace_sha256=TRACE_SHA256,
+            )
+
+    def test_s_controls_reprove_checked_mapping_without_review_draft(self):
+        self.assertEqual(
+            tuple(item.profile_id for item in ALAS_COMBAT_RESULT_CONTROL_PROFILES),
+            ("battle-status-s", "exp-info-s"),
+        )
+        for item in ALAS_COMBAT_RESULT_CONTROL_PROFILES:
+            with self.subTest(profile=item.profile_id):
+                record = analyze_alas_combat_result_control_evidence(
+                    self.manifest,
+                    self.target_trace(item),
+                    profile_id=item.profile_id,
+                    source_trace_sha256=TRACE_SHA256,
+                )
+                self.assertTrue(record["evidence_complete"])
+                self.assertTrue(record["already_qualified"])
+                self.assertEqual(record["selected_generations"], [11, 12, 13])
+                self.assertIsNone(record["review_draft"])
+                self.assertFalse(record["auto_promoted"])
+                verified = verify_alas_combat_result_control_evidence(
+                    self.manifest,
+                    self.target_trace(item),
+                    record,
+                    source_trace_sha256=TRACE_SHA256,
+                )
+                self.assertTrue(verified["passed"])
+
+    def test_s_control_rejects_geometry_drift_and_tampering(self):
+        item = ALAS_COMBAT_RESULT_CONTROL_PROFILES[0]
+        trace = self.trace(
+            (
+                (41, item, True, 0.0),
+                (42, item, True, 0.0),
+                (43, item, True, 4.0),
+            )
+        )
+        record = analyze_alas_combat_result_control_evidence(
+            self.manifest,
+            trace,
+            profile_id=item.profile_id,
+            source_trace_sha256=TRACE_SHA256,
+        )
+        self.assertFalse(record["evidence_complete"])
+        tampered = copy.deepcopy(record)
+        tampered["evidence_complete"] = True
+        with self.assertRaisesRegex(SemanticGateClosed, "record changed"):
+            verify_alas_combat_result_control_evidence(
+                self.manifest,
+                trace,
+                tampered,
                 source_trace_sha256=TRACE_SHA256,
             )
 

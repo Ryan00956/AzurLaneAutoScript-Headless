@@ -1434,6 +1434,24 @@ class SemanticOracleTests(unittest.TestCase):
         self.assertEqual(receipt.path, state.cells[0].button_path)
         self.assertEqual(backend.taps, [(100, 100)])
 
+    def test_campaign_map_cell_click_rejects_hud_covered_center(self):
+        backend = make_campaign_map_backend()
+        oracle = make_oracle(backend)
+        state = oracle.campaign_map_state(
+            "12-4",
+            columns=3,
+            rows=2,
+            land_cells=((1, 0),),
+            expected_fleet_count=2,
+        )
+        backend.snapshot = make_snapshot(generation=12)
+        backend.buttons["generation"] = 12
+
+        with self.assertRaisesRegex(SemanticGateClosed, "actionability"):
+            oracle.click_campaign_map_cell(state, "A1")
+
+        self.assertEqual(backend.taps, [])
+
     def test_campaign_map_cell_click_rejects_geometry_drift_and_blockers(self):
         backend = make_campaign_map_backend()
         oracle = make_oracle(backend)

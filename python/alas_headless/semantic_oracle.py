@@ -4084,7 +4084,13 @@ class SemanticOracle:
         state: CampaignMapState,
         node: str,
     ) -> ButtonState:
-        """Revalidate one exact actionable map cell without injecting input."""
+        """Revalidate one exact actionable map cell without injecting input.
+
+        A map-cell quad may be active while its center is covered by the map
+        HUD.  Requiring the exact cell to remain the top raycast target keeps
+        the semantic coordinate fail-closed; a covered center must be exposed
+        by the owning ALAS camera state machine before it can be clicked.
+        """
 
         if not isinstance(state, CampaignMapState):
             raise SemanticGateClosed("campaign map-cell input requires a typed state")

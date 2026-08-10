@@ -14,10 +14,13 @@ sys.path.insert(0, str(ROOT / "python"))
 
 from alas_headless import (  # noqa: E402
     AlasSemanticSession,
+    ObserverTransportError,
     PINNED_CN_GAME_FINGERPRINT,
     SemanticGateClosed,
     build_alas_combat_observer_trace,
     build_alas_combat_trace_frame,
+    alas_package_process_lease_from_trace,
+    load_alas_combat_observer_trace,
     load_alas_combat_observer_manifest,
 )
 
@@ -35,6 +38,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--interval-seconds", type=float, default=0.20)
     parser.add_argument("--max-samples", type=int, default=480)
     parser.add_argument("--adb", default="adb")
+    parser.add_argument("--adb-command-timeout-seconds", type=int, default=10)
+    parser.add_argument("--verified-trace", type=Path)
     return parser.parse_args()
 
 
@@ -74,7 +79,17 @@ def main() -> int:
         raise SystemExit("interval must be in [0.02, 10]")
     if not 1 <= args.max_samples <= 5000:
         raise SystemExit("max samples must be in [1, 5000]")
+    if not 1 <= args.adb_command_timeout_seconds <= 120:
+        raise SystemExit("ADB command timeout must be in [1, 120]")
     manifest = load_alas_combat_observer_manifest(args.manifest)
+    process_lease = None
+    if args.verified_trace is not None:
+        verified_trace = load_alas_combat_observer_trace(
+            args.verified_trace.resolve(), manifest
+        )
+        process_lease = alas_package_process_lease_from_trace(
+            verified_trace, manifest
+        )
     game = PINNED_CN_GAME_FINGERPRINT
     expected_game_fingerprint = ":".join(
         (
@@ -92,6 +107,8 @@ def main() -> int:
         driver_revision=manifest.driver_revision,
         adb=args.adb,
         package=manifest.package,
+        adb_command_timeout_seconds=args.adb_command_timeout_seconds,
+        package_process_lease=process_lease,
     )
     samples = []
     rejected = 0
@@ -119,7 +136,7 @@ def main() -> int:
                     last_generation = typed.generation
                     trace = build_alas_combat_observer_trace(manifest, samples)
                     write_trace(args.output, trace)
-            except SemanticGateClosed as exc:
+            except (SemanticGateClosed, ObserverTransportError) as exc:
                 rejected += 1
                 reason = str(exc)
                 rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
@@ -127,7 +144,12 @@ def main() -> int:
             if remaining > 0:
                 time.sleep(remaining)
     finally:
-        session.close()
+        try:
+            session.close()
+        except ObserverTransportError as exc:
+            rejected += 1
+            reason = "observer close failed: " + str(exc)
+            rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
     if not samples:
         raise SystemExit(
             "no coherent combat observer samples were captured: "

@@ -4,6 +4,34 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G32 controlled episode contract: fail-closed; viewport input still open
+
+- G32 now binds a qualification-only grid receipt, concurrent trace, checked
+  S-result positive controls, bounded resource-action receipts, and a stable
+  post-combat map checkpoint into one deterministic verifier.
+- The receipt explicitly records that ALAS owns branch selection and its
+  original `_goto()` prefix, while the current live post-click sequence is
+  still driven by the controlled evidence harness. It cannot claim full live
+  ALAS state-machine ownership or production readiness.
+- A recent fully verified raw trace can issue an immutable same-PID package
+  lease; ADB commands are bounded, transient recorder failures are counted,
+  and active blockers suppress rare/result candidates.
+- The canonical patch now brackets the original login handler with a semantic
+  context and recognizes an unfinished map as completion of campaign-menu
+  navigation without replacing either state machine.
+- Live PID `3366` proved login -> main -> campaign -> resumed 12-4 and the
+  original ALAS `battle_0` decision for route `D3,C3,B3`. The attempted B3
+  coordinate was HUD-covered and opened `制空权确保`; the relaxed map-cell rule
+  was removed and this condition now fails closed.
+- No positive battle episode is claimed. The next gate is a typed map-viewport
+  swipe requested by ALAS's existing camera logic, followed by a fresh
+  top-raycast cell proof. Coverage remains `16/41`, defensive `18/54`, actions
+  `12/38`, blockers `1/4`, and `production_ready=false`. The full Python suite
+  passes `351/351`; the canonical patch applies cleanly to pinned ALAS
+  `81ccf63`.
+
+See [G32 controlled combat episode contract](g32-controlled-combat-episode-contract-report.md).
+
 ### G31 multiplex acquisition: one watcher covers eight rare surfaces
 
 - `--profile all` now evaluates guild, mission, A-D battle grades, and A/B

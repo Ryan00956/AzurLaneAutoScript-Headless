@@ -14,6 +14,8 @@ from alas_headless import (  # noqa: E402
     AlasSemanticSession,
     alas_combat_resource_action_commit_to_json,
     commit_alas_combat_resource_action_for_evidence,
+    alas_package_process_lease_from_trace,
+    load_alas_combat_observer_trace,
     load_alas_combat_observer_manifest,
 )
 
@@ -28,6 +30,8 @@ def parse_args():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--authorize-once", action="store_true")
     parser.add_argument("--adb", default="adb")
+    parser.add_argument("--adb-command-timeout-seconds", type=int, default=10)
+    parser.add_argument("--verified-trace", type=Path)
     parser.add_argument(
         "--manifest",
         type=Path,
@@ -51,11 +55,21 @@ def main():
     if not args.authorize_once:
         raise SystemExit("--authorize-once is required")
     manifest = load_alas_combat_observer_manifest(args.manifest)
+    process_lease = None
+    if args.verified_trace is not None:
+        verified_trace = load_alas_combat_observer_trace(
+            args.verified_trace.resolve(), manifest
+        )
+        process_lease = alas_package_process_lease_from_trace(
+            verified_trace, manifest
+        )
     session = AlasSemanticSession(
         serial=args.serial,
         driver_revision=manifest.driver_revision,
         adb=args.adb,
         package=manifest.package,
+        adb_command_timeout_seconds=args.adb_command_timeout_seconds,
+        package_process_lease=process_lease,
     )
     try:
         commit = commit_alas_combat_resource_action_for_evidence(

@@ -140,7 +140,14 @@ battle grades and A/B experience pages, with their structure bound to the
 qualified S mappings. Its fresh six-profile map scan is also negative, so
 coverage is unchanged. G31 combines those eight dialog/result profiles into a
 single non-applying watcher with deterministic one-match dispatch and
-multi-match rejection. Lua/game-state coverage,
+multi-match rejection. G32 adds a hash-bound controlled-episode verifier,
+same-PID process leases, checked S-result positive controls, and original-login
+bracketing. Its first live acquisition correctly remains incomplete: an ALAS
+selected B3 center was covered by the map HUD, and accepting its non-top
+raycast coordinate opened the air-supremacy information panel. Map cells now
+fail closed again. ALAS owns the decision and `_goto()` prefix, but the current
+post-click qualification harness is not the original live combat state machine;
+typed ALAS-requested viewport movement is the next gate. Lua/game-state coverage,
 formation-layout changes, campaign movement execution, battle state,
 weekly-only end-to-end
 coverage, repeated sorties, and full unattended ALAS task coverage remain

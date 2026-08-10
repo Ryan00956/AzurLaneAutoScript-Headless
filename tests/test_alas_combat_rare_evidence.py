@@ -1,7 +1,11 @@
 import copy
 import unittest
+from dataclasses import replace
 
 from alas_headless import (
+    AlasCombatBlockerMapping,
+    AlasCombatUnityRecordKind,
+    AlasCombatUnitySelector,
     SemanticGateClosed,
     analyze_alas_combat_rare_surface_evidence,
     audit_alas_combat_rare_surface_mappings,
@@ -222,6 +226,36 @@ class AlasCombatRareEvidenceTests(unittest.TestCase):
                 for item in record["controls"]
             )
         )
+
+    def test_qualified_blocker_suppresses_generic_two_button_false_positive(self):
+        blocker_selectors = tuple(
+            AlasCombatUnitySelector(
+                AlasCombatUnityRecordKind.BUTTON,
+                item["path"],
+                item["name"],
+                require_top_raycast=True,
+            )
+            for item in mission_buttons()
+        )
+        self.manifest = replace(
+            self.manifest,
+            blockers=(
+                AlasCombatBlockerMapping(
+                    "network_down", blocker_selectors, TRACE_SHA256
+                ),
+            ),
+        )
+        trace = self.trace(
+            tuple((generation, mission_buttons()) for generation in (24, 25, 26))
+        )
+        record = analyze_alas_combat_rare_surface_evidence(
+            self.manifest,
+            trace,
+            profile_id="mission-popup",
+            source_trace_sha256=TRACE_SHA256,
+        )
+        self.assertFalse(record["evidence_complete"])
+        self.assertIsNone(record["review_draft"])
 
     def test_two_frames_and_non_actionable_controls_remain_incomplete(self):
         controls = tuple(

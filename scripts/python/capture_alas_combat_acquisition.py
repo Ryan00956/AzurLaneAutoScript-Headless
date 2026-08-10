@@ -26,16 +26,18 @@ sys.path.insert(0, str(ROOT / "python"))
 
 import alas_headless  # noqa: E402
 from alas_headless import (  # noqa: E402
+    ALAS_COMBAT_ACQUISITION_SCHEMA,
     AlasCampaignGotoInputCommit,
+    AlasSemanticSession,
+    ObserverTransportError,
     PINNED_CN_GAME_FINGERPRINT,
+    alas_campaign_combat_map_state_to_json,
+    alas_package_process_lease_from_trace,
     commit_alas_campaign_goto_input_for_evidence,
     current_semantic_session,
     load_alas_combat_observer_manifest,
     load_alas_combat_observer_trace,
 )
-
-
-ACQUISITION_SCHEMA = "alas-headless.g23-combat-acquisition/v1"
 
 
 def parse_args() -> argparse.Namespace:
@@ -55,6 +57,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-samples", type=int, default=1200)
     parser.add_argument("--capture-python", default=sys.executable)
     parser.add_argument("--adb", default="adb")
+    parser.add_argument("--adb-command-timeout-seconds", type=int, default=10)
+    parser.add_argument("--recorder-start-timeout-seconds", type=int, default=300)
+    parser.add_argument("--state-machine-start-timeout-seconds", type=int, default=120)
+    parser.add_argument("--verified-trace", type=Path)
     return parser.parse_args()
 
 
@@ -100,6 +106,12 @@ def main() -> int:
         raise SystemExit("interval must be in [0.02, 10]")
     if not 10 <= args.max_samples <= 5000:
         raise SystemExit("max samples must be in [10, 5000]")
+    if not 1 <= args.adb_command_timeout_seconds <= 120:
+        raise SystemExit("ADB command timeout must be in [1, 120]")
+    if not 20 <= args.recorder_start_timeout_seconds <= 360:
+        raise SystemExit("recorder start timeout must be in [20, 360]")
+    if not 20 <= args.state_machine_start_timeout_seconds <= 360:
+        raise SystemExit("state-machine start timeout must be in [20, 360]")
 
     manifest = load_alas_combat_observer_manifest(args.manifest)
     game = PINNED_CN_GAME_FINGERPRINT
@@ -132,7 +144,13 @@ def main() -> int:
         str(args.max_samples),
         "--adb",
         args.adb,
+        "--adb-command-timeout-seconds",
+        str(args.adb_command_timeout_seconds),
     ]
+    if args.verified_trace is not None:
+        capture_command.extend(
+            ("--verified-trace", str(args.verified_trace.resolve()))
+        )
     capture = subprocess.Popen(
         capture_command,
         cwd=str(ROOT),
@@ -141,7 +159,7 @@ def main() -> int:
         universal_newlines=True,
     )
     try:
-        deadline = time.monotonic() + 20.0
+        deadline = time.monotonic() + args.recorder_start_timeout_seconds
         while not args.output.exists():
             if capture.poll() is not None:
                 output, _ = capture.communicate()
@@ -155,7 +173,31 @@ def main() -> int:
         from module.exception import ScriptEnd  # noqa: E402
 
         committed = []
+        admitted_context = []
         original_preview = alas_headless.preview_alas_campaign_goto_input
+        lease_trace = load_alas_combat_observer_trace(args.output, manifest)
+        process_lease = alas_package_process_lease_from_trace(
+            lease_trace, manifest
+        )
+        semantic_session = AlasSemanticSession(
+            serial=args.serial,
+            driver_revision=manifest.driver_revision,
+            adb=args.adb,
+            package=manifest.package,
+            campaign_stage_entry_budget=1,
+            campaign_fleet_mutation_budget=3,
+            campaign_sortie_budget=1,
+            campaign_combat_budget=1,
+            adb_command_timeout_seconds=args.adb_command_timeout_seconds,
+            package_process_lease=process_lease,
+        )
+        original_session_factory = AlasSemanticSession.__dict__["from_environment"]
+
+        def leased_session_factory(cls, serial):
+            del cls
+            if serial != args.serial:
+                raise RuntimeError("G32 package-process lease serial changed")
+            return semantic_session
 
         def evidence_preview(campaign, projection, decision, admission, state):
             if committed:
@@ -169,11 +211,18 @@ def main() -> int:
                 input_committer=current_semantic_session(),
             )
             committed.append(result)
+            admitted_context.append((admission, state))
             return result.preview
 
         alas_headless.preview_alas_campaign_goto_input = evidence_preview
+        AlasSemanticSession.from_environment = classmethod(
+            leased_session_factory
+        )
         os.environ["ALAS_SEMANTIC_MODE"] = "1"
         os.environ["ALAS_SEMANTIC_DRIVER_REVISION"] = manifest.driver_revision
+        os.environ["ALAS_SEMANTIC_ADB_COMMAND_TIMEOUT_SECONDS"] = str(
+            args.adb_command_timeout_seconds
+        )
         os.environ["ALAS_SEMANTIC_CAMPAIGN_STAGE_ENTRY_BUDGET"] = "1"
         os.environ["ALAS_SEMANTIC_CAMPAIGN_FLEET_MUTATION_BUDGET"] = "3"
         os.environ["ALAS_SEMANTIC_CAMPAIGN_SORTIE_BUDGET"] = "1"
@@ -186,12 +235,54 @@ def main() -> int:
             alas.config.bind("Main")
             alas.config.override(
                 Emulator_Serial=args.serial,
+                Emulator_ScreenshotMethod="ADB",
+                Emulator_ControlMethod="ADB",
                 Campaign_UseAutoSearch=False,
                 Campaign_Use2xBook=False,
                 Submarine_Mode="do_not_use",
             )
+            # The null ANGLE backend intentionally makes ALAS's framebuffer
+            # probes black.  Device construction can therefore take longer
+            # than the observer's strict 2.5-second freshness window while a
+            # static map publishes frames sparsely.  Wait read-only for the
+            # next exact reviewed campaign surface *after* construction, then
+            # enter the original state machine immediately without another
+            # screenshot.  ``campaign_is_in_map()`` returning False is still
+            # positive recognition of a reviewed login/main/campaign startup
+            # surface; only an exception means the observer does not know the
+            # current UI.  No action freshness threshold is widened here.
+            start_deadline = (
+                time.monotonic() + args.state_machine_start_timeout_seconds
+            )
+            startup_in_map = False
+            while True:
+                try:
+                    startup_in_map = (
+                        semantic_session.open().oracle.campaign_is_in_map()
+                    )
+                    break
+                except (ObserverTransportError, alas_headless.SemanticGateClosed):
+                    pass
+                if time.monotonic() >= start_deadline:
+                    raise SystemExit(
+                        "no fresh reviewed campaign surface before state-machine start"
+                    )
+                time.sleep(0.1)
+            if (
+                not startup_in_map
+                and semantic_session.open().oracle.enabled("login/enter")
+            ):
+                from module.handler.login import LoginHandler  # noqa: E402
+
+                semantic_session.begin_login()
+                try:
+                    LoginHandler(
+                        alas.config, device=alas.device
+                    ).handle_app_login()
+                finally:
+                    semantic_session.end_login()
             try:
-                alas.run("main")
+                alas.run("main", skip_first_screenshot=True)
             except ScriptEnd as exc:
                 if str(exc) != "Semantic ALAS goto input preview validation complete":
                     raise
@@ -204,12 +295,18 @@ def main() -> int:
         finally:
             os.chdir(str(previous_cwd))
             alas_headless.preview_alas_campaign_goto_input = original_preview
+            AlasSemanticSession.from_environment = original_session_factory
+            try:
+                semantic_session.close()
+            except ObserverTransportError:
+                pass
 
-        if len(committed) != 1 or not isinstance(
+        if len(committed) != 1 or len(admitted_context) != 1 or not isinstance(
             committed[0], AlasCampaignGotoInputCommit
         ):
             raise SystemExit("original ALAS path did not commit exactly one input")
         commit = committed[0]
+        admission, state = admitted_context[0]
 
         capture_output, _ = capture.communicate(
             timeout=args.duration_seconds + 30.0
@@ -226,7 +323,7 @@ def main() -> int:
         ):
             raise SystemExit("raw trace does not straddle the controlled input")
         receipt = {
-            "schema": ACQUISITION_SCHEMA,
+            "schema": ALAS_COMBAT_ACQUISITION_SCHEMA,
             "captured_at_utc": utc_now(),
             "package": manifest.package,
             "driver_revision": manifest.driver_revision,
@@ -239,12 +336,15 @@ def main() -> int:
             "sample_count": len(trace.samples),
             "first_generation": first_generation,
             "last_generation": last_generation,
+            "map_before": alas_campaign_combat_map_state_to_json(state),
             "input": {
                 "stage_code": commit.preview.stage_code,
                 "battle_count": commit.preview.battle_count,
                 "branch_name": commit.preview.branch_name,
                 "fleet_index": commit.preview.fleet_index,
                 "fleet_marker": commit.preview.fleet_marker,
+                "enemy_object_id": admission.enemy_object_id,
+                "ammo_before": admission.ammo_before,
                 "origin_node": commit.preview.origin_node,
                 "target_node": commit.preview.target_node,
                 "route_nodes": list(commit.preview.route_nodes),
