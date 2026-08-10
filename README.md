@@ -41,6 +41,8 @@ reversible campaign entry through fleet preparation is documented in the
 [G10 validation report](docs/g10-campaign-pre-sortie-validation-report.md).
 The bounded ALAS-owned fleet-selection pass is documented in the
 [G11 validation report](docs/g11-campaign-fleet-preparation-validation-report.md).
+The separately budgeted single-sortie and real map-entry proof are documented
+in the [G12 validation report](docs/g12-campaign-sortie-validation-report.md).
 
 G1, G2, G3, and the formal G4 harmless closed loop passed. G4 includes
 EventSystem top-raycast proof for every injected target, not only object state
@@ -64,10 +66,12 @@ phase-alias bug; its corrected full replay still requires an empty queue.
 Campaign stage entry and fleet selection have independent default-zero
 budgets. The live G11 pass preserved ALAS's original fleet-preparation state
 machine, reconciled `(1, 2, 1) -> (1, 2, 0)` with exactly three mutations,
-then canceled and independently proved `(1, 2, 1)` restored. The fleet sortie
-target is deliberately unmapped. Lua/game-state coverage, formation-layout
-changes, sortie, map movement, battle state, weekly-only end-to-end coverage,
-and full unattended ALAS task coverage remain open.
+then canceled and independently proved `(1, 2, 1)` restored. G12 separately
+admits exactly one default-closed sortie after typed fleet/settings/oil proof,
+then stops at the real read-only `LevelGrid` map identity. Lua/game-state
+coverage, formation-layout changes, map movement, battle state, weekly-only
+end-to-end coverage, repeated sorties, and full unattended ALAS task coverage
+remain open.
 
 ## Repository layout
 

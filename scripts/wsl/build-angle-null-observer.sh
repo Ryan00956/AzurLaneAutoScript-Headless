@@ -80,14 +80,24 @@ if ! grep -Fq 'TechnologyUI(Clone)/main/base_page/srcoll_rect/content/' \
   echo "Research project Button allowlist is missing" >&2
   exit 1
 fi
-if ! grep -Fq 'Unity liveness can retain a destroyed component' \
+if ! grep -Fq 'FindObjectsOfTypeAll omits destroyed components' \
     "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
-  echo "Destroyed Unity Button tolerance is missing" >&2
+  echo "Non-recursive Unity object enumeration is missing" >&2
   exit 1
 fi
 if ! grep -Fq 'std::array<void *, 1024> objects' \
     "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
-  echo "Long-session Unity liveness capacity is missing" >&2
+  echo "Long-session Unity object capacity is missing" >&2
+  exit 1
+fi
+if grep -Fq 'livenessFromStatics(' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Recursive static-root liveness enumeration is forbidden" >&2
+  exit 1
+fi
+if ! grep -Fq 'frameGeneration % 3' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Bounded typed-snapshot cadence is missing" >&2
   exit 1
 fi
 if ! grep -Fq 'kReviewedRaycastFractions' \
@@ -148,6 +158,11 @@ fi
 if ! grep -Fq 'LevelFleetSelectView(Clone)/panel/Fixed/btnBack' \
     "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
   echo "Campaign fleet-preparation cancel allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'LevelFleetSelectView(Clone)/panel/Fixed/start_button' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Campaign fleet-preparation sortie allowlist is missing" >&2
   exit 1
 fi
 if ! grep -Fq 'LevelFleetSelectView(Clone)/panel/ShipList/fleet/1/' \

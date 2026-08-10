@@ -446,6 +446,14 @@ class CampaignFleetDropdownState:
     options: Tuple[ToggleState, ...]
 
 
+@dataclass(frozen=True)
+class CampaignMapEntryState:
+    generation: int
+    root_path: str
+    button_paths: Tuple[str, ...]
+    image_paths: Tuple[str, ...]
+
+
 class ResearchProjectStatus(str, Enum):
     DETAIL = "detail"
     RUNNING = "running"
@@ -752,6 +760,11 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
         "campaign/fleet-preparation/cancel",
         "btnBack",
         "LevelFleetSelectView(Clone)/panel/Fixed/btnBack",
+    ),
+    SemanticTarget(
+        "campaign/fleet-preparation/sortie",
+        "start_button",
+        "LevelFleetSelectView(Clone)/panel/Fixed/start_button",
     ),
     SemanticTarget(
         "campaign/fleet-preparation/fleet/1/select",
@@ -1225,6 +1238,7 @@ _CAMPAIGN_FLEET_INPUT_TARGETS = tuple(
         "fleet/2/clear",
         "submarine/1/select",
         "submarine/1/clear",
+        "sortie",
         "option/1",
         "option/2",
         "option/3",
@@ -3770,15 +3784,108 @@ class SemanticOracle:
             )
         return True
 
-    def campaign_is_in_map(self) -> bool:
-        """Prove a reviewed pre-map surface or refuse the campaign startup.
+    def campaign_map_entry_state(self) -> CampaignMapEntryState:
+        """Read the exact map-scene root without exposing any map input."""
 
-        G10 does not authorize map, withdrawal, movement, or battle input.  The
-        upstream campaign runner nevertheless asks ``is_in_map()`` before it
-        starts page navigation.  Returning ``False`` for every unknown screen
-        would let a real map be mistaken for a navigation page, so only exact
-        non-map surfaces already covered by the semantic oracle are admitted.
-        """
+        return self._retry_transition_read(
+            self._campaign_map_entry_state_once,
+            attempts=12,
+        )
+
+    def _campaign_map_entry_state_once(self) -> CampaignMapEntryState:
+        button_state = self.read_state()
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+            or ui_state.method_mask & 0x8 == 0
+        ):
+            raise SemanticGateClosed("campaign map-entry snapshots are incomplete")
+
+        grid_root = "LevelCamera/Canvas/UIMain/LevelGrid"
+        grid_button = re.compile(
+            re.escape(grid_root)
+            + r"/DragLayer/plane/quads/chapter_cell_quad_[1-9][0-9]*_[1-9][0-9]*"
+        )
+        retreat_button_path = grid_root + "/DragLayer/op1/retreat"
+        stage_root = "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)"
+        stage_back_button_path = stage_root + "/top_stage/back_button"
+        required_images = {
+            grid_root + "/DragLayer/op1/retreat/retreat": "reteat_popo",
+            grid_root + "/DragLayer/plane/display/mask/sea": "sea_day",
+            stage_root + "/top_stage/back_button/mask/Image": "back_btn",
+        }
+        preparation_markers = (
+            "/LevelMainScene(Clone)/",
+            "/LevelStageInfoView(Clone)/",
+            "/LevelFleetSelectView(Clone)/",
+        )
+        active_buttons = tuple(
+            button
+            for button in button_state.buttons
+            if button.active_in_hierarchy and button.active_and_enabled
+        )
+        grid_button_paths = tuple(
+            sorted(
+                button.path
+                for button in active_buttons
+                if grid_button.fullmatch(button.path)
+            )
+        )
+        fixed_button_paths = tuple(
+            path
+            for path in (retreat_button_path, stage_back_button_path)
+            if sum(button.path == path for button in active_buttons) == 1
+        )
+        active_images = tuple(
+            image
+            for image in ui_state.images
+            if image.active_in_hierarchy
+            and image.active_and_enabled
+            and not image.truncated
+        )
+        required_image_paths = tuple(sorted(required_images))
+        required_image_matches = tuple(
+            (
+                sprite,
+                tuple(image for image in active_images if image.path == path),
+            )
+            for path, sprite in required_images.items()
+        )
+        if (
+            len(fixed_button_paths) != 2
+            or not grid_button_paths
+            or any(
+                len(matches) != 1 or matches[0].sprite != sprite
+                for sprite, matches in required_image_matches
+            )
+        ):
+            raise SemanticGateClosed("campaign map-scene identity is absent")
+        if any(
+            marker in item.path
+            for marker in preparation_markers
+            for item in (*button_state.buttons, *ui_state.texts)
+            if item.active_in_hierarchy and item.active_and_enabled
+        ):
+            raise SemanticGateClosed(
+                "campaign map and preparation identities overlap"
+            )
+        return CampaignMapEntryState(
+            generation=button_state.generation,
+            root_path=grid_root,
+            button_paths=tuple(sorted((*fixed_button_paths, *grid_button_paths))),
+            image_paths=required_image_paths,
+        )
+
+    def campaign_is_in_map(self) -> bool:
+        """Prove an exact map root or one reviewed non-map startup surface."""
+
+        try:
+            self._campaign_map_entry_state_once()
+        except SemanticGateClosed:
+            pass
+        else:
+            return True
 
         state = self.read_state()
         non_map_targets = (
@@ -3806,9 +3913,7 @@ class SemanticOracle:
         )
         if observed:
             return False
-        raise SemanticGateClosed(
-            "campaign startup surface is not a reviewed non-map page"
-        )
+        raise SemanticGateClosed("campaign startup surface is not reviewed")
 
     def campaign_page_state(self) -> CampaignPageState:
         """Read the visible chapter and stage labels without enabling a stage click."""
@@ -4140,7 +4245,7 @@ class SemanticOracle:
     def campaign_fleet_preparation_state(
         self, stage_code: str
     ) -> CampaignPreparationState:
-        """Read fleet preparation while proving that sortie input is unexposed."""
+        """Read exact fleet preparation, including its separately gated sortie."""
 
         return self._retry_transition_read(
             lambda: self._campaign_fleet_preparation_state_once(stage_code)
@@ -4170,23 +4275,17 @@ class SemanticOracle:
             raise SemanticGateClosed(
                 "campaign fleet-preparation cancel is not proven"
             )
-        sortie_path = (
-            "LevelFleetSelectView(Clone)/panel/Fixed/start_button"
+        sortie = self._unique(
+            button_state, "campaign/fleet-preparation/sortie"
         )
-        sortie_matches = tuple(
-            button
-            for button in button_state.buttons
-            if button.name == "start_button"
-            and button.path.endswith(sortie_path)
-            and button.active_in_hierarchy
-            and button.active_and_enabled
-            and button.interactable
-            and button.point is not None
-            and button.bounds is not None
-        )
-        if len(sortie_matches) != 1 or sortie_matches[0].raycast_top is not None:
+        if (
+            not sortie.actionable
+            or self._blocking_rules(
+                button_state, "campaign/fleet-preparation/sortie"
+            )
+        ):
             raise SemanticGateClosed(
-                "campaign fleet-preparation sortie input is unexpectedly exposed"
+                "campaign fleet-preparation sortie is not proven"
             )
         stage_path = (
             "LevelMainScene(Clone)/float/levels/items/Chapter_{0}/main".format(
@@ -4266,7 +4365,7 @@ class SemanticOracle:
             kind="fleet",
             stage_code=stage_code,
             title=titles[0].text.strip(),
-            proceed_button=sortie_matches[0],
+            proceed_button=sortie,
             cancel_button=cancel,
         )
 
@@ -4301,7 +4400,7 @@ class SemanticOracle:
     def campaign_fleet_selection_state(
         self, stage_code: str
     ) -> CampaignFleetSelectionState:
-        """Read the closed fleet-selection panel without exposing sortie."""
+        """Read the closed fleet-selection panel and its gated sortie target."""
 
         return self._retry_transition_read(
             lambda: self._campaign_fleet_selection_state_once(stage_code),
@@ -4610,6 +4709,24 @@ class SemanticOracle:
         self._tap(int(round(target.point.x)), int(round(target.point.y)))
         return ActionReceipt(
             semantic_id="campaign/fleet-preparation/cancel",
+            generation=observed.generation,
+            point=target.point,
+            bounds=target.bounds,
+            path=target.path,
+        )
+
+    def click_campaign_sortie(self, stage_code: str) -> ActionReceipt:
+        """Inject the one exact fleet-preparation sortie after caller preflight."""
+
+        observed = self.campaign_fleet_selection_state(stage_code)
+        target = observed.sortie_button
+        if not target.actionable or target.point is None or target.bounds is None:
+            raise SemanticGateClosed("campaign sortie is not actionable")
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("foreground changed immediately before input")
+        self._tap(int(round(target.point.x)), int(round(target.point.y)))
+        return ActionReceipt(
+            semantic_id="campaign/fleet-preparation/sortie",
             generation=observed.generation,
             point=target.point,
             bounds=target.bounds,

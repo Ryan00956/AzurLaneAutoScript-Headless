@@ -459,9 +459,12 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
        EndsWith(path, "LevelStageInfoView(Clone)/panel/btnBack"))) {
     return true;
   }
-  if (name == "btnBack" &&
-      EndsWith(path,
-               "LevelFleetSelectView(Clone)/panel/Fixed/btnBack")) {
+  if ((name == "btnBack" &&
+       EndsWith(path,
+                "LevelFleetSelectView(Clone)/panel/Fixed/btnBack")) ||
+      (name == "start_button" &&
+       EndsWith(path,
+                "LevelFleetSelectView(Clone)/panel/Fixed/start_button"))) {
     return true;
   }
   if ((name == "btn_select" || name == "btn_clear") &&
@@ -730,43 +733,14 @@ bool ShouldEvaluateImageTopRaycast(std::string_view name,
   return false;
 }
 
-struct LivenessCollector {
-  // Repeated Unity overlays retain destroyed managed components until GC.
-  // Keep enough temporary identities to filter those objects without marking
-  // the final, much smaller active typed record set as truncated.
+struct LoadedObjectCollector {
+  // FindObjectsOfTypeAll omits destroyed components but can still return
+  // inactive objects retained by repeated overlays.  Keep the temporary set
+  // bounded independently from the much smaller active typed record set.
   std::array<void *, 1024> objects = {};
   size_t count = 0;
   bool truncated = false;
-  void *(*allocate)(size_t) = nullptr;
-  void (*release)(void *) = nullptr;
 };
-
-void CollectLivenessObjects(void **objects, int count, void *opaque) {
-  auto *collector = static_cast<LivenessCollector *>(opaque);
-  if (collector == nullptr || objects == nullptr || count <= 0) {
-    return;
-  }
-  for (int index = 0; index < count; ++index) {
-    if (collector->count >= collector->objects.size()) {
-      collector->truncated = true;
-      break;
-    }
-    collector->objects[collector->count++] =
-        ANGLE_UNSAFE_BUFFERS(objects[index]);
-  }
-}
-
-void *ReallocateLiveness(void *buffer, size_t size, void *opaque) {
-  auto *collector = static_cast<LivenessCollector *>(opaque);
-  if (collector == nullptr) {
-    return nullptr;
-  }
-  if (buffer != nullptr && size == 0) {
-    collector->release(buffer);
-    return nullptr;
-  }
-  return collector->allocate(size);
-}
 
 UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
                            const void *coreImage, const void *uiImage,
@@ -786,15 +760,9 @@ UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
   using ClassGetParent = void *(*)(void *);
   using ClassGetType = const void *(*)(void *);
   using TypeGetObject = void *(*)(const void *);
+  using ArrayLength = uintptr_t (*)(void *);
   using StringLength = int32_t (*)(void *);
   using StringChars = const uint16_t *(*)(void *);
-  using LivenessAllocate =
-      void *(*)(void *, int, void (*)(void **, int, void *), void *,
-                void *(*)(void *, size_t, void *));
-  using LivenessAction = void (*)(void *);
-  using GcWorldAction = void (*)();
-  using Allocate = void *(*)(size_t);
-  using Release = void (*)(void *);
   using ObjectNew = void *(*)(const void *);
   using MethodGetParam = const void *(*)(const void *, uint32_t);
   using MethodGetReturnType = const void *(*)(const void *);
@@ -811,19 +779,9 @@ UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
       reinterpret_cast<ClassGetParent>(probe.symbols[16]);
   const auto classGetType = reinterpret_cast<ClassGetType>(probe.symbols[8]);
   const auto typeGetObject = reinterpret_cast<TypeGetObject>(probe.symbols[9]);
+  const auto arrayLength = reinterpret_cast<ArrayLength>(probe.symbols[13]);
   const auto stringLength = reinterpret_cast<StringLength>(probe.symbols[14]);
   const auto stringChars = reinterpret_cast<StringChars>(probe.symbols[15]);
-  const auto livenessAllocate =
-      reinterpret_cast<LivenessAllocate>(probe.symbols[18]);
-  const auto livenessFromStatics =
-      reinterpret_cast<LivenessAction>(probe.symbols[19]);
-  const auto livenessFinalize =
-      reinterpret_cast<LivenessAction>(probe.symbols[20]);
-  const auto livenessFree = reinterpret_cast<LivenessAction>(probe.symbols[21]);
-  const auto stopGcWorld = reinterpret_cast<GcWorldAction>(probe.symbols[22]);
-  const auto startGcWorld = reinterpret_cast<GcWorldAction>(probe.symbols[23]);
-  const auto allocate = reinterpret_cast<Allocate>(probe.symbols[24]);
-  const auto release = reinterpret_cast<Release>(probe.symbols[25]);
   const auto objectNew = reinterpret_cast<ObjectNew>(probe.symbols[26]);
   const auto methodGetParam =
       reinterpret_cast<MethodGetParam>(probe.symbols[27]);
@@ -836,6 +794,8 @@ UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
 
   void *sceneManagerClass =
       classFromName(coreImage, "UnityEngine.SceneManagement", "SceneManager");
+  void *resourcesClass =
+      classFromName(coreImage, "UnityEngine", "Resources");
   void *buttonClass = classFromName(uiImage, "UnityEngine.UI", "Button");
   void *toggleClass = classFromName(uiImage, "UnityEngine.UI", "Toggle");
   void *legacyTextClass = classFromName(uiImage, "UnityEngine.UI", "Text");
@@ -862,6 +822,10 @@ UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
     }
     return static_cast<const void *>(nullptr);
   };
+  const void *findObjectsOfTypeAll =
+      resourcesClass != nullptr
+          ? findMethodInHierarchy(resourcesClass, "FindObjectsOfTypeAll", 1)
+          : nullptr;
   const void *getActiveAndEnabled =
       findMethodInHierarchy(buttonClass, "get_isActiveAndEnabled");
   const void *getInteractable =
@@ -913,7 +877,8 @@ UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
   result.methodMask = 0x1u | (getActiveScene != nullptr ? 0x2u : 0u) |
                       (getActiveAndEnabled != nullptr ? 0x4u : 0u) |
                       (getInteractable != nullptr ? 0x8u : 0u);
-  if (getActiveScene == nullptr || getActiveAndEnabled == nullptr ||
+  if (getActiveScene == nullptr || findObjectsOfTypeAll == nullptr ||
+      arrayLength == nullptr || getActiveAndEnabled == nullptr ||
       getInteractable == nullptr) {
     return result;
   }
@@ -1393,30 +1358,51 @@ UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
   ANGLE_UNSAFE_TODO(
       std::memcpy(&result.sceneHandle, sceneValue, sizeof(result.sceneHandle)));
 
-  auto collectLiveInstances = [&](void *klass, LivenessCollector *collector) {
-    if (klass == nullptr || collector == nullptr) {
+  struct ManagedArrayHeader {
+    void *klass;
+    void *monitor;
+    void *bounds;
+    uintptr_t maxLength;
+  };
+  static_assert(sizeof(ManagedArrayHeader) == 4 * sizeof(void *));
+
+  auto collectLoadedInstances = [&](void *klass,
+                                    LoadedObjectCollector *collector) {
+    if (klass == nullptr || collector == nullptr || classGetType == nullptr ||
+        typeGetObject == nullptr) {
       return false;
     }
-    collector->allocate = allocate;
-    collector->release = release;
-    stopGcWorld();
-    void *livenessState = livenessAllocate(klass, 0, CollectLivenessObjects,
-                                           collector, ReallocateLiveness);
-    if (livenessState != nullptr) {
-      livenessFromStatics(livenessState);
-      livenessFinalize(livenessState);
-    }
-    startGcWorld();
-    if (livenessState == nullptr) {
+    const void *type = classGetType(klass);
+    void *typeObject = type != nullptr ? typeGetObject(type) : nullptr;
+    if (typeObject == nullptr) {
       return false;
     }
-    livenessFree(livenessState);
+    void *arguments[] = {typeObject};
+    void *objects = invokeObject(findObjectsOfTypeAll, nullptr, arguments);
+    if (objects == nullptr) {
+      return false;
+    }
+    const uintptr_t length = arrayLength(objects);
+    const auto *header = static_cast<const ManagedArrayHeader *>(objects);
+    if (header->maxLength != length) {
+      return false;
+    }
+    const size_t copyCount = std::min(
+        static_cast<size_t>(length), collector->objects.size());
+    const auto *elements = ANGLE_UNSAFE_BUFFERS(
+        reinterpret_cast<void *const *>(
+            reinterpret_cast<const uint8_t *>(objects) + sizeof(*header)));
+    for (size_t index = 0; index < copyCount; ++index) {
+      collector->objects[index] = ANGLE_UNSAFE_BUFFERS(elements[index]);
+    }
+    collector->count = copyCount;
+    collector->truncated = length > collector->objects.size();
     return true;
   };
 
-  LivenessCollector collector;
+  LoadedObjectCollector collector;
   result.diagnosticStage = 60;
-  if (!collectLiveInstances(buttonClass, &collector)) {
+  if (!collectLoadedInstances(buttonClass, &collector)) {
     return result;
   }
   result.recordTruncated |= collector.truncated ? 1u : 0u;
@@ -1431,9 +1417,9 @@ UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
     bool interactable = false;
     if (!invokeBoolean(getActiveAndEnabled, button, &active) ||
         !invokeBoolean(getInteractable, button, &interactable)) {
-      // Unity liveness can retain a destroyed component while scenes are
-      // changing.  Omitting it is fail-closed at the semantic target layer;
-      // aborting here would suppress every valid Button in the new scene.
+      // Unity can destroy a component between enumeration and the typed
+      // accessors below. Omitting it is fail-closed at the semantic target
+      // layer; aborting here would suppress every valid Button in the scene.
       continue;
     }
     ++result.buttonCount;
@@ -1694,8 +1680,8 @@ UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
   }
 
   if ((result.uiMethodMask & 0x1u) != 0) {
-    LivenessCollector toggleCollector;
-    if (!collectLiveInstances(toggleClass, &toggleCollector)) {
+    LoadedObjectCollector toggleCollector;
+    if (!collectLoadedInstances(toggleClass, &toggleCollector)) {
       ++result.uiRecordErrors;
     } else {
       result.toggleRecordTruncated |= toggleCollector.truncated ? 1u : 0u;
@@ -1761,8 +1747,8 @@ UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
         getText == nullptr) {
       return;
     }
-    LivenessCollector textCollector;
-    if (!collectLiveInstances(textClass, &textCollector)) {
+    LoadedObjectCollector textCollector;
+    if (!collectLoadedInstances(textClass, &textCollector)) {
       ++result.uiRecordErrors;
       return;
     }
@@ -1826,8 +1812,8 @@ UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
       float blue;
       float alpha;
     };
-    LivenessCollector imageCollector;
-    if (!collectLiveInstances(imageClass, &imageCollector)) {
+    LoadedObjectCollector imageCollector;
+    if (!collectLoadedInstances(imageClass, &imageCollector)) {
       ++result.uiRecordErrors;
     } else {
       result.imageRecordTruncated |= imageCollector.truncated ? 1u : 0u;
@@ -2172,11 +2158,17 @@ int32_t ObserverMainThreadTick(uint64_t requestGeneration,
 
 int32_t ObserverFrameTick(uint64_t frameGeneration, int width, int height) {
 #if defined(ANGLE_PLATFORM_ANDROID)
-  static_cast<void>(frameGeneration);
   RegisterObserverMainThread();
   const int32_t mainThreadTid = gObserverMainThreadTid.load();
   if (mainThreadTid == 0 || gettid() != mainThreadTid) {
     return mainThreadTid;
+  }
+  // A complete typed snapshot invokes managed accessors for four component
+  // families.  Ten snapshots per second are well inside the controller's
+  // freshness gate while leaving consecutive endpoint reads generation-
+  // coherent and bounding observer work on complex campaign maps.
+  if (frameGeneration != 1 && frameGeneration % 3 != 0) {
+    return 0;
   }
   const uint64_t generation = gObserverGeneration.fetch_add(1) + 1;
   return ObserverMainThreadTick(generation, 1, 1, 1, width, height, gettid());

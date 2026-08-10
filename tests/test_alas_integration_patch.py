@@ -163,8 +163,32 @@ class AlasIntegrationPatchTests(unittest.TestCase):
             "semantic_adapter.campaign_fleet_selected_indices(",
             self.patch_text,
         )
-        self.assertNotIn(
-            "+                    self.device.click(FLEET_PREPARATION)",
+        self.assertIn(
+            "semantic_adapter.authorize_campaign_sortie(",
+            self.patch_text,
+        )
+        self.assertIn(
+            "+                                    self.device.click(FLEET_PREPARATION)",
+            self.patch_text,
+        )
+        self.assertIn(
+            "semantic_adapter.campaign_sortie_committed()",
+            self.patch_text,
+        )
+        self.assertIn(
+            "semantic_adapter.confirm_campaign_sortie()",
+            self.patch_text,
+        )
+        self.assertIn(
+            "+                                self.handle_2x_book_setting(mode='prep')",
+            self.patch_text,
+        )
+        self.assertIn(
+            "+                                self.handle_auto_search_setting()",
+            self.patch_text,
+        )
+        self.assertIn(
+            "semantic_adapter.campaign_map_preparation_committed()",
             self.patch_text,
         )
 

@@ -23,6 +23,7 @@ from .semantic_oracle import (
     BuildSubmitState,
     CampaignFleetRowState,
     CampaignFleetSelectionState,
+    CampaignMapEntryState,
     CampaignPageState,
     CommissionDetailState,
     CommissionRewardProof,
@@ -275,6 +276,7 @@ CAMPAIGN_CLICK_RESOURCES = frozenset(
         "BACK_ARROW",
         "MAP_PREPARATION",
         "MAP_PREPARATION_CANCEL",
+        "FLEET_PREPARATION",
         "FLEET_1_CHOOSE",
         "FLEET_1_CLEAR",
         "FLEET_2_CHOOSE",
@@ -440,6 +442,20 @@ class CampaignFleetPreparationProof:
     restored_generation: int
 
 
+@dataclass(frozen=True)
+class CampaignSortieProof:
+    stage_code: str
+    initial_fleets: Tuple[int, int, int]
+    requested_fleets: Tuple[int, int, int]
+    prepared_fleets: Tuple[int, int, int]
+    mutation_semantic_ids: Tuple[str, ...]
+    oil_before_sortie: int
+    required_oil: int
+    sortie_generation: int
+    map_generation: int
+    map_root_path: str
+
+
 @dataclass
 class _MissionFlowContext:
     daily: bool
@@ -533,6 +549,7 @@ class _CampaignFlowContext:
     mode: str = "normal"
     entry_budget: int = 0
     fleet_mutation_budget: int = 0
+    sortie_budget: int = 0
     menu_entry_receipt: Optional[ActionReceipt] = None
     entry_receipt: Optional[ActionReceipt] = None
     map_preparation_receipt: Optional[ActionReceipt] = None
@@ -548,6 +565,11 @@ class _CampaignFlowContext:
     fleet_dropdown_row: Optional[str] = None
     fleet_dropdown_previous_index: Optional[int] = None
     fleet_proof: Optional[CampaignFleetPreparationProof] = None
+    oil_before_sortie: Optional[int] = None
+    sortie_authorized: bool = False
+    sortie_receipt: Optional[ActionReceipt] = None
+    map_entry_state: Optional[CampaignMapEntryState] = None
+    sortie_proof: Optional[CampaignSortieProof] = None
     passive_transition_until: float = 0.0
 
 
@@ -589,6 +611,7 @@ class AlasSemanticAdapter:
         build_submit_budget: int = 0,
         campaign_stage_entry_budget: int = 0,
         campaign_fleet_mutation_budget: int = 0,
+        campaign_sortie_budget: int = 0,
     ) -> None:
         if package_gate is None:
             raise ValueError("semantic ALAS mode requires a package identity gate")
@@ -614,6 +637,7 @@ class AlasSemanticAdapter:
             ("build submit", build_submit_budget),
             ("campaign stage entry", campaign_stage_entry_budget),
             ("campaign fleet mutation", campaign_fleet_mutation_budget),
+            ("campaign sortie", campaign_sortie_budget),
         ):
             if (
                 isinstance(budget, bool)
@@ -633,6 +657,7 @@ class AlasSemanticAdapter:
         self._build_submit_budget = build_submit_budget
         self._campaign_stage_entry_budget = campaign_stage_entry_budget
         self._campaign_fleet_mutation_budget = campaign_fleet_mutation_budget
+        self._campaign_sortie_budget = campaign_sortie_budget
         self._mission_context: Optional[_MissionFlowContext] = None
         self._mail_context: Optional[_MailFlowContext] = None
         self._commission_context: Optional[_CommissionFlowContext] = None
@@ -867,7 +892,7 @@ class AlasSemanticAdapter:
     def begin_campaign_pre_sortie(
         self, stage_code: str, mode: str = "normal"
     ) -> None:
-        """Open one ALAS-owned, cancel-only campaign preparation run."""
+        """Open one ALAS-owned bounded campaign entry invocation."""
 
         self._package_gate()
         if re.fullmatch(r"[1-9][0-9]*-[1-9][0-9]*", stage_code) is None:
@@ -892,6 +917,7 @@ class AlasSemanticAdapter:
             mode=mode,
             entry_budget=self._campaign_stage_entry_budget,
             fleet_mutation_budget=self._campaign_fleet_mutation_budget,
+            sortie_budget=self._campaign_sortie_budget,
             passive_transition_until=time.monotonic() + 20.0,
         )
 
@@ -904,6 +930,14 @@ class AlasSemanticAdapter:
     def campaign_stage_entry_allowed(self) -> bool:
         context = self._require_campaign_context()
         return context.entry_budget > 0 and context.entry_receipt is None
+
+    def campaign_map_preparation_committed(self) -> bool:
+        context = self._require_campaign_context()
+        return context.map_preparation_receipt is not None
+
+    def campaign_sortie_committed(self) -> bool:
+        context = self._require_campaign_context()
+        return context.sortie_receipt is not None
 
     @staticmethod
     def _campaign_fleet_tuple(
@@ -1063,6 +1097,107 @@ class AlasSemanticAdapter:
         context.prepared_fleet_state = prepared
         return prepared
 
+    def authorize_campaign_sortie(
+        self,
+        *,
+        use_auto_search: bool,
+        use_2x_book: bool,
+        submarine_mode: str,
+        fleet_order: str,
+    ) -> bool:
+        """Preflight the separately budgeted exact sortie before any input."""
+
+        self._package_gate()
+        context = self._require_campaign_context()
+        if context.sortie_receipt is not None or context.sortie_authorized:
+            raise SemanticGateClosed("campaign sortie was already authorized")
+        if context.sortie_budget == 0:
+            return False
+        if context.sortie_budget != 1:
+            raise SemanticGateClosed(
+                "campaign sortie is qualified only with an exact budget of one"
+            )
+        if context.mode != "normal":
+            raise SemanticGateClosed("campaign sortie is qualified only in normal mode")
+        if context.prepared_fleet_state is None or context.requested_fleets is None:
+            raise SemanticGateClosed("campaign fleet selection was not proven")
+        if context.requested_fleets != (1, 2, 0):
+            raise SemanticGateClosed(
+                "campaign sortie is qualified only for fleets (1, 2, 0)"
+            )
+        if use_auto_search is not False or use_2x_book is not False:
+            raise SemanticGateClosed(
+                "campaign sortie requires auto search and 2x book disabled"
+            )
+        if submarine_mode != "do_not_use":
+            raise SemanticGateClosed(
+                "campaign sortie requires submarine mode do_not_use"
+            )
+        if fleet_order != "fleet1_mob_fleet2_boss":
+            raise SemanticGateClosed("campaign sortie fleet order is not reviewed")
+
+        prepared = context.prepared_fleet_state
+        rows = {row.row_key: row for row in prepared.rows}
+        if (
+            set(rows) != {"fleet1", "fleet2", "submarine"}
+            or not rows["fleet1"].ship_levels
+            or not rows["fleet2"].ship_levels
+            or rows["submarine"].ship_levels
+            or prepared.surface_fleets != (2, 2)
+            or prepared.submarine_fleets != (0, 1)
+        ):
+            raise SemanticGateClosed("campaign sortie fleet validity is not proven")
+        if context.oil_before_sortie is None:
+            raise SemanticGateClosed("campaign oil was not captured before stage input")
+        required_oil = prepared.mob_oil_cost + prepared.boss_oil_cost
+        if required_oil <= 0 or context.oil_before_sortie < required_oil:
+            raise SemanticGateClosed("campaign sortie oil precondition failed")
+        if not prepared.sortie_button.actionable:
+            raise SemanticGateClosed("campaign sortie target is not actionable")
+        context.sortie_authorized = True
+        return True
+
+    def confirm_campaign_sortie(self) -> CampaignSortieProof:
+        """Prove one exact sortie input reached the read-only map-scene root."""
+
+        self._package_gate()
+        context = self._require_campaign_context()
+        if context.sortie_proof is not None:
+            return context.sortie_proof
+        if (
+            not context.sortie_authorized
+            or context.sortie_receipt is None
+            or context.sortie_budget != 0
+            or context.initial_fleet_state is None
+            or context.prepared_fleet_state is None
+            or context.requested_fleets is None
+            or context.oil_before_sortie is None
+        ):
+            raise SemanticGateClosed("campaign sortie input proof is incomplete")
+        entered = self.oracle.campaign_map_entry_state()
+        if entered.generation <= context.sortie_receipt.generation:
+            raise SemanticGateClosed("campaign map entry did not advance generation")
+        context.map_entry_state = entered
+        required_oil = (
+            context.prepared_fleet_state.mob_oil_cost
+            + context.prepared_fleet_state.boss_oil_cost
+        )
+        context.sortie_proof = CampaignSortieProof(
+            stage_code=context.stage_code,
+            initial_fleets=self._campaign_fleet_tuple(context.initial_fleet_state),
+            requested_fleets=context.requested_fleets,
+            prepared_fleets=self._campaign_fleet_tuple(context.prepared_fleet_state),
+            mutation_semantic_ids=tuple(
+                receipt.semantic_id for receipt in context.fleet_mutation_receipts
+            ),
+            oil_before_sortie=context.oil_before_sortie,
+            required_oil=required_oil,
+            sortie_generation=context.sortie_receipt.generation,
+            map_generation=entered.generation,
+            map_root_path=entered.root_path,
+        )
+        return context.sortie_proof
+
     def close_campaign_fleet_dropdown_for_rollback(self) -> None:
         context = self._require_campaign_context()
         state = self.oracle.campaign_fleet_dropdown_state()
@@ -1119,6 +1254,7 @@ class AlasSemanticAdapter:
                 (
                     context.map_preparation_receipt is not None
                     or context.cancel_receipt is not None
+                    or context.sortie_receipt is not None
                 )
                 and time.monotonic() <= context.passive_transition_until
             ):
@@ -1924,6 +2060,16 @@ class AlasSemanticAdapter:
             return self.oracle.campaign_page_is_normal()
         if semantic_id is None and name == "IN_MAP":
             if self._campaign_context is not None:
+                if self._campaign_context.sortie_receipt is not None:
+                    try:
+                        return self.oracle.campaign_is_in_map()
+                    except SemanticGateClosed:
+                        if (
+                            time.monotonic()
+                            <= self._campaign_context.passive_transition_until
+                        ):
+                            return False
+                        raise
                 if self._campaign_preparation_kind() is not None:
                     return False
                 if (
@@ -2700,10 +2846,31 @@ class AlasSemanticAdapter:
                 raise SemanticGateClosed(
                     "campaign stage entry requires one remaining budget unit"
                 )
+            context.oil_before_sortie = self.oracle.campaign_oil()
             receipt = self.oracle.click_campaign_stage(campaign_stage_code)
             context.entry_budget -= 1
             context.entry_receipt = receipt
             context.passive_transition_until = time.monotonic() + 20.0
+            return receipt
+        if self._campaign_context is not None and name == "FLEET_PREPARATION":
+            context = self._require_campaign_context()
+            if (
+                not context.sortie_authorized
+                or context.sortie_budget != 1
+                or context.sortie_receipt is not None
+                or context.prepared_fleet_state is None
+            ):
+                raise SemanticGateClosed(
+                    "campaign sortie requires one authorized budget unit"
+                )
+            receipt = self.oracle.click_campaign_sortie(context.stage_code)
+            if receipt.generation < context.prepared_fleet_state.generation:
+                raise SemanticGateClosed(
+                    "campaign sortie target predates prepared fleet state"
+                )
+            context.sortie_budget -= 1
+            context.sortie_receipt = receipt
+            context.passive_transition_until = time.monotonic() + 30.0
             return receipt
         if (
             self._campaign_context is not None
@@ -3862,6 +4029,7 @@ class AlasSemanticSession:
         build_submit_budget: int = 0,
         campaign_stage_entry_budget: int = 0,
         campaign_fleet_mutation_budget: int = 0,
+        campaign_sortie_budget: int = 0,
     ) -> None:
         if not serial:
             raise ValueError("semantic ALAS mode requires an ADB serial")
@@ -3885,6 +4053,7 @@ class AlasSemanticSession:
             ("build submit", build_submit_budget),
             ("campaign stage entry", campaign_stage_entry_budget),
             ("campaign fleet mutation", campaign_fleet_mutation_budget),
+            ("campaign sortie", campaign_sortie_budget),
         ):
             if (
                 isinstance(budget, bool)
@@ -3904,6 +4073,7 @@ class AlasSemanticSession:
         self.build_submit_budget = build_submit_budget
         self.campaign_stage_entry_budget = campaign_stage_entry_budget
         self.campaign_fleet_mutation_budget = campaign_fleet_mutation_budget
+        self.campaign_sortie_budget = campaign_sortie_budget
         self.bridge = AdbObserverBridge(serial, package, adb=adb)
         self.adapter: Optional[AlasSemanticAdapter] = None
 
@@ -3943,6 +4113,9 @@ class AlasSemanticSession:
         raw_campaign_fleet_mutation_budget = os.environ.get(
             "ALAS_SEMANTIC_CAMPAIGN_FLEET_MUTATION_BUDGET", "0"
         )
+        raw_campaign_sortie_budget = os.environ.get(
+            "ALAS_SEMANTIC_CAMPAIGN_SORTIE_BUDGET", "0"
+        )
         for label, value in (
             ("tactical assign", raw_tactical_assign_budget),
             ("commission reward", raw_reward_budget),
@@ -3954,6 +4127,7 @@ class AlasSemanticSession:
             ("build submit", raw_build_submit_budget),
             ("campaign stage entry", raw_campaign_stage_entry_budget),
             ("campaign fleet mutation", raw_campaign_fleet_mutation_budget),
+            ("campaign sortie", raw_campaign_sortie_budget),
         ):
             if re.fullmatch(r"0|[1-9][0-9]*", value) is None:
                 raise SemanticGateClosed(
@@ -3990,6 +4164,7 @@ class AlasSemanticSession:
             campaign_fleet_mutation_budget=int(
                 raw_campaign_fleet_mutation_budget
             ),
+            campaign_sortie_budget=int(raw_campaign_sortie_budget),
         )
 
     def open(self) -> AlasSemanticAdapter:
@@ -4029,6 +4204,7 @@ class AlasSemanticSession:
                 campaign_fleet_mutation_budget=(
                     self.campaign_fleet_mutation_budget
                 ),
+                campaign_sortie_budget=self.campaign_sortie_budget,
             )
             return self.adapter
         except Exception:
@@ -4144,6 +4320,9 @@ class AlasSemanticSession:
     def campaign_stage_entry_allowed(self) -> bool:
         return self.open().campaign_stage_entry_allowed()
 
+    def campaign_map_preparation_committed(self) -> bool:
+        return self.open().campaign_map_preparation_committed()
+
     def confirm_campaign_pre_sortie(self) -> CampaignPreSortieProof:
         return self.open().confirm_campaign_pre_sortie()
 
@@ -4184,6 +4363,27 @@ class AlasSemanticSession:
         self,
     ) -> CampaignFleetPreparationProof:
         return self.open().confirm_campaign_fleet_preparation()
+
+    def authorize_campaign_sortie(
+        self,
+        *,
+        use_auto_search: bool,
+        use_2x_book: bool,
+        submarine_mode: str,
+        fleet_order: str,
+    ) -> bool:
+        return self.open().authorize_campaign_sortie(
+            use_auto_search=use_auto_search,
+            use_2x_book=use_2x_book,
+            submarine_mode=submarine_mode,
+            fleet_order=fleet_order,
+        )
+
+    def campaign_sortie_committed(self) -> bool:
+        return self.open().campaign_sortie_committed()
+
+    def confirm_campaign_sortie(self) -> CampaignSortieProof:
+        return self.open().confirm_campaign_sortie()
 
     def research_series(self) -> List[int]:
         return self.open().research_series()

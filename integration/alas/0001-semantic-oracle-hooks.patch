@@ -1,5 +1,5 @@
 diff --git a/module/base/base.py b/module/base/base.py
-index dfd12a94182f193411eda70c4ae5ef048f124a4b..448d06ff94417b43d6b3633a95581e946f617a7c 100644
+index dfd12a9..448d06f 100644
 --- a/module/base/base.py
 +++ b/module/base/base.py
 @@ -70,6 +70,9 @@ class ModuleBase:
@@ -51,7 +51,7 @@ index dfd12a94182f193411eda70c4ae5ef048f124a4b..448d06ff94417b43d6b3633a95581e94
              image = button
          else:
 diff --git a/module/campaign/campaign_ocr.py b/module/campaign/campaign_ocr.py
-index f39a29ae80cc1cebe765250bfe63d5933011b10c..9c2d7f433e3ee424d1c342ad3614c078357d6216 100644
+index f39a29a..9c2d7f4 100644
 --- a/module/campaign/campaign_ocr.py
 +++ b/module/campaign/campaign_ocr.py
 @@ -2,6 +2,7 @@ import collections
@@ -149,7 +149,7 @@ index f39a29ae80cc1cebe765250bfe63d5933011b10c..9c2d7f433e3ee424d1c342ad3614c078
          del_cached_property(self, '_stage_image')
          del_cached_property(self, '_stage_image_gray')
 diff --git a/module/campaign/campaign_status.py b/module/campaign/campaign_status.py
-index 45e8179fc13aa9391bf37929735dd3b54c7fa159..55ba834c9b9b1c21a12126f5f0ece2637558652f 100644
+index 45e8179..55ba834 100644
 --- a/module/campaign/campaign_status.py
 +++ b/module/campaign/campaign_status.py
 @@ -107,6 +107,11 @@ class CampaignStatus(UI):
@@ -165,7 +165,7 @@ index 45e8179fc13aa9391bf37929735dd3b54c7fa159..55ba834c9b9b1c21a12126f5f0ece263
          timeout = Timer(1, count=2).start()
          while 1:
 diff --git a/module/campaign/run.py b/module/campaign/run.py
-index 57033308f4cfa16bafbf6ddba6b3ecb372a3e2b4..1270b8ede73693b5064775dba973b0a7bf83f2d4 100644
+index 5703330..1270b8e 100644
 --- a/module/campaign/run.py
 +++ b/module/campaign/run.py
 @@ -366,6 +366,16 @@ class CampaignRun(CampaignEvent):
@@ -207,7 +207,7 @@ index 57033308f4cfa16bafbf6ddba6b3ecb372a3e2b4..1270b8ede73693b5064775dba973b0a7
              except ScriptEnd as e:
                  logger.hr('Script end')
 diff --git a/module/commission/commission.py b/module/commission/commission.py
-index 195d84a1354760fb116f8833f963f1bdd0f20555..fda74c41f81b5a897e961d59a234edd0ce64b07b 100644
+index 195d84a..fda74c4 100644
 --- a/module/commission/commission.py
 +++ b/module/commission/commission.py
 @@ -89,6 +89,21 @@ class RewardCommission(UI, InfoHandler):
@@ -468,7 +468,7 @@ index 195d84a1354760fb116f8833f963f1bdd0f20555..fda74c41f81b5a897e961d59a234edd0
 +            if semantic_adapter is not None:
 +                semantic_adapter.end_commission()
 diff --git a/module/commission/project.py b/module/commission/project.py
-index cd88c16282b4f6c8bcf9eac2202e836797869e3c..efa9500e8b5c759653038f4867dbf2f365269384 100644
+index cd88c16..efa9500 100644
 --- a/module/commission/project.py
 +++ b/module/commission/project.py
 @@ -106,6 +106,58 @@ class Commission:
@@ -555,7 +555,7 @@ index cd88c16282b4f6c8bcf9eac2202e836797869e3c..efa9500e8b5c759653038f4867dbf2f3
          # area = area_offset((5, 5, 30, 30), self.area[0:2])
          # return color_similar(color1=get_color(self.image, area), color2=(239, 166, 231))
 diff --git a/module/device/control.py b/module/device/control.py
-index 1224c45475f24ccbec28589e78c4a2d5df4ffd64..8a1cb41169a868a8eb6a5fef9632a4466fa71934 100644
+index 1224c45..8a1cb41 100644
 --- a/module/device/control.py
 +++ b/module/device/control.py
 @@ -17,6 +17,14 @@ class Control(Hermit, Minitouch, Scrcpy, MaaTouch, NemuIpc):
@@ -626,7 +626,7 @@ index 1224c45475f24ccbec28589e78c4a2d5df4ffd64..8a1cb41169a868a8eb6a5fef9632a446
          p1, p2 = ensure_int(p1, p2)
          logger.info(
 diff --git a/module/device/device.py b/module/device/device.py
-index 0d05f343807c19ac88b96e1e31248219d723ab43..586c68071975b16b154fecc536089da8ccc3a148 100644
+index 0d05f34..586c680 100644
 --- a/module/device/device.py
 +++ b/module/device/device.py
 @@ -1,4 +1,5 @@
@@ -657,7 +657,7 @@ index 0d05f343807c19ac88b96e1e31248219d723ab43..586c68071975b16b154fecc536089da8
          if IS_WINDOWS and self.config.EmulatorInfo_Emulator == 'auto':
              _ = self.emulator_instance
 diff --git a/module/dorm/dorm.py b/module/dorm/dorm.py
-index c3c9545999b72754bce1c3f47196ac2fc2031249..3710781b6d438a2ec1fa82a6e348c1add28a3629 100644
+index c3c9545..3710781 100644
 --- a/module/dorm/dorm.py
 +++ b/module/dorm/dorm.py
 @@ -284,6 +284,12 @@ class RewardDorm(UI):
@@ -724,7 +724,7 @@ index c3c9545999b72754bce1c3f47196ac2fc2031249..3710781b6d438a2ec1fa82a6e348c1ad
 +            if semantic_adapter is not None:
 +                semantic_adapter.end_dorm()
 diff --git a/module/freebies/mail_white.py b/module/freebies/mail_white.py
-index 6d9e42f4a4777d63ff1c26a14782f6074892921e..25a9dcc177da8cebcf280ec2864c2e6f24523a17 100644
+index 6d9e42f..25a9dcc 100644
 --- a/module/freebies/mail_white.py
 +++ b/module/freebies/mail_white.py
 @@ -257,23 +257,30 @@ class MailWhite(UI):
@@ -778,7 +778,7 @@ index 6d9e42f4a4777d63ff1c26a14782f6074892921e..25a9dcc177da8cebcf280ec2864c2e6f
 +            if semantic_adapter is not None:
 +                semantic_adapter.end_mail()
 diff --git a/module/gacha/gacha_reward.py b/module/gacha/gacha_reward.py
-index 08c93073b1e52d249bd4815a75b7895456b394d1..9fcf6e06d9cc79a5b6f565a818392db6d73292ca 100644
+index 08c9307..9fcf6e0 100644
 --- a/module/gacha/gacha_reward.py
 +++ b/module/gacha/gacha_reward.py
 @@ -85,6 +85,14 @@ class RewardGacha(GachaUI, Retirement):
@@ -840,7 +840,7 @@ index 08c93073b1e52d249bd4815a75b7895456b394d1..9fcf6e06d9cc79a5b6f565a818392db6
 +            if semantic_adapter is not None:
 +                semantic_adapter.end_build()
 diff --git a/module/map/map_fleet_preparation.py b/module/map/map_fleet_preparation.py
-index 38c9af5c1af621800fcbd1725d0ce151d3deff5b..68fc84e402fb6b626a8250aae34b273e461b8495 100644
+index 38c9af5..68fc84e 100644
 --- a/module/map/map_fleet_preparation.py
 +++ b/module/map/map_fleet_preparation.py
 @@ -49,6 +49,20 @@ class FleetOperator:
@@ -932,7 +932,7 @@ index 38c9af5c1af621800fcbd1725d0ce151d3deff5b..68fc84e402fb6b626a8250aae34b273e
          luma = rgb2gray(self.main.image_crop(self._bar.button, copy=False))[:, -1]
          # FLEET_PREPARATION is about 146~155
 diff --git a/module/map/map_operation.py b/module/map/map_operation.py
-index c44e0996e1923a5ad9e4f94cc5087b6e6c3fe5eb..50e8ee13adf2fe64cda9a91cb4cc8058bab23713 100644
+index c44e099..8c708f5 100644
 --- a/module/map/map_operation.py
 +++ b/module/map/map_operation.py
 @@ -119,6 +119,7 @@ class MapOperation(MysteryHandler, FleetPreparation, Retirement, FastForwardHand
@@ -943,18 +943,37 @@ index c44e0996e1923a5ad9e4f94cc5087b6e6c3fe5eb..50e8ee13adf2fe64cda9a91cb4cc8058
  
          with self.stat.new(
                  genre=self.config.campaign_name, method=self.config.DropRecord_CombatRecord
-@@ -150,6 +151,60 @@ class MapOperation(MysteryHandler, FleetPreparation, Retirement, FastForwardHand
+@@ -150,6 +151,105 @@ class MapOperation(MysteryHandler, FleetPreparation, Retirement, FastForwardHand
                  else:
                      checked_in_map = True
  
-+                # Semantic pre-sortie validation follows the same ALAS states,
-+                # but stops before the fleet-preparation sortie input.
++                # Semantic campaign validation follows the same ALAS states.
++                # Each later input boundary remains independently budgeted.
 +                if (
 +                    semantic_adapter is not None
 +                    and semantic_adapter.campaign_pre_sortie_active()
 +                ):
++                    if semantic_adapter.campaign_sortie_committed():
++                        if self.is_in_map():
++                            proof = semantic_adapter.confirm_campaign_sortie()
++                            logger.info(
++                                f'Semantic campaign sortie proof: '
++                                f'{proof.stage_code}, {proof.initial_fleets}'
++                                f'->{proof.prepared_fleets}, '
++                                f'mutations={proof.mutation_semantic_ids}, '
++                                f'oil={proof.oil_before_sortie}>='
++                                f'{proof.required_oil}, '
++                                f'{proof.sortie_generation}'
++                                f'->{proof.map_generation}, '
++                                f'root={proof.map_root_path}'
++                            )
++                            raise ScriptEnd(
++                                'Semantic campaign sortie validation complete'
++                            )
++                        continue
 +                    if self.appear(FLEET_PREPARATION, offset=(20, 50)):
 +                        fleet_authorized = False
++                        sortie_clicked = False
 +                        try:
 +                            fleet_authorized = (
 +                                semantic_adapter.authorize_campaign_fleet_preparation(
@@ -964,14 +983,33 @@ index c44e0996e1923a5ad9e4f94cc5087b6e6c3fe5eb..50e8ee13adf2fe64cda9a91cb4cc8058
 +                                )
 +                            )
 +                            if fleet_authorized:
++                                self.handle_2x_book_setting(mode='prep')
 +                                self.fleet_preparation()
 +                                semantic_adapter.confirm_campaign_fleet_selection()
++                                self.handle_auto_submarine_call_disable()
++                                self.handle_auto_search_setting()
 +                                self.map_fleet_checked = True
++                                if semantic_adapter.authorize_campaign_sortie(
++                                    use_auto_search=(
++                                        self.config.Campaign_UseAutoSearch
++                                    ),
++                                    use_2x_book=self.config.Campaign_Use2xBook,
++                                    submarine_mode=self.config.Submarine_Mode,
++                                    fleet_order=self.config.Fleet_FleetOrder,
++                                ):
++                                    self.device.click(FLEET_PREPARATION)
++                                    fleet_click += 1
++                                    fleet_timer.reset()
++                                    campaign_timer.reset()
++                                    sortie_clicked = True
 +                        finally:
-+                            try:
-+                                semantic_adapter.close_campaign_fleet_dropdown_for_rollback()
-+                            finally:
-+                                self.enter_map_cancel()
++                            if not sortie_clicked:
++                                try:
++                                    semantic_adapter.close_campaign_fleet_dropdown_for_rollback()
++                                finally:
++                                    self.enter_map_cancel()
++                        if sortie_clicked:
++                            continue
 +                        if fleet_authorized:
 +                            proof = semantic_adapter.confirm_campaign_fleet_preparation()
 +                            logger.info(
@@ -1000,12 +1038,19 @@ index c44e0996e1923a5ad9e4f94cc5087b6e6c3fe5eb..50e8ee13adf2fe64cda9a91cb4cc8058
 +                        map_timer.reset()
 +                        campaign_timer.reset()
 +                        continue
++                    # A semantic observation can advance between two appear()
++                    # calls.  Once map preparation is committed, never let an
++                    # unhandled transition generation fall through to the
++                    # original fleet/sortie input branches below.  Earlier
++                    # ALAS navigation and recovery states remain unchanged.
++                    if semantic_adapter.campaign_map_preparation_committed():
++                        continue
 +
                  # Accidental clicks
                  if self.appear(DAILY_CHECK, offset=(20, 20), interval=3):
                      logger.info(f'{DAILY_CHECK} -> {BACK_ARROW}')
 diff --git a/module/ocr/ocr.py b/module/ocr/ocr.py
-index 9dfd4f00cb0d52466c496da677115509163a6592..9fca01bd4151210252be61629d6fbeda7443af15 100644
+index 9dfd4f0..9fca01b 100644
 --- a/module/ocr/ocr.py
 +++ b/module/ocr/ocr.py
 @@ -90,6 +90,28 @@ class Ocr:
@@ -1038,7 +1083,7 @@ index 9dfd4f00cb0d52466c496da677115509163a6592..9fca01bd4151210252be61629d6fbeda
              image_list = [self.pre_process(i) for i in image]
          else:
 diff --git a/module/research/project.py b/module/research/project.py
-index c7b54dcb4d41d65777b954a26dea5ce24340507b..a7bc57698b80c8c6169e5d94ca100ed2cd09ab17 100644
+index c7b54dc..a7bc576 100644
 --- a/module/research/project.py
 +++ b/module/research/project.py
 @@ -147,6 +147,10 @@ def get_research_finished(image):
@@ -1053,7 +1098,7 @@ index c7b54dcb4d41d65777b954a26dea5ce24340507b..a7bc57698b80c8c6169e5d94ca100ed2
          button = RESEARCH_STATUS[index]
          color = get_color(image, button.area)
 diff --git a/module/research/research.py b/module/research/research.py
-index 6ffd45eed346403875be07ca12a1602fa5fe6cb8..ff4edac597c7679007403578bdadd2567cde440f 100644
+index 6ffd45e..ff4edac 100644
 --- a/module/research/research.py
 +++ b/module/research/research.py
 @@ -200,7 +200,12 @@ class RewardResearch(ResearchSelector, ResearchQueue, StorageHandler):
@@ -1095,7 +1140,7 @@ index 6ffd45eed346403875be07ca12a1602fa5fe6cb8..ff4edac597c7679007403578bdadd256
 +            if semantic_adapter is not None:
 +                semantic_adapter.end_research()
 diff --git a/module/research/rqueue.py b/module/research/rqueue.py
-index e836c5cb93abd1673a33b0b117e7faef695c68cb..bb47daef0d359de7db764257a08cf6ac43f73ddb 100644
+index e836c5c..bb47dae 100644
 --- a/module/research/rqueue.py
 +++ b/module/research/rqueue.py
 @@ -1,4 +1,4 @@
@@ -1142,7 +1187,7 @@ index e836c5cb93abd1673a33b0b117e7faef695c68cb..bb47daef0d359de7db764257a08cf6ac
              logger.error('The first research of queue is not running,'
                           'probably a game bug from AL,'
 diff --git a/module/research/selector.py b/module/research/selector.py
-index 05146c3308213214bb9fab21f4874135f6739113..5ff693dbf83bf2493bae17489621c1e42f8aa4c2 100644
+index 05146c3..5ff693d 100644
 --- a/module/research/selector.py
 +++ b/module/research/selector.py
 @@ -123,6 +123,17 @@ class ResearchSelector(ResearchUI):
@@ -1164,7 +1209,7 @@ index 05146c3308213214bb9fab21f4874135f6739113..5ff693dbf83bf2493bae17489621c1e4
          while 1:
              projects = research_detect(self.device.image)
 diff --git a/module/research/series.py b/module/research/series.py
-index 89e534c45e8ee356007ed47f52ce64b0242186c9..d399d423785825558991092079a77fa0df9ad4a8 100644
+index 89e534c..d399d42 100644
 --- a/module/research/series.py
 +++ b/module/research/series.py
 @@ -46,6 +46,10 @@ def get_research_series_3(image, series_button=RESEARCH_SERIES):
@@ -1179,7 +1224,7 @@ index 89e534c45e8ee356007ed47f52ce64b0242186c9..d399d423785825558991092079a77fa0
          match_series(crop(image, area_pad(button.area, pad=-10), copy=False), scaling)
          for scaling, button in zip(RESEARCH_SCALING, series_button)
 diff --git a/module/research/ui.py b/module/research/ui.py
-index 3f652c11f1d66e47e6945bf8050697ef1a0f27d4..dea1bd5f71465a1419ceff74a8b549811d9080ad 100644
+index 3f652c1..dea1bd5 100644
 --- a/module/research/ui.py
 +++ b/module/research/ui.py
 @@ -99,6 +99,12 @@ class ResearchUI(UI):
@@ -1196,7 +1241,7 @@ index 3f652c11f1d66e47e6945bf8050697ef1a0f27d4..dea1bd5f71465a1419ceff74a8b54981
          for index, status, scaling in zip(range(5), RESEARCH_STATUS, RESEARCH_SCALING):
              info = status.crop((0, -40, 200, 0))
 diff --git a/module/reward/reward.py b/module/reward/reward.py
-index 50a71717bfbe8be953e8bb2acb0fffb2f718120a..3df61a5a750cfaaab8772c1b843d6d03b5691220 100644
+index 50a7171..3df61a5 100644
 --- a/module/reward/reward.py
 +++ b/module/reward/reward.py
 @@ -166,6 +166,14 @@ class Reward(UI):
@@ -1284,7 +1329,7 @@ index 50a71717bfbe8be953e8bb2acb0fffb2f718120a..3df61a5a750cfaaab8772c1b843d6d03
 +            if semantic_adapter is not None:
 +                semantic_adapter.end_mission_reward()
 diff --git a/module/tactical/tactical_class.py b/module/tactical/tactical_class.py
-index 0e518a49a454a1d5ba4204059a22c0c3cc601f29..d794d42cefad01041bca024298935e3ba09d0d97 100644
+index 0e518a4..d794d42 100644
 --- a/module/tactical/tactical_class.py
 +++ b/module/tactical/tactical_class.py
 @@ -1,4 +1,4 @@

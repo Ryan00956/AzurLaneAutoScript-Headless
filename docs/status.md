@@ -4,6 +4,34 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G12 campaign sortie: one exact input and real map-root proof
+
+- `ALAS_SEMANTIC_CAMPAIGN_SORTIE_BUDGET` is independent, defaults to `0`, and
+  qualifies only the exact positive value `1`. Fleet validity, disabled
+  auto-search/2x, submarine mode, fleet order, oil, and the unique sortie
+  target are all revalidated before ALAS's original sortie click.
+- The budget-zero final command returned
+  `ALAS_G12_SORTIE_BUDGET0_FINAL True` after exact fleet reconciliation and
+  cancel, with no sortie. A later budget-one replay injected exactly one
+  `campaign/fleet-preparation/sortie` at `2026-08-10 11:20:51.703`.
+- The original map postcondition failed closed because it assumed a nonexistent
+  `LevelScene(Clone)` root. After restart, the game restored the same `12-4`
+  map. Generation `3103` proved the real `LevelCamera/.../LevelGrid` root, 70
+  reviewed map Button paths, three fixed Image/sprite anchors, and
+  `IN_MAP=True`.
+- The first map attempt exposed a recursive IL2CPP liveness stack failure. The
+  final observer uses non-recursive `Resources.FindObjectsOfTypeAll(Type)` and
+  a bounded approximately 10 Hz typed-snapshot cadence. It remained fresh and
+  stable on the recovered map beyond the earlier failure window.
+- No grid, fleet movement, combat, retreat, or reward input occurred. The
+  evidence is intentionally split rather than spending another sortie merely
+  for a same-process success line.
+- Final observer APK SHA-256:
+  `7481e25e6a5d51e05101b55befdd331a051b76181819fe80ce676b7c26bbb38a`.
+  The relevant controller/integration suite passes `220/220`.
+
+See [G12 campaign sortie validation](g12-campaign-sortie-validation-report.md).
+
 ### G11 campaign fleet preparation: exact three-mutation reversible pass
 
 - The pinned campaign command now calls ALAS's original

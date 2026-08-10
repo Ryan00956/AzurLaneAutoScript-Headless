@@ -816,7 +816,7 @@ class SemanticOracleTests(unittest.TestCase):
         with self.assertRaisesRegex(SemanticGateClosed, "identity changed"):
             make_oracle(backend).campaign_map_preparation_state("12-4")
 
-    def test_campaign_fleet_preparation_exposes_only_exact_cancel(self):
+    def test_campaign_fleet_preparation_exposes_exact_cancel_and_sortie(self):
         fleet = (
             "root/OverlayCamera/Overlay/UIMain/"
             "LevelFleetSelectView(Clone)/panel/Fixed/"
@@ -831,7 +831,7 @@ class SemanticOracleTests(unittest.TestCase):
                 make_button("btnBack", fleet + "btnBack", 1196, 97),
                 make_button(
                     "start_button", fleet + "start_button", 1078, 585,
-                    raycast_top=None,
+                    raycast_top=True,
                 ),
             ]
         )
@@ -849,15 +849,15 @@ class SemanticOracleTests(unittest.TestCase):
 
         state = oracle.campaign_fleet_preparation_state("12-4")
         self.assertEqual(state.kind, "fleet")
-        self.assertIsNone(state.proceed_button.raycast_top)
+        self.assertTrue(state.proceed_button.raycast_top)
         receipt = oracle.cancel_campaign_fleet_preparation("12-4")
         self.assertEqual(
             receipt.semantic_id, "campaign/fleet-preparation/cancel"
         )
         self.assertEqual(backend.taps, [(1196, 97)])
 
-        backend.buttons["buttons"][2]["raycast_top"] = True
-        with self.assertRaisesRegex(SemanticGateClosed, "unexpectedly exposed"):
+        backend.buttons["buttons"][2]["raycast_top"] = False
+        with self.assertRaisesRegex(SemanticGateClosed, "sortie is not proven"):
             make_oracle(backend).campaign_fleet_preparation_state("12-4")
 
     def test_campaign_fleet_selection_reads_exact_rows_and_summary(self):
@@ -874,7 +874,7 @@ class SemanticOracleTests(unittest.TestCase):
             make_button("btnBack", fleet + "Fixed/btnBack", 1196, 97),
             make_button(
                 "start_button", fleet + "Fixed/start_button", 1078, 585,
-                raycast_top=None,
+                raycast_top=True,
             ),
         ]
         for row in ("fleet/1", "fleet/2", "sub/1"):
@@ -927,7 +927,9 @@ class SemanticOracleTests(unittest.TestCase):
         self.assertEqual(
             receipt.semantic_id, "campaign/fleet-preparation/fleet/2/clear"
         )
-        self.assertEqual(backend.taps, [(640, 360)])
+        sortie = oracle.click_campaign_sortie("12-4")
+        self.assertEqual(sortie.semantic_id, "campaign/fleet-preparation/sortie")
+        self.assertEqual(backend.taps, [(640, 360), (1078, 585)])
 
     def test_campaign_fleet_dropdown_requires_six_exact_toggle_options(self):
         root = (
@@ -986,7 +988,7 @@ class SemanticOracleTests(unittest.TestCase):
         unknown = FakeBackend(
             [make_button("unknown", "root/UICamera/Canvas/UIMain/Unknown(Clone)")]
         )
-        with self.assertRaisesRegex(SemanticGateClosed, "reviewed non-map"):
+        with self.assertRaisesRegex(SemanticGateClosed, "not reviewed"):
             make_oracle(unknown).campaign_is_in_map()
 
         event_list = FakeBackend(
@@ -1002,6 +1004,70 @@ class SemanticOracleTests(unittest.TestCase):
         event_oracle = make_oracle(event_list)
         self.assertFalse(event_oracle.campaign_is_in_map())
         self.assertTrue(event_oracle.enabled("event-list/page/back"))
+
+        map_root = "LevelCamera/Canvas/UIMain/LevelGrid"
+        stage_root = "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)"
+        in_map = FakeBackend(
+            [
+                make_button(
+                    "retreat", map_root + "/DragLayer/op1/retreat", raycast_top=None
+                ),
+                make_button(
+                    "chapter_cell_quad_6_4",
+                    map_root
+                    + "/DragLayer/plane/quads/chapter_cell_quad_6_4",
+                    raycast_top=None,
+                ),
+                make_button(
+                    "back_button",
+                    stage_root + "/top_stage/back_button",
+                    raycast_top=None,
+                ),
+            ]
+        )
+        in_map.ui = make_ui(
+            [],
+            images=[
+                make_image(
+                    map_root + "/DragLayer/op1/retreat/retreat", "reteat_popo"
+                ),
+                make_image(
+                    map_root + "/DragLayer/plane/display/mask/sea", "sea_day"
+                ),
+                make_image(
+                    stage_root + "/top_stage/back_button/mask/Image", "back_btn"
+                ),
+            ],
+        )
+        # A real 12-4 map exceeds the global Image record cap. Positive exact
+        # anchors remain admissible; absence is proven from complete Buttons.
+        in_map.ui["image_truncated"] = True
+        map_oracle = make_oracle(in_map)
+        map_state = map_oracle.campaign_map_entry_state()
+        self.assertEqual(map_state.root_path, map_root)
+        self.assertTrue(map_oracle.campaign_is_in_map())
+
+        in_map.ui["images"].append(
+            make_image(
+                map_root + "/DragLayer/plane/display/mask/sea", "sea_day"
+            )
+        )
+        in_map.ui["image_count"] += 1
+        with self.assertRaisesRegex(SemanticGateClosed, "identity is absent"):
+            make_oracle(in_map).campaign_map_entry_state()
+        in_map.ui["images"].pop()
+        in_map.ui["image_count"] -= 1
+
+        in_map.buttons["buttons"].append(
+            make_button(
+                "btnBack",
+                "root/OverlayCamera/Overlay/UIMain/"
+                "LevelFleetSelectView(Clone)/panel/Fixed/btnBack",
+            )
+        )
+        in_map.buttons["button_count"] += 1
+        with self.assertRaisesRegex(SemanticGateClosed, "overlap"):
+            make_oracle(in_map).campaign_map_entry_state()
 
     def test_campaign_page_rejects_stage_id_text_mismatch(self):
         root = "root/UICamera/Canvas/UIMain/LevelMainScene(Clone)/"
