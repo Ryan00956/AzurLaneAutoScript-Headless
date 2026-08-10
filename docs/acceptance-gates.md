@@ -95,6 +95,11 @@ mapping and requires three adjacent exact grade frames plus a stable
 top-raycast action target. The fresh 11-sample real map trace is a clean
 negative observation for all six profiles, so no mapping count changes and
 production still stops at G18.
+G31 adds one `all` mode over the eight G29/G30 profiles. Raw sampling remains
+continuous while a typed prefilter limits expensive full-trace recomputation.
+Exactly one match may expose one review draft; multiple matches fail closed as
+ambiguous and expose none. The final 10-sample real map run matched nothing,
+so coverage remains unchanged and production still stops at G18.
 G4 includes
 login/main reachability, sustained semantic state, RectTransform bounds, top
 EventSystem raycast identity for each action, and a settings-page return loop.

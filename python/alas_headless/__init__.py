@@ -103,6 +103,14 @@ from .alas_combat_result_evidence import (
     audit_alas_combat_result_surface_mappings,
     verify_alas_combat_result_surface_evidence,
 )
+from .alas_combat_surface_multiplex import (
+    ALAS_COMBAT_SURFACE_MULTIPLEX_EVIDENCE_SCHEMA,
+    ALAS_COMBAT_SURFACE_MULTIPLEX_PROFILE_IDS,
+    ALAS_COMBAT_SURFACE_MULTIPLEX_VERIFICATION_SCHEMA,
+    alas_combat_surface_multiplex_candidate_present,
+    analyze_alas_combat_surface_multiplex_evidence,
+    verify_alas_combat_surface_multiplex_evidence,
+)
 from .alas_combat_trace import (
     ALAS_COMBAT_OBSERVER_CANDIDATE_SCHEMA,
     ALAS_COMBAT_OBSERVER_TRACE_SCHEMA,
@@ -237,6 +245,9 @@ __all__ = (
     "ALAS_COMBAT_RESULT_SURFACE_EVIDENCE_SCHEMA",
     "ALAS_COMBAT_RESULT_SURFACE_PROFILES",
     "ALAS_COMBAT_RESULT_SURFACE_VERIFICATION_SCHEMA",
+    "ALAS_COMBAT_SURFACE_MULTIPLEX_EVIDENCE_SCHEMA",
+    "ALAS_COMBAT_SURFACE_MULTIPLEX_PROFILE_IDS",
+    "ALAS_COMBAT_SURFACE_MULTIPLEX_VERIFICATION_SCHEMA",
     "ALAS_COMBAT_RESOURCE_ACTION_TARGETS",
     "ALAS_COMBAT_RESOURCE_ACTION_COMMIT_SCHEMA",
     "AlasCampaignFleetPlan",
@@ -270,6 +281,7 @@ __all__ = (
     "AlasCombatUnityRecordKind",
     "AlasCombatUnitySelector",
     "alas_combat_fleet_stats",
+    "alas_combat_surface_multiplex_candidate_present",
     "alas_combat_branch_replay_to_json",
     "AlasSemanticAdapter",
     "AlasSemanticSession",
@@ -356,6 +368,7 @@ __all__ = (
     "analyze_alas_combat_observer_candidates",
     "analyze_alas_combat_rare_surface_evidence",
     "analyze_alas_combat_result_surface_evidence",
+    "analyze_alas_combat_surface_multiplex_evidence",
     "audit_alas_combat_rare_surface_mappings",
     "audit_alas_combat_result_surface_mappings",
     "alas_combat_replay_phase_sequence",
@@ -391,5 +404,6 @@ __all__ = (
     "verify_alas_combat_mapping_receipt",
     "verify_alas_combat_rare_surface_evidence",
     "verify_alas_combat_result_surface_evidence",
+    "verify_alas_combat_surface_multiplex_evidence",
     "verify_alas_combat_branch_replay_record",
 )

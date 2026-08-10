@@ -298,6 +298,22 @@ top-raycast action Button. The current map trace is negative for all six, so
 none is promoted. See
 `docs/g30-alas-passive-result-surface-validation-report.md`.
 
+G31 removes profile prediction during acquisition. `all` captures one raw
+trace and checks all two dialog plus six passive-result profiles:
+
+```powershell
+python scripts/python/watch_alas_combat_rare_surface.py `
+  --serial 127.0.0.1:5581 `
+  --profile all `
+  --trace-output artifacts/g31-all.trace.json `
+  --evidence-output artifacts/g31-all.evidence.json
+```
+
+Exactly one completed child profile exposes one review draft. Multiple matches
+are ambiguous and expose none. The prefilter skips only repeated analysis, not
+raw samples, and final verification always reruns all eight profiles. See
+`docs/g31-alas-combat-surface-multiplex-validation-report.md`.
+
 Commission start has a separate integer budget and remains closed by default:
 
 ```powershell

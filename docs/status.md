@@ -4,6 +4,25 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G31 multiplex acquisition: one watcher covers eight rare surfaces
+
+- `--profile all` now evaluates guild, mission, A-D battle grades, and A/B
+  experience pages from one continuously captured raw trace.
+- A cheap typed prefilter avoids repeated eight-profile trace analysis on
+  ordinary map frames without dropping raw samples; the final trace is always
+  fully recomputed and verified.
+- Exactly one match exports one review draft. Multiple matches are ambiguous,
+  set evidence incomplete, and export no draft. Nothing is auto-applied.
+- The final real run captured 10 samples at generations `113131..113155` on
+  PID `23161`, with zero endpoint rejects, duplicates, or ambiguities. All
+  eight profiles remained absent.
+- Coverage stays canonical `16/41`, defensive `18/54`, actions `12/38`, and
+  blockers `1/4`; `production_ready=false`.
+- The combined G29-G31 focused suite passes `18/18`.
+- The full Python suite passes `336/336`.
+
+See [G31 combat-surface multiplex validation](g31-alas-combat-surface-multiplex-validation-report.md).
+
 ### G30 passive result acquisition: six profiles ready; no live promotion
 
 - The G29 watcher now also supports A-D battle grades and A/B experience pages.

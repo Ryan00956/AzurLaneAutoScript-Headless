@@ -15,6 +15,7 @@ from alas_headless import (  # noqa: E402
     ALAS_COMBAT_NESTED_BRANCH_ROOTS,
     ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES,
     ALAS_COMBAT_REPLAY_RESOURCE_NAMES,
+    ALAS_COMBAT_SURFACE_MULTIPLEX_PROFILE_IDS,
     audit_alas_combat_observer_manifest,
     audit_alas_combat_rare_surface_mappings,
     audit_alas_combat_result_surface_mappings,
@@ -61,7 +62,7 @@ def main() -> int:
     print(
         json.dumps(
             {
-                "schema": "alas-headless.g30-combat-observer-coverage/v6",
+                "schema": "alas-headless.g31-combat-observer-coverage/v7",
                 "contract_valid": (
                     coverage.total_resources
                     == len(ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES)
@@ -114,6 +115,16 @@ def main() -> int:
                 "result_surface_mappings": result_surface_mappings,
                 "result_surface_live_mappings_qualified": all(
                     result_surface_mappings.values()
+                ),
+                "surface_multiplex_profile_ids": (
+                    ALAS_COMBAT_SURFACE_MULTIPLEX_PROFILE_IDS
+                ),
+                "surface_multiplex_profile_count": len(
+                    ALAS_COMBAT_SURFACE_MULTIPLEX_PROFILE_IDS
+                ),
+                "surface_multiplex_live_mappings_qualified": (
+                    all(rare_surface_mappings.values())
+                    and all(result_surface_mappings.values())
                 ),
                 "input_injected": False,
             },

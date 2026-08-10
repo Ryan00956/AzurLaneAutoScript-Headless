@@ -19,14 +19,17 @@ from alas_headless import (  # noqa: E402
     AlasSemanticSession,
     PINNED_CN_GAME_FINGERPRINT,
     SemanticGateClosed,
+    alas_combat_surface_multiplex_candidate_present,
     analyze_alas_combat_rare_surface_evidence,
     analyze_alas_combat_result_surface_evidence,
+    analyze_alas_combat_surface_multiplex_evidence,
     build_alas_combat_observer_trace,
     build_alas_combat_trace_frame,
     load_alas_combat_observer_manifest,
     parse_alas_combat_observer_trace,
     verify_alas_combat_rare_surface_evidence,
     verify_alas_combat_result_surface_evidence,
+    verify_alas_combat_surface_multiplex_evidence,
 )
 
 
@@ -36,7 +39,7 @@ DIALOG_PROFILE_IDS = tuple(
 RESULT_PROFILE_IDS = tuple(
     profile.profile_id for profile in ALAS_COMBAT_RESULT_SURFACE_PROFILES
 )
-PROFILE_IDS = DIALOG_PROFILE_IDS + RESULT_PROFILE_IDS
+PROFILE_IDS = DIALOG_PROFILE_IDS + RESULT_PROFILE_IDS + ("all",)
 
 
 def parse_args() -> argparse.Namespace:
@@ -106,16 +109,14 @@ def validate_args(args: argparse.Namespace) -> None:
 def main() -> int:
     args = parse_args()
     validate_args(args)
-    analyzer = (
-        analyze_alas_combat_result_surface_evidence
-        if args.profile in RESULT_PROFILE_IDS
-        else analyze_alas_combat_rare_surface_evidence
-    )
-    verifier = (
-        verify_alas_combat_result_surface_evidence
-        if args.profile in RESULT_PROFILE_IDS
-        else verify_alas_combat_rare_surface_evidence
-    )
+    if args.profile == "all":
+        verifier = verify_alas_combat_surface_multiplex_evidence
+    else:
+        verifier = (
+            verify_alas_combat_result_surface_evidence
+            if args.profile in RESULT_PROFILE_IDS
+            else verify_alas_combat_rare_surface_evidence
+        )
     manifest = load_alas_combat_observer_manifest(args.manifest)
     game = PINNED_CN_GAME_FINGERPRINT
     fingerprint = ":".join(
@@ -168,16 +169,52 @@ def main() -> int:
                     final_digest = hashlib.sha256(trace_payload).hexdigest()
                     write_bytes(args.trace_output, trace_payload)
                     trace = parse_alas_combat_observer_trace(trace_json, manifest)
-                    final_record = analyzer(
-                        manifest,
-                        trace,
-                        profile_id=args.profile,
-                        source_trace_sha256=final_digest,
-                        minimum_consecutive_frames=args.minimum_consecutive_frames,
-                        context_frames=args.context_frames,
+                    should_analyze = args.profile != "all" or (
+                        len(samples) >= args.minimum_consecutive_frames
+                        and (
+                            final_record is None
+                            or alas_combat_surface_multiplex_candidate_present(typed)
+                        )
                     )
-                    write_bytes(args.evidence_output, encode_json(final_record))
-                    if final_record["evidence_complete"]:
+                    if should_analyze:
+                        if args.profile == "all":
+                            final_record = analyze_alas_combat_surface_multiplex_evidence(
+                                manifest,
+                                trace,
+                                source_trace_sha256=final_digest,
+                                minimum_consecutive_frames=(
+                                    args.minimum_consecutive_frames
+                                ),
+                                context_frames=args.context_frames,
+                            )
+                        else:
+                            analyzer = (
+                                analyze_alas_combat_result_surface_evidence
+                                if args.profile in RESULT_PROFILE_IDS
+                                else analyze_alas_combat_rare_surface_evidence
+                            )
+                            final_record = analyzer(
+                                manifest,
+                                trace,
+                                profile_id=args.profile,
+                                source_trace_sha256=final_digest,
+                                minimum_consecutive_frames=(
+                                    args.minimum_consecutive_frames
+                                ),
+                                context_frames=args.context_frames,
+                            )
+                        write_bytes(
+                            args.evidence_output, encode_json(final_record)
+                        )
+                    candidate_complete = (
+                        final_record is not None
+                        and (
+                            final_record["candidate_complete"]
+                            if args.profile == "all"
+                            else final_record["evidence_complete"]
+                        )
+                    )
+                    if candidate_complete:
                         if matched_at_sample_count is None:
                             matched_at_sample_count = len(samples)
                         if (
@@ -195,7 +232,7 @@ def main() -> int:
     finally:
         session.close()
 
-    if not samples or final_record is None or final_digest is None:
+    if not samples or final_digest is None:
         raise SystemExit(
             "no coherent rare-surface samples were captured: "
             + json.dumps(rejection_reasons, ensure_ascii=False, sort_keys=True)
@@ -203,6 +240,17 @@ def main() -> int:
     trace = parse_alas_combat_observer_trace(
         build_alas_combat_observer_trace(manifest, samples), manifest
     )
+    if args.profile == "all":
+        final_record = analyze_alas_combat_surface_multiplex_evidence(
+            manifest,
+            trace,
+            source_trace_sha256=final_digest,
+            minimum_consecutive_frames=args.minimum_consecutive_frames,
+            context_frames=args.context_frames,
+        )
+        write_bytes(args.evidence_output, encode_json(final_record))
+    if final_record is None:
+        raise SystemExit("rare-surface evidence analysis did not complete")
     verification = verifier(
         manifest,
         trace,
@@ -213,13 +261,26 @@ def main() -> int:
         json.dumps(
             {
                 "schema": (
-                    "alas-headless.g30-combat-surface-watch-result/v2"
-                    if args.profile in RESULT_PROFILE_IDS
-                    else "alas-headless.g29-combat-rare-surface-watch-result/v1"
+                    "alas-headless.g31-combat-surface-multiplex-watch-result/v1"
+                    if args.profile == "all"
+                    else (
+                        "alas-headless.g30-combat-surface-watch-result/v2"
+                        if args.profile in RESULT_PROFILE_IDS
+                        else "alas-headless.g29-combat-rare-surface-watch-result/v1"
+                    )
                 ),
                 "passed": True,
                 "profile_id": args.profile,
                 "evidence_complete": verification["evidence_complete"],
+                "candidate_complete": (
+                    verification.get("candidate_complete")
+                    if args.profile == "all"
+                    else verification["evidence_complete"]
+                ),
+                "matched_profile_ids": (
+                    verification.get("matched_profile_ids", [])
+                ),
+                "ambiguous_match": verification.get("ambiguous_match", False),
                 "sample_count": len(samples),
                 "first_generation": trace.generations[0],
                 "last_generation": trace.generations[-1],

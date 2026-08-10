@@ -16,10 +16,12 @@ from alas_headless import (  # noqa: E402
     ALAS_COMBAT_RESULT_SURFACE_PROFILES,
     analyze_alas_combat_rare_surface_evidence,
     analyze_alas_combat_result_surface_evidence,
+    analyze_alas_combat_surface_multiplex_evidence,
     load_alas_combat_observer_manifest,
     load_alas_combat_observer_trace,
     verify_alas_combat_rare_surface_evidence,
     verify_alas_combat_result_surface_evidence,
+    verify_alas_combat_surface_multiplex_evidence,
 )
 
 
@@ -29,7 +31,7 @@ DIALOG_PROFILE_IDS = tuple(
 RESULT_PROFILE_IDS = tuple(
     profile.profile_id for profile in ALAS_COMBAT_RESULT_SURFACE_PROFILES
 )
-PROFILE_IDS = DIALOG_PROFILE_IDS + RESULT_PROFILE_IDS
+PROFILE_IDS = DIALOG_PROFILE_IDS + RESULT_PROFILE_IDS + ("all",)
 
 
 def parse_args() -> argparse.Namespace:
@@ -65,28 +67,43 @@ def main() -> int:
     digest = hashlib.sha256(args.trace.read_bytes()).hexdigest()
     if args.verify:
         record = json.loads(args.output.read_text(encoding="utf-8"))
-        if not isinstance(record, dict) or record.get("profile_id") != args.profile:
+        identity = record.get("mode") if isinstance(record, dict) else None
+        if args.profile != "all":
+            identity = record.get("profile_id") if isinstance(record, dict) else None
+        if identity != args.profile:
             raise SystemExit("evidence profile does not match --profile")
     else:
-        analyzer = (
-            analyze_alas_combat_result_surface_evidence
-            if args.profile in RESULT_PROFILE_IDS
-            else analyze_alas_combat_rare_surface_evidence
-        )
-        record = analyzer(
-            manifest,
-            trace,
-            profile_id=args.profile,
-            source_trace_sha256=digest,
-            minimum_consecutive_frames=args.minimum_consecutive_frames,
-            context_frames=args.context_frames,
-        )
+        if args.profile == "all":
+            record = analyze_alas_combat_surface_multiplex_evidence(
+                manifest,
+                trace,
+                source_trace_sha256=digest,
+                minimum_consecutive_frames=args.minimum_consecutive_frames,
+                context_frames=args.context_frames,
+            )
+        else:
+            analyzer = (
+                analyze_alas_combat_result_surface_evidence
+                if args.profile in RESULT_PROFILE_IDS
+                else analyze_alas_combat_rare_surface_evidence
+            )
+            record = analyzer(
+                manifest,
+                trace,
+                profile_id=args.profile,
+                source_trace_sha256=digest,
+                minimum_consecutive_frames=args.minimum_consecutive_frames,
+                context_frames=args.context_frames,
+            )
         write_json(args.output, record)
-    verifier = (
-        verify_alas_combat_result_surface_evidence
-        if args.profile in RESULT_PROFILE_IDS
-        else verify_alas_combat_rare_surface_evidence
-    )
+    if args.profile == "all":
+        verifier = verify_alas_combat_surface_multiplex_evidence
+    else:
+        verifier = (
+            verify_alas_combat_result_surface_evidence
+            if args.profile in RESULT_PROFILE_IDS
+            else verify_alas_combat_rare_surface_evidence
+        )
     result = verifier(
         manifest,
         trace,
