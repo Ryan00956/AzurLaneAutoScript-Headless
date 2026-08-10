@@ -397,8 +397,19 @@ class CampaignStageState:
 
 @dataclass(frozen=True)
 class CampaignPageState:
+    generation: int
     chapter_name: str
     stages: Tuple[CampaignStageState, ...]
+
+
+@dataclass(frozen=True)
+class CampaignPreparationState:
+    generation: int
+    kind: str
+    stage_code: str
+    title: str
+    proceed_button: ButtonState
+    cancel_button: ButtonState
 
 
 class ResearchProjectStatus(str, Enum):
@@ -548,6 +559,11 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
         "LoginUI2(Clone)",
         "UICamera/Canvas/UIMain/LoginUI2(Clone)",
     ),
+    SemanticTarget(
+        "event-list/page/back",
+        "back_btn",
+        "ActivityMainUI(Clone)/adapt/blur_panel/adapt/top/back_btn",
+    ),
     SemanticTarget("main/battle", "battle", "frame/right/1/battle"),
     SemanticTarget("main/formation", "formation", "frame/right/1/formation"),
     SemanticTarget("main/settings", "settings", "frame/top/btns/settings"),
@@ -687,6 +703,21 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
         "campaign-menu/normal",
         "enter_main",
         "LevelMainScene(Clone)/entrance/enters/enter_main",
+    ),
+    SemanticTarget(
+        "campaign/map-preparation/proceed",
+        "start_button",
+        "LevelStageInfoView(Clone)/panel/start_button",
+    ),
+    SemanticTarget(
+        "campaign/map-preparation/cancel",
+        "btnBack",
+        "LevelStageInfoView(Clone)/panel/btnBack",
+    ),
+    SemanticTarget(
+        "campaign/fleet-preparation/cancel",
+        "btnBack",
+        "LevelFleetSelectView(Clone)/panel/Fixed/btnBack",
     ),
     SemanticTarget(
         "research-menu/page/back",
@@ -1221,7 +1252,23 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
         (
             "campaign-menu/page/back",
             "campaign-menu/normal",
+            "campaign/map-preparation/proceed",
+            "campaign/map-preparation/cancel",
+            "campaign/fleet-preparation/cancel",
         ),
+    ),
+    BlockerRule(
+        "campaign-map-preparation",
+        "/LevelStageInfoView(Clone)/",
+        (
+            "campaign/map-preparation/proceed",
+            "campaign/map-preparation/cancel",
+        ),
+    ),
+    BlockerRule(
+        "campaign-fleet-preparation",
+        "/LevelFleetSelectView(Clone)/",
+        ("campaign/fleet-preparation/cancel",),
     ),
     BlockerRule(
         "build-prep",
@@ -3607,6 +3654,46 @@ class SemanticOracle:
             )
         return True
 
+    def campaign_is_in_map(self) -> bool:
+        """Prove a reviewed pre-map surface or refuse the campaign startup.
+
+        G10 does not authorize map, withdrawal, movement, or battle input.  The
+        upstream campaign runner nevertheless asks ``is_in_map()`` before it
+        starts page navigation.  Returning ``False`` for every unknown screen
+        would let a real map be mistaken for a navigation page, so only exact
+        non-map surfaces already covered by the semantic oracle are admitted.
+        """
+
+        state = self.read_state()
+        non_map_targets = (
+            "login/enter",
+            "event-list/page/back",
+            "main/battle",
+            "campaign-menu/normal",
+            "campaign-menu/page/back",
+            "task/page/back",
+            "reward/page/back",
+            "commission/page/back",
+            "mail/page/back",
+            "build/page/start",
+            "build/page/back",
+            "dorm-menu/page/root",
+            "dorm/page/back",
+            "research-menu/page/back",
+            "research/page/back",
+            "tactical/page/back",
+        )
+        observed = tuple(
+            semantic_id
+            for semantic_id in non_map_targets
+            if self._matches(state, semantic_id)
+        )
+        if observed:
+            return False
+        raise SemanticGateClosed(
+            "campaign startup surface is not a reviewed non-map page"
+        )
+
     def campaign_page_state(self) -> CampaignPageState:
         """Read the visible chapter and stage labels without enabling a stage click."""
 
@@ -3633,20 +3720,19 @@ class SemanticOracle:
             and item.active_in_hierarchy
             and item.active_and_enabled
             and not item.truncated
-            and item.bounds is not None
             and item.text.strip()
         )
         if len(chapter_titles) != 1:
             raise SemanticGateClosed("campaign chapter title is absent or ambiguous")
 
         prefix = "LevelMainScene(Clone)/float/levels/items/Chapter_"
+        stage_control = re.compile(
+            re.escape(prefix) + r"([1-9][0-9]*)/main$"
+        )
         stage_buttons = []
         for button in button_state.buttons:
-            marker = button.path.find(prefix)
-            if marker < 0 or button.name != "Chapter_" + button.path.rsplit("Chapter_", 1)[-1]:
-                continue
-            suffix = button.path[marker + len(prefix) :]
-            if not suffix.isdigit() or not button.path.endswith("Chapter_" + suffix):
+            match = stage_control.search(button.path)
+            if match is None or button.name != "main":
                 continue
             if (
                 not button.active_in_hierarchy
@@ -3654,7 +3740,7 @@ class SemanticOracle:
                 or button.bounds is None
             ):
                 continue
-            stage_buttons.append((int(suffix), button))
+            stage_buttons.append((int(match.group(1)), button))
         stage_buttons.sort(key=lambda item: item[0])
         if not stage_buttons or len({item[0] for item in stage_buttons}) != len(
             stage_buttons
@@ -3663,7 +3749,7 @@ class SemanticOracle:
 
         stages = []
         for stage_id, button in stage_buttons:
-            root = button.path + "/main/info/bk/title_form/"
+            root = button.path + "/info/bk/title_form/"
             fields: Dict[str, TextState] = {}
             for field in ("title_index", "title"):
                 matches = tuple(
@@ -3673,7 +3759,6 @@ class SemanticOracle:
                     and item.active_in_hierarchy
                     and item.active_and_enabled
                     and not item.truncated
-                    and item.bounds is not None
                 )
                 if len(matches) != 1:
                     raise SemanticGateClosed(
@@ -3698,9 +3783,67 @@ class SemanticOracle:
                 )
             )
         return CampaignPageState(
+            generation=button_state.generation,
             chapter_name=chapter_titles[0].text.strip(),
             stages=tuple(stages),
         )
+
+    def campaign_mode_switch_state(self) -> str:
+        """Return the exact destination exposed by the normal/hard switch."""
+
+        state = self.read_state()
+        controls = {
+            "hard": (
+                "btn_elite",
+                "LevelMainScene(Clone)/main/left_chapter/buttons/btn_elite",
+            ),
+            "normal": (
+                "btn_normal",
+                "LevelMainScene(Clone)/main/left_chapter/buttons/btn_normal",
+            ),
+        }
+        observed = []
+        for destination, (name, suffix) in controls.items():
+            matches = tuple(
+                button
+                for button in state.buttons
+                if button.name == name
+                and button.path.endswith(suffix)
+                and button.active_in_hierarchy
+                and button.active_and_enabled
+                and button.bounds is not None
+            )
+            if len(matches) > 1:
+                raise SemanticGateClosed("campaign mode switch is ambiguous")
+            if matches:
+                observed.append(destination)
+        if len(observed) != 1:
+            raise SemanticGateClosed("campaign mode switch is absent or ambiguous")
+        return observed[0]
+
+    def campaign_oil(self) -> int:
+        """Read the exact global oil counter on a proven campaign page."""
+
+        return self._retry_transition_read(self._campaign_oil_once)
+
+    def _campaign_oil_once(self) -> int:
+        """Read the oil counter from one fully proven campaign generation."""
+
+        self.campaign_page_state()
+        state = self.read_ui_state()
+        suffix = "Overlay/UIMain/ResPanel(Clone)/frame/oil/oil_value"
+        matches = tuple(
+            item
+            for item in state.texts
+            if item.path.endswith(suffix)
+            and item.active_in_hierarchy
+            and item.active_and_enabled
+            and not item.truncated
+            and re.fullmatch(r"[0-9]+", item.text.strip()) is not None
+        )
+        if len(matches) != 1:
+            raise SemanticGateClosed("campaign oil counter is absent or ambiguous")
+        return int(matches[0].text.strip())
 
     def campaign_page_is_normal(self) -> bool:
         if self.campaign_menu_is_entry():
@@ -3710,6 +3853,360 @@ class SemanticOracle:
         except SemanticTargetMissing:
             return False
         return True
+
+    def campaign_stage_state(self, stage_code: str) -> CampaignStageState:
+        """Return one exact visible stage from the typed campaign page."""
+
+        if re.fullmatch(r"[1-9][0-9]*-[1-9][0-9]*", stage_code) is None:
+            raise SemanticGateClosed("campaign stage code is not canonical")
+        matches = tuple(
+            stage
+            for stage in self.campaign_page_state().stages
+            if stage.stage_code == stage_code
+        )
+        if len(matches) != 1:
+            raise SemanticGateClosed("campaign stage is absent or ambiguous")
+        return matches[0]
+
+    def campaign_stage_actionable(self, stage_code: str) -> bool:
+        return self.campaign_stage_state(stage_code).button.actionable
+
+    def campaign_preparation_state(
+        self, stage_code: str
+    ) -> Optional[CampaignPreparationState]:
+        """Return the one exact pre-sortie layer, or None before it appears."""
+
+        state = self.read_state()
+        map_present = any(
+            button.name in ("start_button", "btnBack")
+            and "LevelStageInfoView(Clone)/panel/" in button.path
+            and button.active_in_hierarchy
+            for button in state.buttons
+        )
+        fleet_present = any(
+            "LevelFleetSelectView(Clone)/panel/Fixed/" in button.path
+            and button.active_in_hierarchy
+            for button in state.buttons
+        )
+        if map_present and fleet_present:
+            raise SemanticGateClosed(
+                "campaign preparation layers are simultaneously active"
+            )
+        if fleet_present:
+            return self.campaign_fleet_preparation_state(stage_code)
+        if map_present:
+            return self.campaign_map_preparation_state(stage_code)
+        return None
+
+    def campaign_map_preparation_state(
+        self, stage_code: str
+    ) -> CampaignPreparationState:
+        """Read one exact ALAS MAP_PREPARATION surface for the selected stage."""
+
+        return self._retry_transition_read(
+            lambda: self._campaign_map_preparation_state_once(stage_code)
+        )
+
+    def _campaign_map_preparation_state_once(
+        self, stage_code: str
+    ) -> CampaignPreparationState:
+        if re.fullmatch(r"[1-9][0-9]*-[1-9][0-9]*", stage_code) is None:
+            raise SemanticGateClosed("campaign stage code is not canonical")
+        button_state = self.read_state()
+        proceed = self._unique(button_state, "campaign/map-preparation/proceed")
+        cancel = self._unique(button_state, "campaign/map-preparation/cancel")
+        for semantic_id, button in (
+            ("campaign/map-preparation/proceed", proceed),
+            ("campaign/map-preparation/cancel", cancel),
+        ):
+            if (
+                not button.active_in_hierarchy
+                or not button.active_and_enabled
+                or not button.interactable
+                or button.point is None
+                or button.bounds is None
+                or self._blocking_rules(button_state, semantic_id)
+            ):
+                raise SemanticGateClosed(
+                    "campaign map-preparation controls are not proven"
+                )
+
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed(
+                "campaign map-preparation snapshots are not coherent"
+            )
+        root = "LevelStageInfoView(Clone)/panel/title_form/"
+        title_indexes = tuple(
+            item
+            for item in ui_state.texts
+            if item.path.endswith(root + "title_index")
+            and item.active_in_hierarchy
+            and item.active_and_enabled
+            and not item.truncated
+        )
+        titles = tuple(
+            item
+            for item in ui_state.texts
+            if item.path.endswith(root + "title")
+            and item.active_in_hierarchy
+            and item.active_and_enabled
+            and not item.truncated
+            and item.text.strip()
+        )
+        if len(title_indexes) != 1 or len(titles) != 1:
+            raise SemanticGateClosed(
+                "campaign map-preparation stage identity is absent or ambiguous"
+            )
+        match = re.fullmatch(
+            r"([1-9][0-9]*)[\-–—]([1-9][0-9]*)\s*",
+            title_indexes[0].text.strip(),
+        )
+        observed_stage = (
+            "{0}-{1}".format(*match.groups()) if match is not None else None
+        )
+        if observed_stage != stage_code:
+            raise SemanticGateClosed(
+                "campaign map-preparation stage identity changed"
+            )
+        return CampaignPreparationState(
+            generation=button_state.generation,
+            kind="map",
+            stage_code=stage_code,
+            title=titles[0].text.strip(),
+            proceed_button=proceed,
+            cancel_button=cancel,
+        )
+
+    def click_campaign_map_preparation(self, stage_code: str) -> ActionReceipt:
+        """Advance from stage details to fleet preparation, never to sortie."""
+
+        observed = self.campaign_map_preparation_state(stage_code)
+        target = observed.proceed_button
+        if not target.actionable or target.point is None or target.bounds is None:
+            raise SemanticGateClosed(
+                "campaign map-preparation proceed is not actionable"
+            )
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("foreground changed immediately before input")
+        self._tap(int(round(target.point.x)), int(round(target.point.y)))
+        return ActionReceipt(
+            semantic_id="campaign/map-preparation/proceed",
+            generation=observed.generation,
+            point=target.point,
+            bounds=target.bounds,
+            path=target.path,
+        )
+
+    def cancel_campaign_map_preparation(self, stage_code: str) -> ActionReceipt:
+        """Close the exact stage-detail preparation without advancing."""
+
+        observed = self.campaign_map_preparation_state(stage_code)
+        target = observed.cancel_button
+        if not target.actionable or target.point is None or target.bounds is None:
+            raise SemanticGateClosed(
+                "campaign map-preparation cancel is not actionable"
+            )
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("foreground changed immediately before input")
+        self._tap(int(round(target.point.x)), int(round(target.point.y)))
+        return ActionReceipt(
+            semantic_id="campaign/map-preparation/cancel",
+            generation=observed.generation,
+            point=target.point,
+            bounds=target.bounds,
+            path=target.path,
+        )
+
+    def campaign_fleet_preparation_state(
+        self, stage_code: str
+    ) -> CampaignPreparationState:
+        """Read fleet preparation while proving that sortie input is unexposed."""
+
+        return self._retry_transition_read(
+            lambda: self._campaign_fleet_preparation_state_once(stage_code)
+        )
+
+    def _campaign_fleet_preparation_state_once(
+        self, stage_code: str
+    ) -> CampaignPreparationState:
+        match = re.fullmatch(r"([1-9][0-9]*)-([1-9][0-9]*)", stage_code)
+        if match is None:
+            raise SemanticGateClosed("campaign stage code is not canonical")
+        stage_id = int(match.group(1)) * 100 + int(match.group(2))
+        button_state = self.read_state()
+        cancel = self._unique(
+            button_state, "campaign/fleet-preparation/cancel"
+        )
+        if (
+            not cancel.active_in_hierarchy
+            or not cancel.active_and_enabled
+            or not cancel.interactable
+            or cancel.point is None
+            or cancel.bounds is None
+            or self._blocking_rules(
+                button_state, "campaign/fleet-preparation/cancel"
+            )
+        ):
+            raise SemanticGateClosed(
+                "campaign fleet-preparation cancel is not proven"
+            )
+        sortie_path = (
+            "LevelFleetSelectView(Clone)/panel/Fixed/start_button"
+        )
+        sortie_matches = tuple(
+            button
+            for button in button_state.buttons
+            if button.name == "start_button"
+            and button.path.endswith(sortie_path)
+            and button.active_in_hierarchy
+            and button.active_and_enabled
+            and button.interactable
+            and button.point is not None
+            and button.bounds is not None
+        )
+        if len(sortie_matches) != 1 or sortie_matches[0].raycast_top is not None:
+            raise SemanticGateClosed(
+                "campaign fleet-preparation sortie input is unexpectedly exposed"
+            )
+        stage_path = (
+            "LevelMainScene(Clone)/float/levels/items/Chapter_{0}/main".format(
+                stage_id
+            )
+        )
+        stage_buttons = tuple(
+            button
+            for button in button_state.buttons
+            if button.name == "main"
+            and button.path.endswith(stage_path)
+            and button.active_in_hierarchy
+            and button.active_and_enabled
+            and button.bounds is not None
+        )
+        if len(stage_buttons) != 1:
+            raise SemanticGateClosed(
+                "campaign fleet-preparation stage underlay is absent or ambiguous"
+            )
+
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed(
+                "campaign fleet-preparation snapshots are not coherent"
+            )
+        fleet_titles = tuple(
+            item
+            for item in ui_state.texts
+            if item.path.endswith(
+                "LevelFleetSelectView(Clone)/panel/Fixed/title/Image/text"
+            )
+            and item.text.strip() == "舰队选择"
+            and item.active_in_hierarchy
+            and item.active_and_enabled
+            and not item.truncated
+        )
+        title_root = stage_path + "/info/bk/title_form/"
+        title_indexes = tuple(
+            item
+            for item in ui_state.texts
+            if item.path.endswith(title_root + "title_index")
+            and item.active_in_hierarchy
+            and item.active_and_enabled
+            and not item.truncated
+        )
+        titles = tuple(
+            item
+            for item in ui_state.texts
+            if item.path.endswith(title_root + "title")
+            and item.active_in_hierarchy
+            and item.active_and_enabled
+            and not item.truncated
+            and item.text.strip()
+        )
+        if len(fleet_titles) != 1 or len(title_indexes) != 1 or len(titles) != 1:
+            raise SemanticGateClosed(
+                "campaign fleet-preparation identity is absent or ambiguous"
+            )
+        observed = re.fullmatch(
+            r"([1-9][0-9]*)[\-–—]([1-9][0-9]*)\s*",
+            title_indexes[0].text.strip(),
+        )
+        observed_stage = (
+            "{0}-{1}".format(*observed.groups())
+            if observed is not None
+            else None
+        )
+        if observed_stage != stage_code:
+            raise SemanticGateClosed(
+                "campaign fleet-preparation stage identity changed"
+            )
+        return CampaignPreparationState(
+            generation=button_state.generation,
+            kind="fleet",
+            stage_code=stage_code,
+            title=titles[0].text.strip(),
+            proceed_button=sortie_matches[0],
+            cancel_button=cancel,
+        )
+
+    def cancel_campaign_fleet_preparation(
+        self, stage_code: str
+    ) -> ActionReceipt:
+        """Cancel fleet preparation without exposing or touching sortie."""
+
+        observed = self.campaign_fleet_preparation_state(stage_code)
+        target = observed.cancel_button
+        if not target.actionable or target.point is None or target.bounds is None:
+            raise SemanticGateClosed(
+                "campaign fleet-preparation cancel is not actionable"
+            )
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("foreground changed immediately before input")
+        self._tap(int(round(target.point.x)), int(round(target.point.y)))
+        return ActionReceipt(
+            semantic_id="campaign/fleet-preparation/cancel",
+            generation=observed.generation,
+            point=target.point,
+            bounds=target.bounds,
+            path=target.path,
+        )
+
+    def click_campaign_stage(self, stage_code: str) -> ActionReceipt:
+        """Click one exact stage after revalidating its typed Unity identity."""
+
+        observed = self.campaign_stage_state(stage_code)
+        state = self.read_state()
+        matches = tuple(
+            button
+            for button in state.buttons
+            if button.name == observed.button.name
+            and button.path == observed.button.path
+        )
+        if len(matches) != 1:
+            raise SemanticGateClosed("campaign stage changed before input")
+        target = matches[0]
+        if not target.actionable or target.point is None or target.bounds is None:
+            raise SemanticGateClosed("campaign stage is not actionable")
+        if not (
+            0 <= target.point.x < self.fingerprint.width
+            and 0 <= target.point.y < self.fingerprint.height
+        ):
+            raise SemanticGateClosed("campaign stage point is outside the screen")
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("foreground changed immediately before input")
+        self._tap(int(round(target.point.x)), int(round(target.point.y)))
+        return ActionReceipt(
+            semantic_id="campaign/stage/" + stage_code,
+            generation=state.generation,
+            point=target.point,
+            bounds=target.bounds,
+            path=target.path,
+        )
 
     def dorm_state(self) -> DormState:
         """Read the dorm summary without opening a mutating sub-page."""

@@ -2,6 +2,43 @@
 
 Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
+## 2026-08-10
+
+### G10 campaign pre-sortie: bounded reversible ALAS pass
+
+- The original ALAS campaign navigation, chapter/stage selection,
+  `enter_map()`, and `enter_map_cancel()` loops remain in control. Semantic
+  mode replaces their reviewed OCR/template/page/input ports; one narrow
+  safety checkpoint cancels and stops at proven fleet preparation.
+- `ALAS_SEMANTIC_CAMPAIGN_STAGE_ENTRY_BUDGET` defaults to `0`. The zero-budget
+  full command returned `True` before stage input. The budget-1 command clicked
+  exact `12-4`, exact map-preparation proceed, and exact fleet-preparation
+  cancel, then returned `ALAS_CAMPAIGN_BUDGET1_FINAL_ARTIFACT True`.
+- The final-artifact proof generations were `2102 -> 2120 -> 2132`. A final
+  independent read at generation `2208` observed `马里亚纳风云上`, stages `12-1` through `12-4`,
+  no preparation layer, and `IN_MAP=False`.
+- The fleet sortie `start_button` remains outside the native raycast allowlist
+  and semantic click map. Formation changes, sortie, map movement, combat, and
+  rewards remain closed.
+- Stale-root transition windows failed closed during development. Their final
+  tolerance is limited to a proven map-proceed or cancel receipt and a finite
+  deadline. A final cold-start run also exposed chapter-page settling after
+  campaign-menu entry; that exact input is receipt-cached and its incomplete
+  page check is passive only inside the existing finite campaign transition
+  window. The legacy direct `campaign_extract_name_image()` caller now receives
+  typed stage Buttons instead of pixels.
+- The observer APK SHA-256 is
+  `6bd736dadb3741599ce2d9d449c474356ebbbe7d7b4b21ffcf55ca3e37b9c2c9`.
+  The controller suite passes `209/209`. The 21-file ALAS patch applies cleanly
+  to `81ccf63b4540f00241628c82a58c02c7a2bb11af`; every patched file matches the
+  live source by SHA-256 and compiles.
+- An earlier login automatically received a `1500`-coin login/daily reward.
+  External ALAS test configurations also recorded scheduler/emotion and
+  screenshot-benchmark updates. These side effects are disclosed and are not
+  part of the campaign authorization.
+
+See [G10 campaign pre-sortie validation](g10-campaign-pre-sortie-validation-report.md).
+
 ## 2026-08-09
 
 ### G9 bounded task inputs: three full ALAS replays passed; Gacha recovery pending

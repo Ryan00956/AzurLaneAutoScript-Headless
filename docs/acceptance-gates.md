@@ -2,12 +2,13 @@
 
 Status terms are deliberately strict. A build passing does not imply a later gate has passed.
 
-Current status: G1-G4, G5a, controlled G5b, scoped G6-G8, and the G9 bounded
-adapter slices passed. G4 includes login/main reachability, sustained semantic
-state, RectTransform bounds, top EventSystem raycast identity for each action,
-and a settings-page return loop. G5a covers only the ALAS mission-reward
-no-claim branch. G5b covers one `GetAllButton` claim on the default task page.
-G6-G8 add typed UI/task observation and real bounded Reward/Commission passes.
+Current status: G1-G4, G5a, controlled G5b, scoped G6-G8, the G9 bounded
+adapter slices, and the G10 campaign pre-sortie slice passed. G4 includes
+login/main reachability, sustained semantic state, RectTransform bounds, top
+EventSystem raycast identity for each action, and a settings-page return loop.
+G5a covers only the ALAS mission-reward no-claim branch. G5b covers one
+`GetAllButton` claim on the default task page. G6-G8 add typed UI/task
+observation and real bounded Reward/Commission passes.
 
 G7 broadens typed observation to selected task surfaces and a read-only
 campaign chapter. It does not enable resource-consuming task starts, stage
@@ -171,6 +172,24 @@ See [G8 real ALAS validation](g8-alas-reward-commission-validation-report.md).
   commands. Gacha must keep warning preparation and final-order confirmation
   disjoint; its corrected full replay remains pending an empty queue after the
   first live attempt submitted one bounded order at the wrong ALAS phase.
+
+## G10 - Campaign pre-sortie: bounded reversible pass
+
+- Keep ALAS's original campaign navigation, chapter selection, stage lookup,
+  enter-map, and enter-map-cancel loops. Replace their reviewed OCR/template
+  observations and input endpoints with typed semantic state.
+- Default stage-entry budget to zero. A value of one admits exactly one exact
+  stage input and does not authorize a second stage, sortie, or map input.
+- Prove exact `12-4` map preparation, allow its single-use proceed input, prove
+  exact fleet preparation, and permit only its exact cancel input.
+- Require increasing entry/cancel/restoration generations and the same restored
+  chapter/stage identity. Transition grace must be receipt-bound and finite.
+- Keep the fleet sortie Button outside both the native raycast allowlist and
+  adapter click map. Map movement, combat, and rewards remain separate gates.
+- Require a full patched ALAS command pass, final `IN_MAP=False`, clean pinned
+  patch application, patched-file hash equality, and controller tests.
+
+See [G10 campaign pre-sortie validation](g10-campaign-pre-sortie-validation-report.md).
 
 ## Stop or pivot conditions
 

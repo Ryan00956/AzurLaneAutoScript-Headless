@@ -128,6 +128,7 @@ $env:ALAS_SEMANTIC_RESEARCH_START_BUDGET = '1'
 $env:ALAS_SEMANTIC_DORM_COLLECT_BUDGET = '1'
 $env:ALAS_SEMANTIC_DORM_FEED_BUDGET = '1'
 $env:ALAS_SEMANTIC_BUILD_SUBMIT_BUDGET = '1'
+$env:ALAS_SEMANTIC_CAMPAIGN_STAGE_ENTRY_BUDGET = '1'
 ```
 
 Tactical assignment reuses ALAS's original ship, skill, book-filter, and
@@ -157,9 +158,12 @@ research invocation admitted six reward units (five queued completions and one
 finished card) followed by one exact `G-412` start. Qualified maxima are
 therefore tactical assignment `1`, research reward `6`, research start `1`,
 dorm collect `1`, dorm feed `1`, and construction submit `1`; larger values
-remain unqualified. Stage selection, map movement, and battle input remain
-unauthorized. Complete patched commands return success for Tactical, Research,
-and Dorm. A full Gacha attempt submitted one exact Light order but returned
+remain unqualified. Campaign stage entry is separately qualified only at `1`
+for the exact reversible `12-4 -> map preparation -> fleet preparation ->
+cancel` pre-sortie flow. The fleet sortie target is not mapped; formation,
+map movement, and battle input remain unauthorized. Complete patched commands
+return success for Tactical, Research, Dorm, and the bounded campaign slice. A
+full Gacha attempt submitted one exact Light order but returned
 false after exposing the now-fixed warning/order phase alias; its corrected
 full replay remains gated by the resulting natural nonempty queue.
 
@@ -183,7 +187,7 @@ reviewed popup chain, and passed a full dual-budget-zero replay. Reward budget
 `1` is therefore live-qualified; larger budgets are not. The five-row daily
 list also passed exact-handle multipage scanning and stable row-index merging.
 Nonzero-oil rows, cancellation, repeated unattended starts, and multi-order
-construction are not live-qualified. Numeric-row claiming, stage selection,
-map and battle state, Lua/game-state access, other reward popups, gestures
+construction are not live-qualified. Numeric-row claiming, campaign formation,
+sortie, map and battle state, Lua/game-state access, other reward popups, gestures
 outside the exact commission handle, and full unattended task flows remain
 fail-closed.

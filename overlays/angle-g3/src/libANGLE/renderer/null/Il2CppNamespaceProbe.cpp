@@ -436,8 +436,41 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
                 "LevelMainScene(Clone)/entrance/enters/enter_main"))) {
     return true;
   }
+  if (name == "main" &&
+      path.find("LevelMainScene(Clone)/float/levels/items/Chapter_") !=
+          std::string_view::npos &&
+      EndsWith(path, "/main")) {
+    const size_t marker = path.rfind("/Chapter_");
+    if (marker != std::string_view::npos) {
+      const size_t begin = marker + std::string_view("/Chapter_").size();
+      const size_t end = path.size() - std::string_view("/main").size();
+      const std::string_view stageId = path.substr(begin, end - begin);
+      if (!stageId.empty() &&
+          std::all_of(stageId.begin(), stageId.end(), [](char value) {
+            return value >= '0' && value <= '9';
+          })) {
+        return true;
+      }
+    }
+  }
+  if ((name == "start_button" &&
+       EndsWith(path, "LevelStageInfoView(Clone)/panel/start_button")) ||
+      (name == "btnBack" &&
+       EndsWith(path, "LevelStageInfoView(Clone)/panel/btnBack"))) {
+    return true;
+  }
+  if (name == "btnBack" &&
+      EndsWith(path,
+               "LevelFleetSelectView(Clone)/panel/Fixed/btnBack")) {
+    return true;
+  }
   if (name == "back_btn" &&
       EndsWith(path, "Overlay/UIMain/blur_panel/adapt/top/back_btn")) {
+    return true;
+  }
+  if (name == "back_btn" &&
+      EndsWith(path,
+               "ActivityMainUI(Clone)/adapt/blur_panel/adapt/top/back_btn")) {
     return true;
   }
   if (name == "back" &&
@@ -1590,6 +1623,10 @@ UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
           path.find("NewNavalTacticsUI(Clone)/adpter/"
                     "NewNavalTacticsStudentsPage(Clone)/") !=
               std::string_view::npos ||
+          path.find("LevelStageInfoView(Clone)/panel/") !=
+              std::string_view::npos ||
+          EndsWith(path,
+                   "LevelFleetSelectView(Clone)/panel/Fixed/btnBack") ||
           EndsWith(path,
                    "NewNavalTacticsUI(Clone)/adpter/frame/btnBack");
       if (!raycastMatches && needsReviewedPointSearch) {

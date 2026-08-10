@@ -241,12 +241,23 @@ CAMPAIGN_VIRTUAL_RESOURCES = frozenset(
     {
         "CAMPAIGN_CHECK",
         "CAMPAIGN_MENU_CHECK",
+        "EVENT_LIST_CHECK",
+        "BACK_ARROW",
+        "SWITCH_1_NORMAL",
+        "SWITCH_1_HARD",
         "GOTO_MAIN",
+        "IN_MAP",
+        "MAP_PREPARATION",
+        "FLEET_PREPARATION",
+        "MAP_PREPARATION_CANCEL",
     }
 )
 CAMPAIGN_CLICK_RESOURCES = frozenset(
     {
         "GOTO_MAIN",
+        "BACK_ARROW",
+        "MAP_PREPARATION",
+        "MAP_PREPARATION_CANCEL",
     }
 )
 PAGE_VIRTUAL_RESOURCES = frozenset(
@@ -383,6 +394,16 @@ class MissionClaimReceipt:
     dismissed_overlays: Tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class CampaignPreSortieProof:
+    stage_code: str
+    chapter_name: str
+    entry_generation: int
+    preparation_kind: str
+    cancel_generation: int
+    restored_generation: int
+
+
 @dataclass
 class _MissionFlowContext:
     daily: bool
@@ -471,6 +492,19 @@ class _BuildFlowContext:
 
 
 @dataclass
+class _CampaignFlowContext:
+    stage_code: str
+    entry_budget: int = 0
+    menu_entry_receipt: Optional[ActionReceipt] = None
+    entry_receipt: Optional[ActionReceipt] = None
+    map_preparation_receipt: Optional[ActionReceipt] = None
+    preparation_kind: Optional[str] = None
+    cancel_receipt: Optional[ActionReceipt] = None
+    proof: Optional[CampaignPreSortieProof] = None
+    passive_transition_until: float = 0.0
+
+
+@dataclass
 class PinnedPackageGate:
     """Cache one independent ADB verification of the installed package."""
 
@@ -506,6 +540,7 @@ class AlasSemanticAdapter:
         dorm_collect_budget: int = 0,
         dorm_feed_budget: int = 0,
         build_submit_budget: int = 0,
+        campaign_stage_entry_budget: int = 0,
     ) -> None:
         if package_gate is None:
             raise ValueError("semantic ALAS mode requires a package identity gate")
@@ -529,6 +564,7 @@ class AlasSemanticAdapter:
             ("dorm collect", dorm_collect_budget),
             ("dorm feed", dorm_feed_budget),
             ("build submit", build_submit_budget),
+            ("campaign stage entry", campaign_stage_entry_budget),
         ):
             if (
                 isinstance(budget, bool)
@@ -546,12 +582,14 @@ class AlasSemanticAdapter:
         self._dorm_collect_budget = dorm_collect_budget
         self._dorm_feed_budget = dorm_feed_budget
         self._build_submit_budget = build_submit_budget
+        self._campaign_stage_entry_budget = campaign_stage_entry_budget
         self._mission_context: Optional[_MissionFlowContext] = None
         self._mail_context: Optional[_MailFlowContext] = None
         self._commission_context: Optional[_CommissionFlowContext] = None
         self._research_context: Optional[_ResearchFlowContext] = None
         self._dorm_context: Optional[_DormFlowContext] = None
         self._build_context: Optional[_BuildFlowContext] = None
+        self._campaign_context: Optional[_CampaignFlowContext] = None
         self._observer_stale_since: Optional[float] = None
 
     @staticmethod
@@ -615,6 +653,7 @@ class AlasSemanticAdapter:
                 self._research_context,
                 self._dorm_context,
                 self._build_context,
+                self._campaign_context,
             )
         ):
             raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
@@ -651,6 +690,7 @@ class AlasSemanticAdapter:
             or self._dorm_context is not None
             or self._build_context is not None
             or self._commission_context is not None
+            or self._campaign_context is not None
         ):
             raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
         self._mail_context = _MailFlowContext(
@@ -671,6 +711,7 @@ class AlasSemanticAdapter:
             or self._research_context is not None
             or self._dorm_context is not None
             or self._build_context is not None
+            or self._campaign_context is not None
         ):
             raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
         self._commission_context = _CommissionFlowContext(
@@ -691,6 +732,7 @@ class AlasSemanticAdapter:
             or self._research_context is not None
             or self._dorm_context is not None
             or self._build_context is not None
+            or self._campaign_context is not None
         ):
             raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
         self._commission_context = _CommissionFlowContext(
@@ -711,6 +753,7 @@ class AlasSemanticAdapter:
                 self._research_context,
                 self._dorm_context,
                 self._build_context,
+                self._campaign_context,
             )
         ):
             raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
@@ -734,6 +777,7 @@ class AlasSemanticAdapter:
                 self._research_context,
                 self._dorm_context,
                 self._build_context,
+                self._campaign_context,
             )
         ):
             raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
@@ -757,6 +801,7 @@ class AlasSemanticAdapter:
                 self._research_context,
                 self._dorm_context,
                 self._build_context,
+                self._campaign_context,
             )
         ):
             raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
@@ -767,6 +812,105 @@ class AlasSemanticAdapter:
 
     def end_build(self) -> None:
         self._build_context = None
+
+    def begin_campaign_pre_sortie(self, stage_code: str) -> None:
+        """Open one ALAS-owned, cancel-only campaign preparation run."""
+
+        self._package_gate()
+        if re.fullmatch(r"[1-9][0-9]*-[1-9][0-9]*", stage_code) is None:
+            raise SemanticGateClosed("campaign stage code is not canonical")
+        if any(
+            context is not None
+            for context in (
+                self._mission_context,
+                self._mail_context,
+                self._commission_context,
+                self._research_context,
+                self._dorm_context,
+                self._build_context,
+                self._campaign_context,
+            )
+        ):
+            raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
+        self._campaign_context = _CampaignFlowContext(
+            stage_code=stage_code,
+            entry_budget=self._campaign_stage_entry_budget,
+            passive_transition_until=time.monotonic() + 20.0,
+        )
+
+    def end_campaign_pre_sortie(self) -> None:
+        self._campaign_context = None
+
+    def campaign_pre_sortie_active(self) -> bool:
+        return self._campaign_context is not None
+
+    def campaign_stage_entry_allowed(self) -> bool:
+        context = self._require_campaign_context()
+        return context.entry_budget > 0 and context.entry_receipt is None
+
+    def _campaign_preparation_kind(self) -> Optional[str]:
+        context = self._require_campaign_context()
+        try:
+            state = self.oracle.campaign_preparation_state(context.stage_code)
+        except SemanticGateClosed:
+            if (
+                (
+                    context.map_preparation_receipt is not None
+                    or context.cancel_receipt is not None
+                )
+                and time.monotonic() <= context.passive_transition_until
+            ):
+                return None
+            raise
+        if state is None:
+            return None
+        if state.kind not in ("map", "fleet"):
+            raise SemanticGateClosed("campaign preparation kind is invalid")
+        context.preparation_kind = state.kind
+        return state.kind
+
+    def confirm_campaign_pre_sortie(self) -> CampaignPreSortieProof:
+        """Prove entry, fleet-preparation cancel, and exact stage restoration."""
+
+        self._package_gate()
+        context = self._require_campaign_context()
+        if context.proof is not None:
+            return context.proof
+        if context.entry_receipt is None:
+            raise SemanticGateClosed("campaign stage entry was not proven")
+        if context.map_preparation_receipt is None:
+            raise SemanticGateClosed(
+                "campaign map-preparation transition was not proven"
+            )
+        if context.preparation_kind != "fleet":
+            raise SemanticGateClosed(
+                "campaign fleet preparation was not proven"
+            )
+        if context.cancel_receipt is None:
+            raise SemanticGateClosed("campaign preparation cancel was not proven")
+        restored = self.oracle.campaign_page_state()
+        matching = tuple(
+            stage
+            for stage in restored.stages
+            if stage.stage_code == context.stage_code and stage.button.actionable
+        )
+        if len(matching) != 1:
+            raise SemanticGateClosed(
+                "campaign stage restoration is absent or ambiguous"
+            )
+        if restored.generation <= context.cancel_receipt.generation:
+            raise SemanticGateClosed(
+                "campaign stage restoration did not advance generation"
+            )
+        context.proof = CampaignPreSortieProof(
+            stage_code=context.stage_code,
+            chapter_name=restored.chapter_name,
+            entry_generation=context.entry_receipt.generation,
+            preparation_kind=context.preparation_kind,
+            cancel_generation=context.cancel_receipt.generation,
+            restored_generation=restored.generation,
+        )
+        return context.proof
 
     def end_commission(self) -> None:
         self._commission_context = None
@@ -782,6 +926,13 @@ class AlasSemanticAdapter:
                 "commission resource used outside ALAS commission flow"
             )
         return self._commission_context
+
+    def _require_campaign_context(self) -> _CampaignFlowContext:
+        if self._campaign_context is None:
+            raise SemanticGateClosed(
+                "campaign resource used outside ALAS pre-sortie flow"
+            )
+        return self._campaign_context
 
     def _known_mission_surface_exists(self) -> bool:
         return any(
@@ -933,6 +1084,18 @@ class AlasSemanticAdapter:
             return False
         return True
 
+    def _known_campaign_surface_exists(self) -> bool:
+        if self._campaign_context is not None:
+            try:
+                if self._campaign_preparation_kind() is not None:
+                    return True
+            except SemanticGateClosed:
+                pass
+        try:
+            return not self.oracle.campaign_is_in_map()
+        except SemanticGateClosed:
+            return False
+
     def _active_flow_allows_passive_probe(self) -> bool:
         now = time.monotonic()
         if (
@@ -974,6 +1137,14 @@ class AlasSemanticAdapter:
             and (
                 now <= self._build_context.passive_transition_until
                 or self._known_build_surface_exists()
+            )
+        ):
+            return True
+        if (
+            self._campaign_context is not None
+            and (
+                now <= self._campaign_context.passive_transition_until
+                or self._known_campaign_surface_exists()
             )
         ):
             return True
@@ -1099,6 +1270,19 @@ class AlasSemanticAdapter:
 
     def _appear_once(self, button: Any) -> bool:
         name = self._button_name(button)
+        campaign_stage_code = getattr(
+            button, "semantic_campaign_stage_code", None
+        )
+        if campaign_stage_code is not None:
+            self._package_gate()
+            context = self._require_campaign_context()
+            if (
+                not isinstance(campaign_stage_code, str)
+                or campaign_stage_code != context.stage_code
+                or name != campaign_stage_code
+            ):
+                raise SemanticGateClosed("campaign stage identity changed")
+            return self.oracle.campaign_stage_actionable(campaign_stage_code)
         semantic_id = self._mappings.get(name)
         if (
             semantic_id is None
@@ -1119,6 +1303,7 @@ class AlasSemanticAdapter:
                 and self._research_context is None
                 and self._dorm_context is None
                 and self._build_context is None
+                and self._campaign_context is None
             ):
                 raise AlasSemanticUnmapped(
                     "ALAS resource is not semantically mapped: {0}".format(name)
@@ -1155,6 +1340,12 @@ class AlasSemanticAdapter:
             ):
                 return False
             if (
+                self._campaign_context is not None
+                and time.monotonic()
+                <= self._campaign_context.passive_transition_until
+            ):
+                return False
+            if (
                 self._mission_context is not None
                 and self._known_mission_surface_exists()
             ) or (
@@ -1172,6 +1363,9 @@ class AlasSemanticAdapter:
             ) or (
                 self._build_context is not None
                 and self._known_build_surface_exists()
+            ) or (
+                self._campaign_context is not None
+                and self._known_campaign_surface_exists()
             ):
                 # ALAS scans many page/popup assets.  An independently proven
                 # mission surface lets unknown presence checks be safely false;
@@ -1216,6 +1410,36 @@ class AlasSemanticAdapter:
                 "TACTICAL_CHECK": "tactical/page/back",
             }[name]
             return self.oracle.exists(target)
+        if self._campaign_context is not None and name == "EVENT_LIST_CHECK":
+            return self.oracle.exists("event-list/page/back")
+        if self._campaign_context is not None and name == "BACK_ARROW":
+            return self.oracle.enabled("event-list/page/back")
+        if self._campaign_context is not None and name in (
+            "SWITCH_1_NORMAL",
+            "SWITCH_1_HARD",
+        ):
+            expected = "normal" if name == "SWITCH_1_NORMAL" else "hard"
+            return self.oracle.campaign_mode_switch_state() == expected
+        if self._campaign_context is not None and name in (
+            "MAP_PREPARATION",
+            "FLEET_PREPARATION",
+            "MAP_PREPARATION_CANCEL",
+        ):
+            kind = self._campaign_preparation_kind()
+            if name == "MAP_PREPARATION":
+                return bool(
+                    kind == "map"
+                    and self._campaign_context.map_preparation_receipt is None
+                )
+            if name == "FLEET_PREPARATION":
+                if kind != "fleet":
+                    return False
+                if self._campaign_context.map_preparation_receipt is None:
+                    raise SemanticGateClosed(
+                        "campaign fleet preparation appeared without map transition"
+                    )
+                return True
+            return kind in ("map", "fleet")
         if name in RESEARCH_VIRTUAL_RESOURCES and self._research_context is not None:
             if name == "QUEUE_CHECK":
                 try:
@@ -1406,7 +1630,37 @@ class AlasSemanticAdapter:
         if semantic_id is None and name == "CAMPAIGN_MENU_CHECK":
             return self.oracle.campaign_menu_is_entry()
         if semantic_id is None and name == "CAMPAIGN_CHECK":
+            if self._campaign_context is not None:
+                if self._campaign_preparation_kind() is not None:
+                    return False
+                if (
+                    self._campaign_context.map_preparation_receipt is not None
+                    and self._campaign_context.cancel_receipt is None
+                    and time.monotonic()
+                    <= self._campaign_context.passive_transition_until
+                ):
+                    return False
+                try:
+                    return self.oracle.campaign_page_is_normal()
+                except SemanticGateClosed:
+                    if (
+                        time.monotonic()
+                        <= self._campaign_context.passive_transition_until
+                    ):
+                        return False
+                    raise
             return self.oracle.campaign_page_is_normal()
+        if semantic_id is None and name == "IN_MAP":
+            if self._campaign_context is not None:
+                if self._campaign_preparation_kind() is not None:
+                    return False
+                if (
+                    self._campaign_context.map_preparation_receipt is not None
+                    and time.monotonic()
+                    <= self._campaign_context.passive_transition_until
+                ):
+                    return False
+            return self.oracle.campaign_is_in_map()
         if semantic_id is None and name == "GOTO_MAIN":
             return self._goto_main_target() is not None
         if self._mail_context is not None and name == "MAIL_MANAGE":
@@ -1778,6 +2032,11 @@ class AlasSemanticAdapter:
         self._package_gate()
         return self.oracle.campaign_page_state()
 
+    def campaign_oil(self) -> int:
+        self._package_gate()
+        self._require_campaign_context()
+        return self.oracle.campaign_oil()
+
     def research_series(self) -> List[int]:
         return [project.series for project in self.research_projects()]
 
@@ -2091,11 +2350,29 @@ class AlasSemanticAdapter:
 
     def click(self, button: Any) -> ActionReceipt:
         name = self._button_name(button)
+        campaign_stage_code = getattr(
+            button, "semantic_campaign_stage_code", None
+        )
         semantic_id = self._mappings.get(name)
         navbar_match = MISSION_NAVBAR_PATTERN.fullmatch(name)
         commission_row_match = COMMISSION_ROW_PATTERN.fullmatch(name)
         build_side_navbar_match = BUILD_SIDE_NAVBAR_PATTERN.fullmatch(name)
         build_pool_navbar_match = BUILD_POOL_NAVBAR_PATTERN.fullmatch(name)
+        if name == "BACK_ARROW" and all(
+            context is None
+            for context in (
+                self._mission_context,
+                self._mail_context,
+                self._commission_context,
+                self._research_context,
+                self._dorm_context,
+                self._build_context,
+                self._campaign_context,
+            )
+        ):
+            raise AlasSemanticUnmapped(
+                "ALAS resource is not semantically mapped for input: BACK_ARROW"
+            )
         if (
             semantic_id is None
             and name not in MISSION_CLICK_RESOURCES
@@ -2122,6 +2399,7 @@ class AlasSemanticAdapter:
                 self._commission_context is not None
                 and name in COMMISSION_CLICK_RESOURCES
             )
+            and campaign_stage_code is None
             and navbar_match is None
             and commission_row_match is None
             and not (
@@ -2136,6 +2414,93 @@ class AlasSemanticAdapter:
                 "ALAS resource is not semantically mapped for input: {0}".format(name)
             )
         self._package_gate()
+        if campaign_stage_code is not None:
+            context = self._require_campaign_context()
+            if (
+                not isinstance(campaign_stage_code, str)
+                or campaign_stage_code != context.stage_code
+                or name != campaign_stage_code
+            ):
+                raise SemanticGateClosed("campaign stage identity changed")
+            if context.entry_budget <= 0 or context.entry_receipt is not None:
+                raise SemanticGateClosed(
+                    "campaign stage entry requires one remaining budget unit"
+                )
+            receipt = self.oracle.click_campaign_stage(campaign_stage_code)
+            context.entry_budget -= 1
+            context.entry_receipt = receipt
+            context.passive_transition_until = time.monotonic() + 20.0
+            return receipt
+        if self._campaign_context is not None and name == "MAP_PREPARATION":
+            context = self._require_campaign_context()
+            if context.entry_receipt is None:
+                raise SemanticGateClosed(
+                    "campaign map preparation requires proven stage entry"
+                )
+            if context.map_preparation_receipt is not None:
+                raise SemanticGateClosed(
+                    "campaign map-preparation transition is single-use"
+                )
+            if self._campaign_preparation_kind() != "map":
+                raise SemanticGateClosed(
+                    "campaign map preparation is not the active layer"
+                )
+            receipt = self.oracle.click_campaign_map_preparation(
+                context.stage_code
+            )
+            context.map_preparation_receipt = receipt
+            context.passive_transition_until = time.monotonic() + 20.0
+            return receipt
+        if (
+            self._campaign_context is not None
+            and name == "MAP_PREPARATION_CANCEL"
+        ):
+            context = self._require_campaign_context()
+            if context.entry_receipt is None or context.cancel_receipt is not None:
+                raise SemanticGateClosed(
+                    "campaign preparation cancel is not currently allowed"
+                )
+            kind = self._campaign_preparation_kind()
+            if kind == "fleet":
+                if context.map_preparation_receipt is None:
+                    raise SemanticGateClosed(
+                        "campaign fleet cancel requires proven map transition"
+                    )
+                receipt = self.oracle.cancel_campaign_fleet_preparation(
+                    context.stage_code
+                )
+            elif kind == "map":
+                receipt = self.oracle.cancel_campaign_map_preparation(
+                    context.stage_code
+                )
+            else:
+                raise SemanticGateClosed(
+                    "campaign preparation cancel layer is absent"
+                )
+            context.preparation_kind = kind
+            context.cancel_receipt = receipt
+            context.passive_transition_until = time.monotonic() + 20.0
+            return receipt
+        if self._campaign_context is not None and name == "BACK_ARROW":
+            receipt = self.oracle.click("event-list/page/back")
+            self._campaign_context.passive_transition_until = (
+                time.monotonic() + 20.0
+            )
+            return receipt
+        if (
+            self._campaign_context is not None
+            and semantic_id == "campaign-menu/normal"
+        ):
+            context = self._require_campaign_context()
+            if (
+                context.menu_entry_receipt is not None
+                and time.monotonic() <= context.passive_transition_until
+            ):
+                return context.menu_entry_receipt
+            receipt = self.oracle.click(semantic_id)
+            context.menu_entry_receipt = receipt
+            context.passive_transition_until = time.monotonic() + 20.0
+            return receipt
         if self._build_context is not None and build_side_navbar_match is not None:
             index = int(build_side_navbar_match.group(1))
             if index not in (0, 1):
@@ -3081,6 +3446,7 @@ class AlasSemanticSession:
         dorm_collect_budget: int = 0,
         dorm_feed_budget: int = 0,
         build_submit_budget: int = 0,
+        campaign_stage_entry_budget: int = 0,
     ) -> None:
         if not serial:
             raise ValueError("semantic ALAS mode requires an ADB serial")
@@ -3102,6 +3468,7 @@ class AlasSemanticSession:
             ("dorm collect", dorm_collect_budget),
             ("dorm feed", dorm_feed_budget),
             ("build submit", build_submit_budget),
+            ("campaign stage entry", campaign_stage_entry_budget),
         ):
             if (
                 isinstance(budget, bool)
@@ -3119,6 +3486,7 @@ class AlasSemanticSession:
         self.dorm_collect_budget = dorm_collect_budget
         self.dorm_feed_budget = dorm_feed_budget
         self.build_submit_budget = build_submit_budget
+        self.campaign_stage_entry_budget = campaign_stage_entry_budget
         self.bridge = AdbObserverBridge(serial, package, adb=adb)
         self.adapter: Optional[AlasSemanticAdapter] = None
 
@@ -3152,6 +3520,9 @@ class AlasSemanticSession:
         raw_build_submit_budget = os.environ.get(
             "ALAS_SEMANTIC_BUILD_SUBMIT_BUDGET", "0"
         )
+        raw_campaign_stage_entry_budget = os.environ.get(
+            "ALAS_SEMANTIC_CAMPAIGN_STAGE_ENTRY_BUDGET", "0"
+        )
         for label, value in (
             ("tactical assign", raw_tactical_assign_budget),
             ("commission reward", raw_reward_budget),
@@ -3161,6 +3532,7 @@ class AlasSemanticSession:
             ("dorm collect", raw_dorm_collect_budget),
             ("dorm feed", raw_dorm_feed_budget),
             ("build submit", raw_build_submit_budget),
+            ("campaign stage entry", raw_campaign_stage_entry_budget),
         ):
             if re.fullmatch(r"0|[1-9][0-9]*", value) is None:
                 raise SemanticGateClosed(
@@ -3193,6 +3565,7 @@ class AlasSemanticSession:
             dorm_collect_budget=int(raw_dorm_collect_budget),
             dorm_feed_budget=int(raw_dorm_feed_budget),
             build_submit_budget=int(raw_build_submit_budget),
+            campaign_stage_entry_budget=int(raw_campaign_stage_entry_budget),
         )
 
     def open(self) -> AlasSemanticAdapter:
@@ -3228,6 +3601,7 @@ class AlasSemanticSession:
                 dorm_collect_budget=self.dorm_collect_budget,
                 dorm_feed_budget=self.dorm_feed_budget,
                 build_submit_budget=self.build_submit_budget,
+                campaign_stage_entry_budget=self.campaign_stage_entry_budget,
             )
             return self.adapter
         except Exception:
@@ -3337,6 +3711,15 @@ class AlasSemanticSession:
     def campaign_page_state(self) -> CampaignPageState:
         return self.open().campaign_page_state()
 
+    def campaign_oil(self) -> int:
+        return self.open().campaign_oil()
+
+    def campaign_stage_entry_allowed(self) -> bool:
+        return self.open().campaign_stage_entry_allowed()
+
+    def confirm_campaign_pre_sortie(self) -> CampaignPreSortieProof:
+        return self.open().confirm_campaign_pre_sortie()
+
     def research_series(self) -> List[int]:
         return self.open().research_series()
 
@@ -3420,6 +3803,9 @@ class AlasSemanticSession:
 
     def click(self, button: Any) -> ActionReceipt:
         name = AlasSemanticAdapter._button_name(button)
+        campaign_stage_code = getattr(
+            button, "semantic_campaign_stage_code", None
+        )
         if (
             name not in DEFAULT_ALAS_BUTTON_TARGETS
             and name not in MISSION_CLICK_RESOURCES
@@ -3449,6 +3835,7 @@ class AlasSemanticSession:
             and COMMISSION_ROW_PATTERN.fullmatch(name) is None
             and BUILD_SIDE_NAVBAR_PATTERN.fullmatch(name) is None
             and BUILD_POOL_NAVBAR_PATTERN.fullmatch(name) is None
+            and campaign_stage_code is None
         ):
             raise AlasSemanticUnmapped(
                 "ALAS resource is not semantically mapped for input: {0}".format(name)
@@ -3511,6 +3898,19 @@ class AlasSemanticSession:
     def end_build(self) -> None:
         if self.adapter is not None:
             self.adapter.end_build()
+
+    def begin_campaign_pre_sortie(self, stage_code: str) -> None:
+        self.open().begin_campaign_pre_sortie(stage_code)
+
+    def end_campaign_pre_sortie(self) -> None:
+        if self.adapter is not None:
+            self.adapter.end_campaign_pre_sortie()
+
+    def campaign_pre_sortie_active(self) -> bool:
+        return bool(
+            self.adapter is not None
+            and self.adapter.campaign_pre_sortie_active()
+        )
 
     def run_mission_reward(
         self,

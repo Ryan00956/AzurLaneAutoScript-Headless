@@ -668,15 +668,15 @@ class SemanticOracleTests(unittest.TestCase):
 
         stage_buttons = [
             make_button(
-                "Chapter_1201",
-                root + "float/levels/items/Chapter_1201",
+                "main",
+                root + "float/levels/items/Chapter_1201/main",
                 187,
                 355,
                 raycast_top=None,
             ),
             make_button(
-                "Chapter_1202",
-                root + "float/levels/items/Chapter_1202",
+                "main",
+                root + "float/levels/items/Chapter_1202/main",
                 367,
                 602,
                 raycast_top=None,
@@ -714,13 +714,190 @@ class SemanticOracleTests(unittest.TestCase):
         )
         self.assertTrue(oracle.campaign_page_is_normal())
 
+    def test_campaign_stage_click_requires_exact_typed_identity_and_top_raycast(self):
+        root = "root/UICamera/Canvas/UIMain/LevelMainScene(Clone)/"
+        stage_root = root + "float/levels/items/Chapter_1204"
+        stage_path = stage_root + "/main"
+        backend = FakeBackend(
+            [
+                make_button("back_button", root + "top/top_chapter/back_button"),
+                make_button("main", stage_path, 905, 353, raycast_top=True),
+            ]
+        )
+        backend.ui = make_ui(
+            [
+                make_text("马里亚纳风云下", root + "top/top_chapter/title_chapter/name"),
+                make_text(
+                    "12-4",
+                    stage_root + "/main/info/bk/title_form/title_index",
+                ),
+                make_text(
+                    "最后的反击",
+                    stage_root + "/main/info/bk/title_form/title",
+                ),
+            ]
+        )
+        oracle = make_oracle(backend)
+
+        receipt = oracle.click_campaign_stage("12-4")
+
+        self.assertEqual(receipt.semantic_id, "campaign/stage/12-4")
+        self.assertEqual(receipt.path, stage_path)
+        self.assertEqual(backend.taps, [(905, 353)])
+
+        backend.buttons["buttons"][1]["raycast_top"] = False
+        with self.assertRaisesRegex(SemanticGateClosed, "not actionable"):
+            make_oracle(backend).click_campaign_stage("12-4")
+        with self.assertRaisesRegex(SemanticGateClosed, "not canonical"):
+            make_oracle(backend).campaign_stage_state("012-4")
+
+        backend.buttons["buttons"].append(
+            make_button(
+                "btn_elite",
+                root + "main/left_chapter/buttons/btn_elite",
+                raycast_top=None,
+            )
+        )
+        backend.buttons["button_count"] += 1
+        self.assertEqual(
+            make_oracle(backend).campaign_mode_switch_state(), "hard"
+        )
+        backend.ui["texts"].append(
+            make_text(
+                "9504",
+                "root/Overlay/UIMain/ResPanel(Clone)/frame/oil/oil_value",
+                bounds=None,
+            )
+        )
+        backend.ui["text_count"] += 1
+        self.assertEqual(make_oracle(backend).campaign_oil(), 9504)
+
+        transitional = FakeBackend([])
+        transitional.buttons_sequence = [make_buttons([]), backend.buttons]
+        transitional.buttons = backend.buttons
+        transitional.ui = backend.ui
+        self.assertEqual(make_oracle(transitional).campaign_oil(), 9504)
+
+    def test_campaign_map_preparation_is_stage_bound_and_cancel_only(self):
+        root = "root/OverlayCamera/Overlay/UIMain/LevelStageInfoView(Clone)/panel/"
+        backend = FakeBackend(
+            [
+                make_button(
+                    "back_button",
+                    "root/UICamera/Canvas/UIMain/LevelMainScene(Clone)/"
+                    "top/top_chapter/back_button",
+                    raycast_top=False,
+                ),
+                make_button("start_button", root + "start_button", 951, 523),
+                make_button("btnBack", root + "btnBack", 1066, 149),
+            ]
+        )
+        backend.ui = make_ui(
+            [
+                make_text("12–4  ", root + "title_form/title_index"),
+                make_text(
+                    "TF58，翱翔于天际", root + "title_form/title"
+                ),
+            ]
+        )
+        oracle = make_oracle(backend)
+
+        state = oracle.campaign_map_preparation_state("12-4")
+        self.assertEqual(state.kind, "map")
+        self.assertEqual(state.stage_code, "12-4")
+        self.assertEqual(state.title, "TF58，翱翔于天际")
+        proceed = oracle.click_campaign_map_preparation("12-4")
+        cancel = oracle.cancel_campaign_map_preparation("12-4")
+        self.assertEqual(proceed.semantic_id, "campaign/map-preparation/proceed")
+        self.assertEqual(cancel.semantic_id, "campaign/map-preparation/cancel")
+        self.assertEqual(backend.taps, [(951, 523), (1066, 149)])
+
+        backend.ui["texts"][0]["text"] = "12–3"
+        with self.assertRaisesRegex(SemanticGateClosed, "identity changed"):
+            make_oracle(backend).campaign_map_preparation_state("12-4")
+
+    def test_campaign_fleet_preparation_exposes_only_exact_cancel(self):
+        fleet = (
+            "root/OverlayCamera/Overlay/UIMain/"
+            "LevelFleetSelectView(Clone)/panel/Fixed/"
+        )
+        stage = (
+            "root/UICamera/Canvas/UIMain/LevelMainScene(Clone)/float/levels/"
+            "items/Chapter_1204/main"
+        )
+        backend = FakeBackend(
+            [
+                make_button("main", stage, raycast_top=False),
+                make_button("btnBack", fleet + "btnBack", 1196, 97),
+                make_button(
+                    "start_button", fleet + "start_button", 1078, 585,
+                    raycast_top=None,
+                ),
+            ]
+        )
+        backend.ui = make_ui(
+            [
+                make_text("舰队选择", fleet + "title/Image/text"),
+                make_text("12–4  ", stage + "/info/bk/title_form/title_index"),
+                make_text(
+                    "TF58，翱翔于天际",
+                    stage + "/info/bk/title_form/title",
+                ),
+            ]
+        )
+        oracle = make_oracle(backend)
+
+        state = oracle.campaign_fleet_preparation_state("12-4")
+        self.assertEqual(state.kind, "fleet")
+        self.assertIsNone(state.proceed_button.raycast_top)
+        receipt = oracle.cancel_campaign_fleet_preparation("12-4")
+        self.assertEqual(
+            receipt.semantic_id, "campaign/fleet-preparation/cancel"
+        )
+        self.assertEqual(backend.taps, [(1196, 97)])
+
+        backend.buttons["buttons"][2]["raycast_top"] = True
+        with self.assertRaisesRegex(SemanticGateClosed, "unexpectedly exposed"):
+            make_oracle(backend).campaign_fleet_preparation_state("12-4")
+
+    def test_campaign_in_map_probe_only_admits_reviewed_non_map_surfaces(self):
+        login = FakeBackend(
+            [
+                make_button(
+                    "LoginUI2(Clone)",
+                    "root/UICamera/Canvas/UIMain/LoginUI2(Clone)",
+                )
+            ]
+        )
+        self.assertFalse(make_oracle(login).campaign_is_in_map())
+
+        unknown = FakeBackend(
+            [make_button("unknown", "root/UICamera/Canvas/UIMain/Unknown(Clone)")]
+        )
+        with self.assertRaisesRegex(SemanticGateClosed, "reviewed non-map"):
+            make_oracle(unknown).campaign_is_in_map()
+
+        event_list = FakeBackend(
+            [
+                make_button(
+                    "back_btn",
+                    "root/UICamera/Canvas/UIMain/ActivityMainUI(Clone)/"
+                    "adapt/blur_panel/adapt/top/back_btn",
+                    raycast_top=True,
+                )
+            ]
+        )
+        event_oracle = make_oracle(event_list)
+        self.assertFalse(event_oracle.campaign_is_in_map())
+        self.assertTrue(event_oracle.enabled("event-list/page/back"))
+
     def test_campaign_page_rejects_stage_id_text_mismatch(self):
         root = "root/UICamera/Canvas/UIMain/LevelMainScene(Clone)/"
         stage = root + "float/levels/items/Chapter_1201"
         backend = FakeBackend(
             [
                 make_button("back_button", root + "top/top_chapter/back_button"),
-                make_button("Chapter_1201", stage, raycast_top=None),
+                make_button("main", stage + "/main", raycast_top=None),
             ]
         )
         backend.ui = make_ui(

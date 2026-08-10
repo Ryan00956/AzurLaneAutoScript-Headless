@@ -120,9 +120,39 @@ if ! grep -Fq 'LevelMainScene(Clone)/entrance/enters/enter_main' \
   echo "Campaign-menu normal-entry allowlist is missing" >&2
   exit 1
 fi
+if ! grep -Fq 'LevelMainScene(Clone)/float/levels/items/' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Campaign stage Button raycast allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'name == "main"' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Campaign stage action Button raycast allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'LevelStageInfoView(Clone)/panel/start_button' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Campaign map-preparation start allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'LevelStageInfoView(Clone)/panel/btnBack' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Campaign map-preparation cancel allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'LevelFleetSelectView(Clone)/panel/Fixed/btnBack' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Campaign fleet-preparation cancel allowlist is missing" >&2
+  exit 1
+fi
 if ! grep -Fq 'Overlay/UIMain/blur_panel/adapt/top/back_btn' \
     "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
   echo "Construction-page back-button allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'ActivityMainUI(Clone)/adapt/blur_panel/adapt/top/back_btn' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Event-list back-button allowlist is missing" >&2
   exit 1
 fi
 if ! grep -Fq 'CommissionInfoUI4Mellow(Clone)/frame/main/content/event/' \

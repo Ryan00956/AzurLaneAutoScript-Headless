@@ -124,10 +124,14 @@ class FakeOracle:
         self.dorm_empty_food_cancel_value = False
         self.campaign_menu_value = False
         self.campaign_page_value = False
+        self.campaign_page_error = None
         self.campaign_state_value = SimpleNamespace(
+            generation=20,
             chapter_name="第一章",
             stages=(),
         )
+        self.campaign_preparation_value = None
+        self.campaign_preparation_error = None
 
     def enabled(self, semantic_id):
         self.enabled_calls.append(semantic_id)
@@ -273,10 +277,58 @@ class FakeOracle:
         return self.campaign_menu_value
 
     def campaign_page_is_normal(self):
+        if self.campaign_page_error is not None:
+            raise self.campaign_page_error
         return self.campaign_page_value
 
     def campaign_page_state(self):
         return self.campaign_state_value
+
+    def campaign_is_in_map(self):
+        return False
+
+    def campaign_mode_switch_state(self):
+        return "hard"
+
+    def campaign_oil(self):
+        return 9504
+
+    def campaign_stage_actionable(self, stage_code):
+        return any(
+            stage.stage_code == stage_code and stage.button.actionable
+            for stage in self.campaign_state_value.stages
+        )
+
+    def click_campaign_stage(self, stage_code):
+        self.click_calls.append("campaign/stage/" + stage_code)
+        self.campaign_preparation_value = SimpleNamespace(kind="map")
+        return self.click_receipt("campaign/stage/" + stage_code, generation=7)
+
+    def campaign_preparation_state(self, stage_code):
+        if self.campaign_preparation_error is not None:
+            raise self.campaign_preparation_error
+        return self.campaign_preparation_value
+
+    def click_campaign_map_preparation(self, stage_code):
+        self.click_calls.append("campaign/map-preparation/proceed")
+        self.campaign_preparation_value = SimpleNamespace(kind="fleet")
+        return self.click_receipt(
+            "campaign/map-preparation/proceed", generation=8
+        )
+
+    def cancel_campaign_map_preparation(self, stage_code):
+        self.click_calls.append("campaign/map-preparation/cancel")
+        self.campaign_preparation_value = None
+        return self.click_receipt(
+            "campaign/map-preparation/cancel", generation=9
+        )
+
+    def cancel_campaign_fleet_preparation(self, stage_code):
+        self.click_calls.append("campaign/fleet-preparation/cancel")
+        self.campaign_preparation_value = None
+        return self.click_receipt(
+            "campaign/fleet-preparation/cancel", generation=9
+        )
 
     def tactical_slots(self):
         return tuple(self.tactical_slot_values)
@@ -291,10 +343,10 @@ class FakeOracle:
         return self.tactical_prompt_text
 
     @staticmethod
-    def click_receipt(semantic_id):
+    def click_receipt(semantic_id, generation=7):
         return ActionReceipt(
             semantic_id=semantic_id,
-            generation=7,
+            generation=generation,
             point=Point(2, 3),
             bounds=Bounds(1, 2, 3, 4),
             path="root/target",
@@ -1004,6 +1056,25 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertEqual(receipt.semantic_id, "campaign-menu/page/back")
         self.assertEqual(oracle.click_calls, ["campaign-menu/page/back"])
 
+    def test_campaign_menu_entry_has_bounded_transition_grace(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.campaign_page_error = SemanticGateClosed(
+            "campaign page identity is not proven"
+        )
+
+        with patch("alas_headless.alas_adapter.time.monotonic", return_value=10.0):
+            adapter.begin_campaign_pre_sortie("12-4")
+            receipt = adapter.click(NamedButton("CAMPAIGN_MENU_GOTO_CAMPAIGN"))
+            duplicate = adapter.click(NamedButton("CAMPAIGN_MENU_GOTO_CAMPAIGN"))
+            self.assertFalse(adapter.appear(NamedButton("CAMPAIGN_CHECK")))
+
+        self.assertEqual(duplicate, receipt)
+        self.assertEqual(oracle.click_calls, ["campaign-menu/normal"])
+        with patch("alas_headless.alas_adapter.time.monotonic", return_value=31.0):
+            with self.assertRaisesRegex(SemanticGateClosed, "identity is not proven"):
+                adapter.appear(NamedButton("CAMPAIGN_CHECK"))
+        adapter.end_campaign_pre_sortie()
+
     def test_campaign_chapter_check_and_back_require_typed_page_identity(self):
         adapter, oracle, _ = self.make_adapter()
         oracle.campaign_page_value = True
@@ -1014,6 +1085,157 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         with self.assertRaises(AlasSemanticUnmapped):
             adapter.click(NamedButton("BACK_ARROW"))
         self.assertEqual(oracle.click_calls, [])
+
+    def test_campaign_stage_entry_is_exact_and_spends_one_independent_budget(self):
+        oracle = FakeOracle()
+        stage = SimpleNamespace(
+            stage_code="12-4",
+            button=SimpleNamespace(actionable=True),
+        )
+        oracle.campaign_state_value = SimpleNamespace(
+            chapter_name="马里亚纳风云下",
+            stages=(stage,),
+        )
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            campaign_stage_entry_budget=1,
+        )
+        button = NamedButton("12-4")
+        button.semantic_campaign_stage_code = "12-4"
+
+        adapter.begin_campaign_pre_sortie("12-4")
+        self.assertTrue(adapter.campaign_stage_entry_allowed())
+        self.assertTrue(adapter.appear(button))
+        receipt = adapter.click(button)
+
+        self.assertEqual(receipt.semantic_id, "campaign/stage/12-4")
+        self.assertFalse(adapter.campaign_stage_entry_allowed())
+        self.assertEqual(oracle.click_calls, ["campaign/stage/12-4"])
+        with self.assertRaisesRegex(SemanticGateClosed, "remaining budget"):
+            adapter.click(button)
+        adapter.end_campaign_pre_sortie()
+
+    def test_campaign_stage_entry_defaults_closed_and_rejects_identity_change(self):
+        adapter, oracle, _ = self.make_adapter()
+        stage = SimpleNamespace(
+            stage_code="12-4",
+            button=SimpleNamespace(actionable=True),
+        )
+        oracle.campaign_state_value = SimpleNamespace(
+            chapter_name="马里亚纳风云下",
+            stages=(stage,),
+        )
+        button = NamedButton("12-3")
+        button.semantic_campaign_stage_code = "12-3"
+
+        adapter.begin_campaign_pre_sortie("12-4")
+        self.assertFalse(adapter.campaign_stage_entry_allowed())
+        with self.assertRaisesRegex(SemanticGateClosed, "identity changed"):
+            adapter.appear(button)
+        adapter.end_campaign_pre_sortie()
+
+    def test_campaign_startup_in_map_probe_reuses_typed_non_map_gate(self):
+        adapter, _, _ = self.make_adapter()
+
+        self.assertFalse(adapter.appear(NamedButton("IN_MAP")))
+
+        adapter.begin_campaign_pre_sortie("12-4")
+        self.assertFalse(adapter.appear(NamedButton("UNREVIEWED_PAGE_CHECK")))
+        adapter.end_campaign_pre_sortie()
+
+    def test_campaign_event_list_back_uses_exact_typed_target(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.exists_values["event-list/page/back"] = True
+        oracle.enabled_values["event-list/page/back"] = True
+
+        adapter.begin_campaign_pre_sortie("12-4")
+        self.assertTrue(adapter.appear(NamedButton("EVENT_LIST_CHECK")))
+        self.assertTrue(adapter.appear(NamedButton("BACK_ARROW")))
+        receipt = adapter.click(NamedButton("BACK_ARROW"))
+        adapter.end_campaign_pre_sortie()
+
+        self.assertEqual(receipt.semantic_id, "event-list/page/back")
+        self.assertEqual(oracle.click_calls, ["event-list/page/back"])
+
+    def test_campaign_mode_switch_reports_exact_destination_without_input(self):
+        adapter, oracle, _ = self.make_adapter()
+
+        adapter.begin_campaign_pre_sortie("12-4")
+        self.assertTrue(adapter.appear(NamedButton("SWITCH_1_HARD")))
+        self.assertFalse(adapter.appear(NamedButton("SWITCH_1_NORMAL")))
+        adapter.end_campaign_pre_sortie()
+
+        self.assertEqual(oracle.click_calls, [])
+
+    def test_campaign_oil_is_typed_and_scoped_to_active_flow(self):
+        adapter, _, _ = self.make_adapter()
+        with self.assertRaisesRegex(SemanticGateClosed, "outside ALAS"):
+            adapter.campaign_oil()
+
+        adapter.begin_campaign_pre_sortie("12-4")
+        self.assertEqual(adapter.campaign_oil(), 9504)
+        adapter.end_campaign_pre_sortie()
+
+    def test_campaign_pre_sortie_reuses_prepare_and_cancel_states(self):
+        oracle = FakeOracle()
+        stage = SimpleNamespace(
+            stage_code="12-4",
+            button=SimpleNamespace(actionable=True),
+        )
+        oracle.campaign_state_value = SimpleNamespace(
+            generation=12,
+            chapter_name="马里亚纳风云上",
+            stages=(stage,),
+        )
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            campaign_stage_entry_budget=1,
+        )
+        entrance = NamedButton("12-4")
+        entrance.semantic_campaign_stage_code = "12-4"
+
+        adapter.begin_campaign_pre_sortie("12-4")
+        adapter.click(entrance)
+        self.assertTrue(adapter.appear(NamedButton("MAP_PREPARATION")))
+        adapter.click(NamedButton("MAP_PREPARATION"))
+        self.assertFalse(adapter.appear(NamedButton("MAP_PREPARATION")))
+        oracle.campaign_preparation_error = SemanticGateClosed(
+            "campaign map preparation is transitioning away"
+        )
+        self.assertFalse(adapter.appear(NamedButton("CAMPAIGN_CHECK")))
+        self.assertFalse(adapter.appear(NamedButton("IN_MAP")))
+        oracle.campaign_preparation_error = None
+        oracle.campaign_preparation_value = SimpleNamespace(kind="fleet")
+        self.assertTrue(adapter.appear(NamedButton("FLEET_PREPARATION")))
+        with self.assertRaisesRegex(AlasSemanticUnmapped, "FLEET_PREPARATION"):
+            adapter.click(NamedButton("FLEET_PREPARATION"))
+        adapter.click(NamedButton("MAP_PREPARATION_CANCEL"))
+        oracle.campaign_preparation_error = SemanticGateClosed(
+            "campaign fleet preparation is transitioning away"
+        )
+        self.assertFalse(adapter.appear(NamedButton("CAMPAIGN_CHECK")))
+        self.assertFalse(adapter.appear(NamedButton("IN_MAP")))
+        oracle.campaign_preparation_error = None
+        oracle.campaign_page_value = True
+        self.assertTrue(adapter.appear(NamedButton("CAMPAIGN_CHECK")))
+        proof = adapter.confirm_campaign_pre_sortie()
+        adapter.end_campaign_pre_sortie()
+
+        self.assertEqual(proof.stage_code, "12-4")
+        self.assertEqual(proof.preparation_kind, "fleet")
+        self.assertEqual(proof.entry_generation, 7)
+        self.assertEqual(proof.cancel_generation, 9)
+        self.assertEqual(proof.restored_generation, 12)
+        self.assertEqual(
+            oracle.click_calls,
+            [
+                "campaign/stage/12-4",
+                "campaign/map-preparation/proceed",
+                "campaign/fleet-preparation/cancel",
+            ],
+        )
 
     def test_goto_main_from_mission_uses_exact_task_back(self):
         adapter, oracle, _ = self.make_adapter()
@@ -2046,7 +2268,7 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         )
 
         with self.assertRaises(AlasSemanticUnmapped):
-            session.click(NamedButton("BACK_ARROW"))
+            session.click(NamedButton("UNREVIEWED_CLICK"))
 
         self.assertIsNone(session.bridge.transport)
 
@@ -2146,6 +2368,7 @@ class AlasSemanticAdapterTests(unittest.TestCase):
             "ALAS_SEMANTIC_DORM_COLLECT_BUDGET": "4",
             "ALAS_SEMANTIC_DORM_FEED_BUDGET": "5",
             "ALAS_SEMANTIC_BUILD_SUBMIT_BUDGET": "6",
+            "ALAS_SEMANTIC_CAMPAIGN_STAGE_ENTRY_BUDGET": "7",
         }
         with patch.dict("os.environ", environment, clear=True):
             session = AlasSemanticSession.from_environment("emulator-test")
@@ -2156,6 +2379,7 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertEqual(session.dorm_collect_budget, 4)
         self.assertEqual(session.dorm_feed_budget, 5)
         self.assertEqual(session.build_submit_budget, 6)
+        self.assertEqual(session.campaign_stage_entry_budget, 7)
 
         environment["ALAS_SEMANTIC_DORM_FEED_BUDGET"] = "05"
         with patch.dict("os.environ", environment, clear=True):

@@ -71,7 +71,7 @@ patch_marker_present() {
         "${angle_dir}/src/libANGLE/renderer/null/SurfaceNULL.cpp"
       ;;
     0010-android-null-snapshot-cadence.patch)
-      grep -Fq 'mSwapCount % 60' \
+      grep -Eq 'mSwapCount % 60|Internal request/monotonic cadence' \
         "${angle_dir}/src/libANGLE/renderer/null/SurfaceNULL.cpp"
       ;;
     0011-android-null-register-main-thread.patch)

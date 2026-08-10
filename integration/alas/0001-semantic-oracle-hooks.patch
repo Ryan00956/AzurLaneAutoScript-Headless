@@ -1,5 +1,5 @@
 diff --git a/module/base/base.py b/module/base/base.py
-index dfd12a9..448d06f 100644
+index dfd12a94182f193411eda70c4ae5ef048f124a4b..448d06ff94417b43d6b3633a95581e946f617a7c 100644
 --- a/module/base/base.py
 +++ b/module/base/base.py
 @@ -70,6 +70,9 @@ class ModuleBase:
@@ -50,8 +50,164 @@ index dfd12a9..448d06f 100644
          if isinstance(button, np.ndarray):
              image = button
          else:
+diff --git a/module/campaign/campaign_ocr.py b/module/campaign/campaign_ocr.py
+index f39a29ae80cc1cebe765250bfe63d5933011b10c..9c2d7f433e3ee424d1c342ad3614c078357d6216 100644
+--- a/module/campaign/campaign_ocr.py
++++ b/module/campaign/campaign_ocr.py
+@@ -2,6 +2,7 @@ import collections
+ 
+ from module.base.base import ModuleBase
+ from module.base.decorator import Config, cached_property, del_cached_property
++from module.base.button import Button
+ from module.base.timer import Timer
+ from module.base.utils import *
+ from module.exception import CampaignNameError
+@@ -17,6 +18,30 @@ class CampaignOcr(ModuleBase):
+     # An approximate area where stages will appear for faster template matching
+     _stage_detect_area = (87, 117, 1151, 636)
+ 
++    def _semantic_campaign_entrances(self):
++        from alas_headless import current_semantic_session
++        semantic_session = current_semantic_session()
++        if semantic_session is None:
++            return None
++        state = semantic_session.campaign_page_state()
++        buttons = []
++        for stage in state.stages:
++            bounds = stage.button.bounds
++            if bounds is None:
++                raise CampaignNameError
++            area = tuple(int(round(value)) for value in (
++                bounds.left, bounds.top, bounds.right, bounds.bottom
++            ))
++            button = Button(
++                area=area,
++                color=(0, 0, 0),
++                button=area,
++                name=stage.stage_code,
++            )
++            button.semantic_campaign_stage_code = stage.stage_code
++            buttons.append(button)
++        return buttons
++
+     @staticmethod
+     def _campaign_get_chapter_index(name):
+         """
+@@ -134,6 +159,9 @@ class CampaignOcr(ModuleBase):
+ 
+     @Config.when(SERVER='en')
+     def campaign_extract_name_image(self, image):
++        semantic_buttons = self._semantic_campaign_entrances()
++        if semantic_buttons is not None:
++            return semantic_buttons
+         digits = []
+ 
+         if 'normal' in self.config.STAGE_ENTRANCE:
+@@ -197,6 +225,9 @@ class CampaignOcr(ModuleBase):
+         Returns:
+             list[Button]: List of Buttons of stage entrance.
+         """
++        semantic_buttons = self._semantic_campaign_entrances()
++        if semantic_buttons is not None:
++            return semantic_buttons
+         digits = []
+ 
+         if 'normal' in self.config.STAGE_ENTRANCE:
+@@ -289,6 +320,34 @@ class CampaignOcr(ModuleBase):
+         Args:
+             image (np.ndarray):
+         """
++        from alas_headless import current_semantic_session
++        semantic_session = current_semantic_session()
++        if semantic_session is not None:
++            state = semantic_session.campaign_page_state()
++            chapters = {stage.stage_code.split('-', 1)[0] for stage in state.stages}
++            if len(chapters) != 1:
++                raise CampaignNameError
++            self.campaign_chapter = chapters.pop()
++            self.stage_entrance = {}
++            for stage in state.stages:
++                bounds = stage.button.bounds
++                if bounds is None:
++                    raise CampaignNameError
++                area = tuple(int(round(value)) for value in (
++                    bounds.left, bounds.top, bounds.right, bounds.bottom
++                ))
++                button = Button(
++                    area=area,
++                    color=(0, 0, 0),
++                    button=area,
++                    name=stage.stage_code,
++                )
++                button.semantic_campaign_stage_code = stage.stage_code
++                self.stage_entrance[stage.stage_code] = button
++            logger.attr('Chapter', self.campaign_chapter)
++            logger.attr('Stage', ', '.join(self.stage_entrance.keys()))
++            return
++
+         self.stage_entrance = {}
+         del_cached_property(self, '_stage_image')
+         del_cached_property(self, '_stage_image_gray')
+diff --git a/module/campaign/campaign_status.py b/module/campaign/campaign_status.py
+index 45e8179fc13aa9391bf37929735dd3b54c7fa159..55ba834c9b9b1c21a12126f5f0ece2637558652f 100644
+--- a/module/campaign/campaign_status.py
++++ b/module/campaign/campaign_status.py
+@@ -107,6 +107,11 @@ class CampaignStatus(UI):
+         Returns:
+             int: Oil amount
+         """
++        from alas_headless import current_semantic_session
++        semantic_session = current_semantic_session()
++        if semantic_session is not None:
++            return semantic_session.campaign_oil()
++
+         amount = 0
+         timeout = Timer(1, count=2).start()
+         while 1:
+diff --git a/module/campaign/run.py b/module/campaign/run.py
+index 57033308f4cfa16bafbf6ddba6b3ecb372a3e2b4..00a6fc3e6e393ed00a2d4c106c70c18dcde05fe6 100644
+--- a/module/campaign/run.py
++++ b/module/campaign/run.py
+@@ -366,6 +366,16 @@ class CampaignRun(CampaignEvent):
+             self.config.task_stop('Commission notice found')
+ 
+     def run(self, name, folder='campaign_main', mode='normal', total=0):
++        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
++        if semantic_adapter is None:
++            return self._run(name, folder=folder, mode=mode, total=total)
++        semantic_adapter.begin_campaign_pre_sortie(name)
++        try:
++            return self._run(name, folder=folder, mode=mode, total=total)
++        finally:
++            semantic_adapter.end_campaign_pre_sortie()
++
++    def _run(self, name, folder='campaign_main', mode='normal', total=0):
+         """
+         Args:
+             name (str): Name of .py file.
+@@ -373,6 +383,7 @@ class CampaignRun(CampaignEvent):
+             mode (str): `normal` or `hard`
+             total (int):
+         """
++        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
+         name, folder = self.handle_stage_name(name, folder, mode=mode)
+         self.config.override(Campaign_Name=name, Campaign_Event=folder)
+         self.load_campaign(name, folder=folder)
+@@ -435,6 +446,12 @@ class CampaignRun(CampaignEvent):
+             self.device.stuck_record_clear()
+             self.device.click_record_clear()
+             try:
++                if (
++                    semantic_adapter is not None
++                    and not semantic_adapter.campaign_stage_entry_allowed()
++                ):
++                    raise ScriptEnd(
++                        'Semantic campaign stage-entry budget is zero')
+                 self.campaign.run()
+             except ScriptEnd as e:
+                 logger.hr('Script end')
 diff --git a/module/commission/commission.py b/module/commission/commission.py
-index 195d84a..fda74c4 100644
+index 195d84a1354760fb116f8833f963f1bdd0f20555..fda74c41f81b5a897e961d59a234edd0ce64b07b 100644
 --- a/module/commission/commission.py
 +++ b/module/commission/commission.py
 @@ -89,6 +89,21 @@ class RewardCommission(UI, InfoHandler):
@@ -312,7 +468,7 @@ index 195d84a..fda74c4 100644
 +            if semantic_adapter is not None:
 +                semantic_adapter.end_commission()
 diff --git a/module/commission/project.py b/module/commission/project.py
-index cd88c16..efa9500 100644
+index cd88c16282b4f6c8bcf9eac2202e836797869e3c..efa9500e8b5c759653038f4867dbf2f365269384 100644
 --- a/module/commission/project.py
 +++ b/module/commission/project.py
 @@ -106,6 +106,58 @@ class Commission:
@@ -399,7 +555,7 @@ index cd88c16..efa9500 100644
          # area = area_offset((5, 5, 30, 30), self.area[0:2])
          # return color_similar(color1=get_color(self.image, area), color2=(239, 166, 231))
 diff --git a/module/device/control.py b/module/device/control.py
-index 1224c45..8a1cb41 100644
+index 1224c45475f24ccbec28589e78c4a2d5df4ffd64..8a1cb41169a868a8eb6a5fef9632a4466fa71934 100644
 --- a/module/device/control.py
 +++ b/module/device/control.py
 @@ -17,6 +17,14 @@ class Control(Hermit, Minitouch, Scrcpy, MaaTouch, NemuIpc):
@@ -470,7 +626,7 @@ index 1224c45..8a1cb41 100644
          p1, p2 = ensure_int(p1, p2)
          logger.info(
 diff --git a/module/device/device.py b/module/device/device.py
-index 0d05f34..586c680 100644
+index 0d05f343807c19ac88b96e1e31248219d723ab43..586c68071975b16b154fecc536089da8ccc3a148 100644
 --- a/module/device/device.py
 +++ b/module/device/device.py
 @@ -1,4 +1,5 @@
@@ -501,16 +657,10 @@ index 0d05f34..586c680 100644
          if IS_WINDOWS and self.config.EmulatorInfo_Emulator == 'auto':
              _ = self.emulator_instance
 diff --git a/module/dorm/dorm.py b/module/dorm/dorm.py
-index c3c9545..6197b5f 100644
+index c3c9545999b72754bce1c3f47196ac2fc2031249..3710781b6d438a2ec1fa82a6e348c1add28a3629 100644
 --- a/module/dorm/dorm.py
 +++ b/module/dorm/dorm.py
-@@ -278,12 +278,18 @@ class RewardDorm(UI):
-     def _dorm_feed_click(self, button, count):
-         """
-         Args:
-             button (Button): Food button.
-             count (int): Food use count.
- 
+@@ -284,6 +284,12 @@ class RewardDorm(UI):
          Pages:
              in: DORM_FEED_CHECK
          """
@@ -523,13 +673,7 @@ index c3c9545..6197b5f 100644
          logger.info(f'Dorm feed {button} x {count}')
          if count <= 3:
              for _ in range(count):
-@@ -307,12 +313,20 @@ class RewardDorm(UI):
-     def dorm_food_get(self):
-         """
-         Returns:
-             list[Food]:
-             int: Amount to feed.
- 
+@@ -313,6 +319,14 @@ class RewardDorm(UI):
          Pages:
              in: DORM_FEED_CHECK
          """
@@ -544,7 +688,7 @@ index c3c9545..6197b5f 100644
          has_food = [self._dorm_has_food(button) for button in self._dorm_food.buttons]
          amount = self._dorm_food_ocr.ocr(self.device.image)
          amount = [a if hf else 0 for a, hf in zip(amount, has_food)]
-@@ -546,6 +561,10 @@ class RewardDorm(UI):
+@@ -546,6 +560,10 @@ class RewardDorm(UI):
          Pages:
              in: page_dorm
          """
@@ -555,7 +699,7 @@ index c3c9545..6197b5f 100644
          timeout = Timer(2, count=4).start()
          current = 0
          for _ in self.loop():
-@@ -614,7 +636,7 @@ class RewardDorm(UI):
+@@ -607,7 +625,7 @@ class RewardDorm(UI):
          delay = dict_delay.get(ships, self.config.Scheduler_SuccessInterval)
          return delay
  
@@ -564,7 +708,7 @@ index c3c9545..6197b5f 100644
          """
          Pages:
              in: Any page
-@@ -638,3 +660,14 @@ class RewardDorm(UI):
+@@ -627,3 +645,14 @@ class RewardDorm(UI):
          delay = self.cal_dorm_delay(ships)
          logger.info(f'Ships in dorm: {ships}, task to delay: {delay}')
          self.config.task_delay(minute=delay)
@@ -580,7 +724,7 @@ index c3c9545..6197b5f 100644
 +            if semantic_adapter is not None:
 +                semantic_adapter.end_dorm()
 diff --git a/module/freebies/mail_white.py b/module/freebies/mail_white.py
-index 6d9e42f..25a9dcc 100644
+index 6d9e42f4a4777d63ff1c26a14782f6074892921e..25a9dcc177da8cebcf280ec2864c2e6f24523a17 100644
 --- a/module/freebies/mail_white.py
 +++ b/module/freebies/mail_white.py
 @@ -257,23 +257,30 @@ class MailWhite(UI):
@@ -633,8 +777,114 @@ index 6d9e42f..25a9dcc 100644
 +        finally:
 +            if semantic_adapter is not None:
 +                semantic_adapter.end_mail()
+diff --git a/module/gacha/gacha_reward.py b/module/gacha/gacha_reward.py
+index 08c93073b1e52d249bd4815a75b7895456b394d1..9fcf6e06d9cc79a5b6f565a818392db6d73292ca 100644
+--- a/module/gacha/gacha_reward.py
++++ b/module/gacha/gacha_reward.py
+@@ -85,6 +85,14 @@ class RewardGacha(GachaUI, Retirement):
+         if ocr_submit is None:
+             raise ScriptError('Failed to identify ocr asset required, '
+                               'cannot continue prep work')
++        from alas_headless import current_semantic_session
++        semantic_session = current_semantic_session()
++        if semantic_session is not None:
++            state = semantic_session.build_submit_state()
++            if target != 1 or state.count != 1:
++                raise ScriptError('Semantic construction currently admits one order only')
++            return True
++
+         area = ocr_submit.buttons[0]
+         ocr_submit.buttons = [(BUILD_MINUS.button[2] + 3, area[1], BUILD_PLUS.button[0] - 3, area[3])]
+         self.ui_ensure_index(target, letter=ocr_submit, prev_button=BUILD_MINUS,
+@@ -297,9 +305,15 @@ class RewardGacha(GachaUI, Retirement):
+         # main Build page
+         self.gacha_flush_queue()
+ 
+-        # OCR Gold and Cubes
+-        self.build_coin_count = OCR_COIN.ocr(self.device.image)
+-        self.build_cube_count = OCR_BUILD_CUBE_COUNT.ocr(self.device.image)
++        from alas_headless import current_semantic_session
++        semantic_session = current_semantic_session()
++        if semantic_session is not None:
++            costs = semantic_session.build_costs()
++            self.build_coin_count = semantic_session.build_coins_owned()
++            self.build_cube_count = costs.cubes_owned
++        else:
++            self.build_coin_count = OCR_COIN.ocr(self.device.image)
++            self.build_cube_count = OCR_BUILD_CUBE_COUNT.ocr(self.device.image)
+ 
+         # Transition to appropriate target construction pool
+         # Returns appropriate costs for gacha as well
+@@ -341,7 +355,7 @@ class RewardGacha(GachaUI, Retirement):
+ 
+         return result
+ 
+-    def run(self):
++    def _run_alas_state_machine(self):
+         """
+         Handle gacha operations if configured to do so.
+ 
+@@ -351,3 +365,14 @@ class RewardGacha(GachaUI, Retirement):
+         """
+         self.gacha_run()
+         self.config.task_delay(server_update=True)
++
++    def run(self):
++        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
++        if semantic_adapter is not None:
++            semantic_adapter.begin_build()
++        try:
++            # ALAS still owns pool choice, affordability, and submit scheduling.
++            return self._run_alas_state_machine()
++        finally:
++            if semantic_adapter is not None:
++                semantic_adapter.end_build()
+diff --git a/module/map/map_operation.py b/module/map/map_operation.py
+index c44e0996e1923a5ad9e4f94cc5087b6e6c3fe5eb..19b0c5caea2d675e8eb59ea92d5e4136e1bcb67e 100644
+--- a/module/map/map_operation.py
++++ b/module/map/map_operation.py
+@@ -119,6 +119,7 @@ class MapOperation(MysteryHandler, FleetPreparation, Retirement, FastForwardHand
+         self.stage_entrance = button
+         self.map_clear_percentage_prev = -1
+         self.map_clear_percentage_timer.reset()
++        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
+ 
+         with self.stat.new(
+                 genre=self.config.campaign_name, method=self.config.DropRecord_CombatRecord
+@@ -150,6 +151,31 @@ class MapOperation(MysteryHandler, FleetPreparation, Retirement, FastForwardHand
+                 else:
+                     checked_in_map = True
+ 
++                # Semantic pre-sortie validation follows the same ALAS states,
++                # but stops before the fleet-preparation sortie input.
++                if (
++                    semantic_adapter is not None
++                    and semantic_adapter.campaign_pre_sortie_active()
++                ):
++                    if self.appear(FLEET_PREPARATION, offset=(20, 50)):
++                        self.enter_map_cancel()
++                        proof = semantic_adapter.confirm_campaign_pre_sortie()
++                        logger.info(
++                            f'Semantic campaign pre-sortie proof: '
++                            f'{proof.stage_code}, {proof.preparation_kind}, '
++                            f'{proof.entry_generation}->{proof.cancel_generation}'
++                            f'->{proof.restored_generation}'
++                        )
++                        raise ScriptEnd(
++                            'Semantic campaign pre-sortie validation complete'
++                        )
++                    if self.appear(MAP_PREPARATION, offset=(20, 20)):
++                        self.device.click(MAP_PREPARATION)
++                        map_click += 1
++                        map_timer.reset()
++                        campaign_timer.reset()
++                        continue
++
+                 # Accidental clicks
+                 if self.appear(DAILY_CHECK, offset=(20, 20), interval=3):
+                     logger.info(f'{DAILY_CHECK} -> {BACK_ARROW}')
 diff --git a/module/ocr/ocr.py b/module/ocr/ocr.py
-index 9dfd4f0..9fca01b 100644
+index 9dfd4f00cb0d52466c496da677115509163a6592..9fca01bd4151210252be61629d6fbeda7443af15 100644
 --- a/module/ocr/ocr.py
 +++ b/module/ocr/ocr.py
 @@ -90,6 +90,28 @@ class Ocr:
@@ -667,7 +917,7 @@ index 9dfd4f0..9fca01b 100644
              image_list = [self.pre_process(i) for i in image]
          else:
 diff --git a/module/research/project.py b/module/research/project.py
-index c7b54dc..a7bc576 100644
+index c7b54dcb4d41d65777b954a26dea5ce24340507b..a7bc57698b80c8c6169e5d94ca100ed2cd09ab17 100644
 --- a/module/research/project.py
 +++ b/module/research/project.py
 @@ -147,6 +147,10 @@ def get_research_finished(image):
@@ -681,8 +931,119 @@ index c7b54dc..a7bc576 100644
      for index in [2, 1, 3, 0, 4]:
          button = RESEARCH_STATUS[index]
          color = get_color(image, button.area)
+diff --git a/module/research/research.py b/module/research/research.py
+index 6ffd45eed346403875be07ca12a1602fa5fe6cb8..ff4edac597c7679007403578bdadd2567cde440f 100644
+--- a/module/research/research.py
++++ b/module/research/research.py
+@@ -200,7 +200,12 @@ class RewardResearch(ResearchSelector, ResearchQueue, StorageHandler):
+             else:
+                 self.device.screenshot()
+ 
+-            max_rgb = np.max(rgb2gray(self.image_crop(RESEARCH_UNAVAILABLE, copy=False)))
++            from alas_headless import current_semantic_session
++            semantic_session = current_semantic_session()
++            if semantic_session is not None:
++                max_rgb = 255 if semantic_session.research_detail_available() else 0
++            else:
++                max_rgb = np.max(rgb2gray(self.image_crop(RESEARCH_UNAVAILABLE, copy=False)))
+ 
+             # Don't use interval here, RESEARCH_CHECK already appeared 5 seconds ago
+             if click_timer.reached() and self.is_in_research():
+@@ -566,7 +571,7 @@ class RewardResearch(ResearchSelector, ResearchQueue, StorageHandler):
+ 
+         return True
+ 
+-    def run(self):
++    def _run_alas_state_machine(self):
+         """
+         Pages:
+             in: Any page
+@@ -602,3 +607,14 @@ class RewardResearch(ResearchSelector, ResearchQueue, StorageHandler):
+             # ten minutes in advance to avoid idle research.
+             self.end_time = self.end_time + timedelta(minutes=-10)
+         self.config.task_delay(target=self.end_time)
++
++    def run(self):
++        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
++        if semantic_adapter is not None:
++            semantic_adapter.begin_research()
++        try:
++            # ALAS still owns selection, queue filling, retry, and scheduling.
++            return self._run_alas_state_machine()
++        finally:
++            if semantic_adapter is not None:
++                semantic_adapter.end_research()
+diff --git a/module/research/rqueue.py b/module/research/rqueue.py
+index e836c5cb93abd1673a33b0b117e7faef695c68cb..bb47daef0d359de7db764257a08cf6ac43f73ddb 100644
+--- a/module/research/rqueue.py
++++ b/module/research/rqueue.py
+@@ -1,4 +1,4 @@
+-from datetime import datetime
++from datetime import datetime, timedelta
+ 
+ from module.base.button import ButtonGrid
+ from module.base.decorator import cached_property, Config
+@@ -59,6 +59,11 @@ class ResearchQueue(ResearchUI):
+             bool: True if able add to queue,
+                 False if project requirements not satisfied, can't be added to queue
+         """
++        from alas_headless import current_semantic_session
++        semantic_session = current_semantic_session()
++        if semantic_session is not None:
++            return semantic_session.research_detail_can_queue()
++
+         # RESEARCH_QUEUE_ADD.area is the letter `Queue`
+         # RESEARCH_QUEUE_ADD.button is the entire clickable area of button
+         # Available: (90, 142, 203)
+@@ -139,6 +144,11 @@ class ResearchQueue(ResearchUI):
+         Pages:
+             in: is_in_queue
+         """
++        from alas_headless import current_semantic_session
++        semantic_session = current_semantic_session()
++        if semantic_session is not None:
++            return semantic_session.research_queue_fill_slots()
++
+         status = [self._queue_status_detect(button) for button in self.queue_status_grids.buttons]
+         logger.info(f'Research queue: {status}')
+         status = status[::-1]
+@@ -161,6 +171,12 @@ class ResearchQueue(ResearchUI):
+         Raises:
+             GameBugError:
+         """
++        from alas_headless import current_semantic_session
++        semantic_session = current_semantic_session()
++        if semantic_session is not None:
++            remain = semantic_session.research_queue_remaining_seconds()
++            return datetime.now() + timedelta(seconds=remain)
++
+         if self.image_color_count(QUEUE_REMAIN, color=(123, 125, 123), threshold=235, count=100):
+             logger.error('The first research of queue is not running,'
+                          'probably a game bug from AL,'
+diff --git a/module/research/selector.py b/module/research/selector.py
+index 05146c3308213214bb9fab21f4874135f6739113..5ff693dbf83bf2493bae17489621c1e42f8aa4c2 100644
+--- a/module/research/selector.py
++++ b/module/research/selector.py
+@@ -123,6 +123,17 @@ class ResearchSelector(ResearchUI):
+ 
+     @Config.when(SERVER=None)
+     def research_detect(self):
++        from alas_headless import current_semantic_session
++        semantic_session = current_semantic_session()
++        if semantic_session is not None:
++            from module.research.project import ResearchProject
++            states = semantic_session.research_projects()
++            self.projects = [
++                ResearchProject(name=state.code, series=state.series)
++                for state in states
++            ]
++            logger.info(f'Research projects: {[str(project) for project in self.projects]}')
++            return
+         timeout = Timer(5, count=5).start()
+         while 1:
+             projects = research_detect(self.device.image)
 diff --git a/module/research/series.py b/module/research/series.py
-index 89e534c..d399d42 100644
+index 89e534c45e8ee356007ed47f52ce64b0242186c9..d399d423785825558991092079a77fa0df9ad4a8 100644
 --- a/module/research/series.py
 +++ b/module/research/series.py
 @@ -46,6 +46,10 @@ def get_research_series_3(image, series_button=RESEARCH_SERIES):
@@ -697,7 +1058,7 @@ index 89e534c..d399d42 100644
          match_series(crop(image, area_pad(button.area, pad=-10), copy=False), scaling)
          for scaling, button in zip(RESEARCH_SCALING, series_button)
 diff --git a/module/research/ui.py b/module/research/ui.py
-index 3f652c1..dea1bd5 100644
+index 3f652c11f1d66e47e6945bf8050697ef1a0f27d4..dea1bd5f71465a1419ceff74a8b549811d9080ad 100644
 --- a/module/research/ui.py
 +++ b/module/research/ui.py
 @@ -99,6 +99,12 @@ class ResearchUI(UI):
@@ -714,7 +1075,7 @@ index 3f652c1..dea1bd5 100644
          for index, status, scaling in zip(range(5), RESEARCH_STATUS, RESEARCH_SCALING):
              info = status.crop((0, -40, 200, 0))
 diff --git a/module/reward/reward.py b/module/reward/reward.py
-index 50a7171..3df61a5 100644
+index 50a71717bfbe8be953e8bb2acb0fffb2f718120a..3df61a5a750cfaaab8772c1b843d6d03b5691220 100644
 --- a/module/reward/reward.py
 +++ b/module/reward/reward.py
 @@ -166,6 +166,14 @@ class Reward(UI):
@@ -802,7 +1163,7 @@ index 50a7171..3df61a5 100644
 +            if semantic_adapter is not None:
 +                semantic_adapter.end_mission_reward()
 diff --git a/module/tactical/tactical_class.py b/module/tactical/tactical_class.py
-index 0e518a4..7c7acc8 100644
+index 0e518a49a454a1d5ba4204059a22c0c3cc601f29..d794d42cefad01041bca024298935e3ba09d0d97 100644
 --- a/module/tactical/tactical_class.py
 +++ b/module/tactical/tactical_class.py
 @@ -1,4 +1,4 @@
@@ -903,7 +1264,8 @@ index 0e518a4..7c7acc8 100644
              if self.handle_popup_confirm('TACTICAL'):
                  self.interval_reset([BOOK_EMPTY_POPUP])
                  continue
-@@ -610,4 +658,8 @@ class RewardTacticalClass(Dock):
+@@ -609,6 +657,10 @@ class RewardTacticalClass(Dock):
+             out: Unknown, may TACTICAL_CLASS_START, page_tactical
          """
          logger.hr('Tactical skill choose')
 +        from alas_headless import current_semantic_session
@@ -912,7 +1274,8 @@ index 0e518a4..7c7acc8 100644
 +            return semantic_session.tactical_select_first_trainable_skill()
          selected_skill = self.find_not_full_level_skill()
  
-@@ -625,6 +678,22 @@ class RewardTacticalClass(Dock):
+         # If can't select a skill, think this ship no need study
+@@ -625,6 +677,22 @@ class RewardTacticalClass(Dock):
  
      def select_suitable_ship(self):
          logger.hr(f'Select suitable ship')
@@ -935,7 +1298,7 @@ index 0e518a4..7c7acc8 100644
  
          # Set if favorite from config
          self.dock_favourite_set(enable=self.config.AddNewStudent_Favorite, wait_loading=False)
-@@ -737,9 +806,15 @@ class RewardTacticalClass(Dock):
+@@ -737,9 +805,15 @@ class RewardTacticalClass(Dock):
              in: Any
              out: page_tactical
          """
@@ -954,178 +1317,3 @@ index 0e518a4..7c7acc8 100644
  
          if self.tactical_finish:
              self.config.task_delay(target=self.tactical_finish)
-diff --git a/module/research/selector.py b/module/research/selector.py
-index 17d45d1..619a4bf 100644
---- a/module/research/selector.py
-+++ b/module/research/selector.py
-@@ -124,6 +124,17 @@ class ResearchSelector(ResearchUI):
- 
-     @Config.when(SERVER=None)
-     def research_detect(self):
-+        from alas_headless import current_semantic_session
-+        semantic_session = current_semantic_session()
-+        if semantic_session is not None:
-+            from module.research.project import ResearchProject
-+            states = semantic_session.research_projects()
-+            self.projects = [
-+                ResearchProject(name=state.code, series=state.series)
-+                for state in states
-+            ]
-+            logger.info(f'Research projects: {[str(project) for project in self.projects]}')
-+            return
-         timeout = Timer(5, count=5).start()
-         while 1:
-             projects = research_detect(self.device.image)
-diff --git a/module/research/research.py b/module/research/research.py
-index 43c9b27..214d1c4 100644
---- a/module/research/research.py
-+++ b/module/research/research.py
-@@ -200,7 +200,12 @@ class Research(ResearchSelector, ResearchQueue, ResearchStorage, ResearchPreset):
-             else:
-                 self.device.screenshot()
- 
--            max_rgb = np.max(rgb2gray(self.image_crop(RESEARCH_UNAVAILABLE, copy=False)))
-+            from alas_headless import current_semantic_session
-+            semantic_session = current_semantic_session()
-+            if semantic_session is not None:
-+                max_rgb = 255 if semantic_session.research_detail_available() else 0
-+            else:
-+                max_rgb = np.max(rgb2gray(self.image_crop(RESEARCH_UNAVAILABLE, copy=False)))
- 
-             # Don't use interval here, RESEARCH_CHECK already appeared 5 seconds ago
-             if click_timer.reached() and self.is_in_research():
-@@ -541,7 +541,7 @@ class Research(ResearchSelector, ResearchQueue, ResearchStorage, ResearchPreset):
- 
-         return True
- 
--    def run(self):
-+    def _run_alas_state_machine(self):
-         """
-         Pages:
-             in: Any page
-@@ -584,3 +584,14 @@ class Research(ResearchSelector, ResearchQueue, ResearchStorage, ResearchPreset):
-             # ten minutes in advance to avoid idle research.
-             self.end_time = self.end_time + timedelta(minutes=-10)
-         self.config.task_delay(target=self.end_time)
-+
-+    def run(self):
-+        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
-+        if semantic_adapter is not None:
-+            semantic_adapter.begin_research()
-+        try:
-+            # ALAS still owns selection, queue filling, retry, and scheduling.
-+            return self._run_alas_state_machine()
-+        finally:
-+            if semantic_adapter is not None:
-+                semantic_adapter.end_research()
-diff --git a/module/research/rqueue.py b/module/research/rqueue.py
-index 303aa30..73b3a18 100644
---- a/module/research/rqueue.py
-+++ b/module/research/rqueue.py
-@@ -1,4 +1,4 @@
--from datetime import datetime
-+from datetime import datetime, timedelta
- 
- from module.base.button import ButtonGrid
- from module.base.decorator import cached_property, Config
-@@ -59,7 +59,12 @@ class ResearchQueue(ResearchUI):
-         Returns:
-             bool: True if able add to queue,
-                 False if project requirements not satisfied, can't be added to queue
-         """
-+        from alas_headless import current_semantic_session
-+        semantic_session = current_semantic_session()
-+        if semantic_session is not None:
-+            return semantic_session.research_detail_can_queue()
-+
-         # RESEARCH_QUEUE_ADD.area is the letter `Queue`
-         # RESEARCH_QUEUE_ADD.button is the entire clickable area of button
-         # Available: (90, 142, 203)
-@@ -126,6 +131,11 @@ class ResearchQueue(ResearchUI):
-         Pages:
-             in: is_in_queue
-         """
-+        from alas_headless import current_semantic_session
-+        semantic_session = current_semantic_session()
-+        if semantic_session is not None:
-+            return semantic_session.research_queue_fill_slots()
-+
-         status = [self._queue_status_detect(button) for button in self.queue_status_grids.buttons]
-         logger.info(f'Research queue: {status}')
-         status = status[::-1]
-@@ -149,6 +159,12 @@ class ResearchQueue(ResearchUI):
-         Raises:
-             GameBugError:
-         """
-+        from alas_headless import current_semantic_session
-+        semantic_session = current_semantic_session()
-+        if semantic_session is not None:
-+            remain = semantic_session.research_queue_remaining_seconds()
-+            return datetime.now() + timedelta(seconds=remain)
-+
-         if self.image_color_count(QUEUE_REMAIN, color=(123, 125, 123), threshold=235, count=100):
-             logger.error('The first research of queue is not running,'
-                          'probably a game bug from AL,'
-diff --git a/module/gacha/gacha_reward.py b/module/gacha/gacha_reward.py
-index 3d5e909..67640ec 100644
---- a/module/gacha/gacha_reward.py
-+++ b/module/gacha/gacha_reward.py
-@@ -84,6 +84,14 @@ class RewardGacha(GachaUI, Retirement):
-         if ocr_submit is None:
-             raise ScriptError('Failed to identify ocr asset required, '
-                               'cannot continue prep work')
-+        from alas_headless import current_semantic_session
-+        semantic_session = current_semantic_session()
-+        if semantic_session is not None:
-+            state = semantic_session.build_submit_state()
-+            if target != 1 or state.count != 1:
-+                raise ScriptError('Semantic construction currently admits one order only')
-+            return True
-+
-         area = ocr_submit.buttons[0]
-         ocr_submit.buttons = [(BUILD_MINUS.button[2] + 3, area[1], BUILD_PLUS.button[0] - 3, area[3])]
-         self.ui_ensure_index(target, letter=ocr_submit, prev_button=BUILD_MINUS,
-@@ -296,10 +304,16 @@ class RewardGacha(GachaUI, Retirement):
-         # Upon exit, expected to be in
-         # main Build page
-         self.gacha_flush_queue()
- 
--        # OCR Gold and Cubes
--        self.build_coin_count = OCR_COIN.ocr(self.device.image)
--        self.build_cube_count = OCR_BUILD_CUBE_COUNT.ocr(self.device.image)
-+        from alas_headless import current_semantic_session
-+        semantic_session = current_semantic_session()
-+        if semantic_session is not None:
-+            costs = semantic_session.build_costs()
-+            self.build_coin_count = semantic_session.build_coins_owned()
-+            self.build_cube_count = costs.cubes_owned
-+        else:
-+            self.build_coin_count = OCR_COIN.ocr(self.device.image)
-+            self.build_cube_count = OCR_BUILD_CUBE_COUNT.ocr(self.device.image)
- 
-         # Transition to appropriate target construction pool
-         # Returns appropriate costs for gacha as well
-@@ -341,7 +355,7 @@ class RewardGacha(GachaUI, Retirement):
- 
-         return result
- 
--    def run(self):
-+    def _run_alas_state_machine(self):
-         """
-         Handle gacha operations if configured to do so.
- 
-@@ -352,3 +366,14 @@ class RewardGacha(GachaUI, Retirement):
-         """
-         self.gacha_run()
-         self.config.task_delay(server_update=True)
-+
-+    def run(self):
-+        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
-+        if semantic_adapter is not None:
-+            semantic_adapter.begin_build()
-+        try:
-+            # ALAS still owns pool choice, affordability, and submit scheduling.
-+            return self._run_alas_state_machine()
-+        finally:
-+            if semantic_adapter is not None:
-+                semantic_adapter.end_build()
