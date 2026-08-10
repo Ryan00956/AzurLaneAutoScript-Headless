@@ -44,7 +44,10 @@ The bounded ALAS-owned fleet-selection pass is documented in the
 The separately budgeted single-sortie and real map-entry proof are documented
 in the [G12 validation report](docs/g12-campaign-sortie-validation-report.md).
 The complete read-only ALAS-backed map model is documented in the
-[G13 validation report](docs/g13-campaign-map-model-validation-report.md).
+[G13 validation report](docs/g13-campaign-map-model-validation-report.md). Its
+transactional projection into native ALAS map objects and read-only path
+planning are documented in the
+[G14 validation report](docs/g14-alas-map-sync-validation-report.md).
 
 G1, G2, G3, and the formal G4 harmless closed loop passed. G4 includes
 EventSystem top-raycast proof for every injected target, not only object state
@@ -74,10 +77,14 @@ then stops at the real read-only `LevelGrid` map identity. G13 builds a stable
 `11x8` model from ALAS topology plus complete Unity Button/Image/Text state,
 including both fleets, enemies, and the ammunition pickup. ALAS consumes that
 model at its existing already-in-map checkpoint and returns before retreat;
-there is still no map input. Lua/game-state coverage, formation-layout
-changes, ALAS grid synchronization/planning, map movement, battle state,
-weekly-only end-to-end coverage, repeated sorties, and full unattended ALAS
-task coverage remain open.
+there is still no map input. G14 validates that model against a deep-copied
+native ALAS `CampaignMap`, reuses `map_data_init()` and the native path finder,
+and emits deterministic per-marker reachability summaries. Fleet markers are
+deliberately not assigned to ALAS fleet indexes, so movement remains
+structurally closed. Lua/game-state coverage, formation-layout changes,
+semantic fleet-index binding, map movement, battle state, weekly-only
+end-to-end coverage, repeated sorties, and full unattended ALAS task coverage
+remain open.
 
 ## Repository layout
 

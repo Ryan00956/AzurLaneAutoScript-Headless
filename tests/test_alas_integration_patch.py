@@ -202,6 +202,21 @@ class AlasIntegrationPatchTests(unittest.TestCase):
         self.assertIn("+                    return True", self.patch_text)
         self.assertIn("logger.info('Already in map, retreating.')", self.patch_text)
 
+    def test_campaign_map_projection_delegates_to_alas_without_movement(self):
+        self.assertIn(
+            "from alas_headless import synchronize_alas_campaign_map",
+            self.patch_text,
+        )
+        self.assertIn(
+            "synchronize_alas_campaign_map(",
+            self.patch_text,
+        )
+        self.assertIn("self.campaign, state", self.patch_text)
+        self.assertIn("Semantic ALAS map projection:", self.patch_text)
+        self.assertIn("recommended_enemy_node", self.patch_text)
+        self.assertIn("recommended_pickup_node", self.patch_text)
+        self.assertNotIn("semantic_map_projection.goto", self.patch_text)
+
 
 if __name__ == "__main__":
     unittest.main()

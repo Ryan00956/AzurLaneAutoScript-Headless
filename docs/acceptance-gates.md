@@ -3,7 +3,9 @@
 Status terms are deliberately strict. A build passing does not imply a later gate has passed.
 
 Current status: G1-G4, G5a, controlled G5b, scoped G6-G8, the G9 bounded
-adapter slices, and the G10-G13 campaign slices passed. G4 includes
+adapter slices, and the G10-G13 campaign slices passed. G14 has a pinned
+native-object pass while its fresh same-process live replay is network-blocked.
+G4 includes
 login/main reachability, sustained semantic state, RectTransform bounds, top
 EventSystem raycast identity for each action, and a settings-page return loop.
 G5a covers only the ALAS mission-reward no-claim branch. G5b covers one
@@ -244,6 +246,25 @@ See [G12 campaign sortie validation](g12-campaign-sortie-validation-report.md).
   with an input-rejecting assertion installed.
 
 See [G13 campaign map-model validation](g13-campaign-map-model-validation-report.md).
+
+## G14 - Read-only ALAS map synchronization and planning
+
+- Validate the complete semantic state against ALAS's loaded stage, shape,
+  land/passable topology, and static enemy/ammunition capabilities before
+  mutating a shadow map.
+- Reuse ALAS's native `CampaignMap`, `GridInfo`, `map_data_init()`, and path
+  calculation; do not recreate its map state machine in the adapter.
+- Produce deterministic per-marker enemy/ammunition reachability summaries,
+  then clear temporary path state.
+- Keep semantic marker-to-fleet-index identity unresolved until independently
+  proven. Leave ALAS indexed fleet locations empty and expose no grid input.
+- Do not call `map_control_init()`, scanning, fleet switching, movement,
+  battle, retreat, or rewards.
+- Require unit rollback coverage, a pinned real-ALAS-object qualification,
+  clean canonical patch application, and an evidence-scoped live-blocker
+  disclosure when a same-process replay cannot run.
+
+See [G14 ALAS map synchronization validation](g14-alas-map-sync-validation-report.md).
 
 ## Stop or pivot conditions
 

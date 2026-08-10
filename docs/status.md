@@ -4,6 +4,31 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G14 read-only ALAS map synchronization: pinned native-object pass
+
+- The G13 model now projects transactionally into a deep-copied native ALAS
+  `CampaignMap`; ALAS's own `map_data_init()`, `find_path_initial()`, and
+  `_find_path()` remain the data/path owners.
+- A Device-free run against pinned `campaign_12_4.Campaign` reproduced the
+  live generation `4817` topology and dynamic state: 68 passable cells, 20
+  land cells, fleets `D6/F8`, enemies `C6/D6`, and ammunition `F2`.
+- Native ALAS routes were produced for both semantic fleet markers. Temporary
+  costs/connections were then reset, and configuration changes made by shadow
+  initialization were restored.
+- Semantic marker-to-ALAS fleet-index identity is deliberately unresolved.
+  `fleet_1_location` and `fleet_2_location` remain empty, so this projection
+  cannot start ALAS movement accidentally.
+- `map_control_init()`, scanning, fleet switching, grid movement, combat,
+  retreat, and rewards are not called or mapped.
+- A current read-only live check at generation `21296` still found the exact
+  `[NetworkDown]` overlay above the loaded map. No input was injected, and no
+  new same-process live pass is claimed.
+- The controller/integration suite passes `230/230`; the canonical patch
+  applies cleanly to the pinned upstream SHA and exactly matches the exercised
+  checkout's full Git diff.
+
+See [G14 ALAS map synchronization validation](g14-alas-map-sync-validation-report.md).
+
 ### G13 read-only campaign map model: live ALAS pass
 
 - The stable `12-4` model combines ALAS's own `11x8` shape and exact 20-cell

@@ -77,9 +77,13 @@ selection, retry loops, queue filling, popup loops, and scheduling.
 
 When ALAS is already on a normal campaign map, the patch now passes ALAS's own
 map shape, land cells, and enabled fleet count to the read-only semantic map
-model. The returned stable cells, fleets, enemies, and pickups are logged and
-the invocation returns before ALAS's existing retreat branch. No grid Button,
-movement, combat, retreat, or map reward input is mapped.
+model. The returned stable cells, fleets, enemies, and pickups are validated
+against a deep copy of ALAS's native `CampaignMap`, initialized through
+`map_data_init()`, and planned through ALAS's existing path methods. The
+invocation logs immutable per-marker reachability summaries and returns before
+ALAS's existing retreat branch. Semantic markers are not assigned to ALAS
+fleet indexes, and no grid Button, movement, combat, retreat, or map reward
+input is mapped.
 
 Commission start has a separate integer budget and remains closed by default:
 
@@ -205,7 +209,7 @@ reviewed popup chain, and passed a full dual-budget-zero replay. Reward budget
 list also passed exact-handle multipage scanning and stable row-index merging.
 Nonzero-oil rows, cancellation, repeated unattended starts, and multi-order
 construction are not live-qualified. Numeric-row claiming, campaign hard-mode
-fleet restrictions, formation-layout changes, map synchronization/planning,
+fleet restrictions, formation-layout changes, semantic fleet-index binding,
 movement and battle input, Lua/game-state access, other reward popups,
 gestures outside the exact commission handle, and full unattended task flows
 remain fail-closed.

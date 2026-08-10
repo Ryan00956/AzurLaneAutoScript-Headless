@@ -1,5 +1,11 @@
 """Controller-side components for AzurLaneAutoScript Headless."""
 
+from .alas_map_sync import (
+    AlasCampaignFleetPlan,
+    AlasCampaignMapProjection,
+    AlasCampaignRoutePlan,
+    synchronize_alas_campaign_map,
+)
 from .alas_adapter import (
     AlasSemanticAdapter,
     AlasSemanticSession,
@@ -91,6 +97,9 @@ from .runtime import (
 __all__ = (
     "ActionReceipt",
     "AdbObserverBridge",
+    "AlasCampaignFleetPlan",
+    "AlasCampaignMapProjection",
+    "AlasCampaignRoutePlan",
     "AlasSemanticAdapter",
     "AlasSemanticSession",
     "AlasSemanticUnmapped",
@@ -170,4 +179,5 @@ __all__ = (
     "bind_semantic_session",
     "current_semantic_session",
     "reset_semantic_session",
+    "synchronize_alas_campaign_map",
 )

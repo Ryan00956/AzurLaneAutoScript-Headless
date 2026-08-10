@@ -1,0 +1,275 @@
+import copy
+import unittest
+from collections import deque
+from types import SimpleNamespace
+
+from alas_headless import (
+    Bounds,
+    CampaignMapCellState,
+    CampaignMapEnemyState,
+    CampaignMapFleetState,
+    CampaignMapPickupState,
+    CampaignMapState,
+    Point,
+    SemanticGateClosed,
+    synchronize_alas_campaign_map,
+)
+
+
+class FakeGrid:
+    def __init__(
+        self,
+        location,
+        *,
+        is_land=False,
+        may_enemy=False,
+        may_boss=False,
+        may_ammo=False,
+        weight=50,
+    ):
+        self.location = location
+        self.is_land = is_land
+        self.may_enemy = may_enemy
+        self.may_boss = may_boss
+        self.may_ammo = may_ammo
+        self.weight = weight
+        self.reset()
+
+    def reset(self):
+        self.is_fleet = False
+        self.is_enemy = False
+        self.is_ammo = False
+        self.enemy_scale = 0
+        self.enemy_genre = None
+        self.cost = 9999
+        self.cost_1 = 9999
+        self.cost_2 = 9999
+        self.connection = None
+
+
+class FakeMap:
+    def __init__(self):
+        self.name = "12-4"
+        self.shape = (2, 1)
+        self.grids = {
+            (0, 0): FakeGrid((0, 0), may_enemy=True),
+            (1, 0): FakeGrid((1, 0), is_land=True),
+            (2, 0): FakeGrid((2, 0), may_ammo=True),
+            (0, 1): FakeGrid((0, 1)),
+            (1, 1): FakeGrid((1, 1)),
+            (2, 1): FakeGrid((2, 1)),
+        }
+        self.path_starts = []
+
+    def __iter__(self):
+        return iter(self.grids.values())
+
+    def __getitem__(self, location):
+        return self.grids[tuple(location)]
+
+    def reset(self):
+        for grid in self:
+            grid.reset()
+
+    def find_path_initial(self, location, has_ambush=True, has_enemy=True):
+        del has_ambush, has_enemy
+        start = tuple(location)
+        self.path_starts.append(start)
+        for grid in self:
+            grid.cost = 9999
+            grid.connection = None
+        self[start].cost = 0
+        queue = deque((start,))
+        while queue:
+            current = queue.popleft()
+            for offset in ((0, -1), (0, 1), (-1, 0), (1, 0)):
+                neighbor = (current[0] + offset[0], current[1] + offset[1])
+                if neighbor not in self.grids or self[neighbor].is_land:
+                    continue
+                cost = self[current].cost + 1
+                if cost >= self[neighbor].cost:
+                    continue
+                self[neighbor].cost = cost
+                self[neighbor].connection = current
+                if not self[neighbor].is_enemy:
+                    queue.append(neighbor)
+
+    def _find_path(self, location):
+        location = tuple(location)
+        if self[location].cost >= 9999:
+            return None
+        route = [location]
+        while self[route[-1]].connection is not None:
+            route.append(self[route[-1]].connection)
+        route.reverse()
+        return route
+
+
+class FakeCampaign:
+    def __init__(self):
+        self.MAP = FakeMap()
+        self.map = "original-map"
+        self.config = SimpleNamespace(
+            MAP_HAS_AMBUSH=False,
+            POOR_MAP_DATA=True,
+        )
+        self.map_data_init_calls = 0
+        self.fleet_1_location = ()
+        self.fleet_2_location = ()
+
+    def map_data_init(self, map_):
+        self.map_data_init_calls += 1
+        self.map = map_
+        self.map.reset()
+        self.fleet_1_location = ()
+        self.fleet_2_location = ()
+        self.config.POOR_MAP_DATA = False
+
+    def click(self, *args):
+        raise AssertionError("read-only ALAS synchronization attempted input")
+
+
+def make_state(pickup_node="C1"):
+    cells = []
+    for row, column, node in (
+        (1, 1, "A1"),
+        (1, 3, "C1"),
+        (2, 1, "A2"),
+        (2, 2, "B2"),
+        (2, 3, "C2"),
+    ):
+        cells.append(
+            CampaignMapCellState(
+                row=row,
+                column=column,
+                node=node,
+                button_path="root/" + node,
+                point=Point(10.0, 10.0),
+                bounds=Bounds(0.0, 0.0, 20.0, 20.0),
+            )
+        )
+    return CampaignMapState(
+        generation=20,
+        stage_code="12-4",
+        rows=2,
+        columns=3,
+        cells=tuple(cells),
+        land_nodes=("B1",),
+        fleets=(
+            CampaignMapFleetState("alpha", "A2", 5, 5),
+            CampaignMapFleetState("beta", "B2", 4, 5),
+        ),
+        enemies=(
+            CampaignMapEnemyState(
+                row=1,
+                column=1,
+                node="A1",
+                object_id=1001,
+                sprite="qx1",
+                scale=1,
+                genre="Light",
+                level=10,
+                fighting=False,
+            ),
+        ),
+        pickups=(
+            CampaignMapPickupState(
+                row=int(pickup_node[1:]),
+                column=ord(pickup_node[0]) - ord("A") + 1,
+                node=pickup_node,
+                kind="ammo",
+                sprite="event4",
+            ),
+        ),
+    )
+
+
+class AlasCampaignMapSyncTests(unittest.TestCase):
+    def test_projects_typed_state_and_delegates_routes_to_alas_map(self):
+        campaign = FakeCampaign()
+
+        projection = synchronize_alas_campaign_map(campaign, make_state())
+
+        self.assertEqual(campaign.map_data_init_calls, 1)
+        self.assertTrue(campaign.map[(0, 1)].is_fleet)
+        self.assertTrue(campaign.map[(1, 1)].is_fleet)
+        self.assertTrue(campaign.map[(0, 0)].is_enemy)
+        self.assertEqual(campaign.map[(0, 0)].enemy_scale, 1)
+        self.assertEqual(campaign.map[(0, 0)].enemy_genre, "Light")
+        self.assertTrue(campaign.map[(2, 0)].is_ammo)
+        self.assertEqual(campaign.map.path_starts, [(0, 1), (1, 1)])
+        self.assertEqual(campaign.fleet_1_location, ())
+        self.assertEqual(campaign.fleet_2_location, ())
+        self.assertTrue(campaign.config.POOR_MAP_DATA)
+        self.assertEqual(
+            campaign.semantic_fleet_locations,
+            {"alpha": (0, 1), "beta": (1, 1)},
+        )
+        self.assertIs(campaign.semantic_map_projection, projection)
+        self.assertEqual(
+            tuple(
+                (
+                    fleet.marker,
+                    fleet.origin_node,
+                    fleet.recommended_enemy_node,
+                    fleet.recommended_pickup_node,
+                )
+                for fleet in projection.fleets
+            ),
+            (
+                ("alpha", "A2", "A1", "C1"),
+                ("beta", "B2", "A1", "C1"),
+            ),
+        )
+        self.assertEqual(
+            projection.fleets[0].enemy_routes[0].nodes,
+            ("A2", "A1"),
+        )
+        self.assertEqual(
+            projection.fleets[0].pickup_routes[0].nodes,
+            ("A2", "B2", "C2", "C1"),
+        )
+        self.assertTrue(all(grid.cost == 9999 for grid in campaign.map))
+
+    def test_rejects_static_map_mismatch_before_mutating_campaign(self):
+        campaign = FakeCampaign()
+        original_map = campaign.map
+
+        with self.assertRaisesRegex(SemanticGateClosed, "pickup violates"):
+            synchronize_alas_campaign_map(campaign, make_state(pickup_node="C2"))
+
+        self.assertIs(campaign.map, original_map)
+        self.assertEqual(campaign.map_data_init_calls, 0)
+        self.assertFalse(hasattr(campaign, "semantic_map_projection"))
+
+    def test_rejects_normal_enemy_on_boss_only_static_node(self):
+        campaign = FakeCampaign()
+        campaign.MAP[(0, 0)].may_enemy = False
+        campaign.MAP[(0, 0)].may_boss = True
+
+        with self.assertRaisesRegex(SemanticGateClosed, "enemy violates"):
+            synchronize_alas_campaign_map(campaign, make_state())
+
+        self.assertEqual(campaign.map_data_init_calls, 0)
+        self.assertFalse(hasattr(campaign, "semantic_map_projection"))
+
+    def test_rolls_back_campaign_if_alas_initializer_fails(self):
+        campaign = FakeCampaign()
+        original_map = campaign.map
+
+        def fail_after_mutation(map_):
+            campaign.map = copy.deepcopy(map_)
+            campaign.config.POOR_MAP_DATA = False
+            raise RuntimeError("initializer failed")
+
+        campaign.map_data_init = fail_after_mutation
+        with self.assertRaisesRegex(RuntimeError, "initializer failed"):
+            synchronize_alas_campaign_map(campaign, make_state())
+
+        self.assertIs(campaign.map, original_map)
+        self.assertTrue(campaign.config.POOR_MAP_DATA)
+        self.assertFalse(hasattr(campaign, "semantic_map_projection"))
+
+
+if __name__ == "__main__":
+    unittest.main()
