@@ -53,6 +53,9 @@ from .semantic_oracle import (
 ALAS_COMBAT_OBSERVER_FIXTURE_SCHEMA = (
     "alas-headless.g20-combat-observer-fixture/v1"
 )
+ALAS_COMBAT_OBSERVER_MANIFEST_SCHEMA = (
+    "alas-headless.g21-combat-observer-manifest/v1"
+)
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _ACTION_RESOURCES = frozenset(
     {"BATTLE_PREPARATION", "BATTLE_STATUS_S", "EXP_INFO_S"}
@@ -170,6 +173,124 @@ def unqualified_alas_combat_observer_manifest(
             for name in ALAS_COMBAT_REPLAY_RESOURCE_NAMES
         ),
     )
+
+
+def _selector_from_json(value: Any) -> AlasCombatUnitySelector:
+    if not isinstance(value, dict) or set(value) != {
+        "kind",
+        "path",
+        "name",
+        "sprite",
+        "text",
+        "require_top_raycast",
+    }:
+        raise SemanticGateClosed("combat manifest selector schema changed")
+    try:
+        kind = AlasCombatUnityRecordKind(value["kind"])
+    except (TypeError, ValueError) as exc:
+        raise SemanticGateClosed("combat manifest selector kind changed") from exc
+    selector = AlasCombatUnitySelector(
+        kind=kind,
+        path=value["path"] if isinstance(value["path"], str) else "",
+        name=value["name"] if isinstance(value["name"], str) else "",
+        sprite=value["sprite"] if isinstance(value["sprite"], str) else "",
+        text=value["text"] if isinstance(value["text"], str) else "",
+        require_top_raycast=value["require_top_raycast"]
+        if isinstance(value["require_top_raycast"], bool)
+        else False,
+    )
+    if not isinstance(value["require_top_raycast"], bool):
+        raise SemanticGateClosed("combat manifest selector raycast flag changed")
+    return selector
+
+
+def _mapping_from_json(value: Any) -> AlasCombatResourceMapping:
+    if not isinstance(value, dict) or set(value) != {
+        "resource_name",
+        "selectors",
+        "evidence_sha256",
+    }:
+        raise SemanticGateClosed("combat manifest resource schema changed")
+    selectors = value["selectors"]
+    if not isinstance(selectors, list):
+        raise SemanticGateClosed("combat manifest resource selectors are malformed")
+    return AlasCombatResourceMapping(
+        resource_name=value["resource_name"]
+        if isinstance(value["resource_name"], str)
+        else "",
+        selectors=tuple(_selector_from_json(item) for item in selectors),
+        evidence_sha256=value["evidence_sha256"]
+        if isinstance(value["evidence_sha256"], str)
+        else "",
+    )
+
+
+def load_alas_combat_observer_manifest(
+    path: Path,
+) -> AlasCombatObserverManifest:
+    """Load the one strict, versioned resource-to-Unity mapping document."""
+
+    try:
+        value = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise SemanticGateClosed("combat observer manifest cannot be read") from exc
+    if not isinstance(value, dict) or set(value) != {
+        "schema",
+        "package",
+        "driver_revision",
+        "game_fingerprint",
+        "resources",
+        "blocker_selectors",
+        "blocker_evidence_sha256",
+        "fleet_stats",
+    }:
+        raise SemanticGateClosed("combat observer manifest schema changed")
+    if value["schema"] != ALAS_COMBAT_OBSERVER_MANIFEST_SCHEMA:
+        raise SemanticGateClosed("combat observer manifest version changed")
+    if not all(
+        isinstance(value[field], str)
+        for field in (
+            "package",
+            "driver_revision",
+            "game_fingerprint",
+            "blocker_evidence_sha256",
+        )
+    ):
+        raise SemanticGateClosed("combat observer manifest identity is malformed")
+    resources = value["resources"]
+    blockers = value["blocker_selectors"]
+    stats = value["fleet_stats"]
+    if not isinstance(resources, list) or not isinstance(blockers, list):
+        raise SemanticGateClosed("combat observer manifest lists are malformed")
+    if not isinstance(stats, dict) or set(stats) != {
+        "hp_images",
+        "level_texts",
+        "evidence_sha256",
+    }:
+        raise SemanticGateClosed("combat observer fleet stats schema changed")
+    if (
+        not isinstance(stats["hp_images"], list)
+        or not isinstance(stats["level_texts"], list)
+        or not isinstance(stats["evidence_sha256"], str)
+    ):
+        raise SemanticGateClosed("combat observer fleet stats are malformed")
+    manifest = AlasCombatObserverManifest(
+        package=value["package"],
+        driver_revision=value["driver_revision"],
+        game_fingerprint=value["game_fingerprint"],
+        resources=tuple(_mapping_from_json(item) for item in resources),
+        blocker_selectors=tuple(_selector_from_json(item) for item in blockers),
+        blocker_evidence_sha256=value["blocker_evidence_sha256"],
+        fleet_stats=AlasCombatFleetStatsMapping(
+            hp_images=tuple(_selector_from_json(item) for item in stats["hp_images"]),
+            level_texts=tuple(
+                _selector_from_json(item) for item in stats["level_texts"]
+            ),
+            evidence_sha256=stats["evidence_sha256"],
+        ),
+    )
+    audit_alas_combat_observer_manifest(manifest)
+    return manifest
 
 
 def audit_alas_combat_observer_manifest(
@@ -543,7 +664,9 @@ def build_alas_campaign_combat_replay_from_observer(
     )
 
 
-def _canonical_sha256(value: Mapping[str, Any]) -> str:
+def canonical_alas_combat_observer_frame_sha256(
+    value: Mapping[str, Any],
+) -> str:
     encoded = json.dumps(
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
@@ -676,12 +799,18 @@ def _parse_campaign_map(value: Any) -> Optional[CampaignMapState]:
     return state
 
 
-def _parse_fixture_frame(
+def parse_alas_combat_observer_fixture_frame(
     value: Any,
     manifest: AlasCombatObserverManifest,
 ) -> AlasCombatObserverSnapshot:
-    if not isinstance(value, dict):
-        raise SemanticGateClosed("combat fixture frame is not an object")
+    if not isinstance(value, dict) or set(value) != {
+        "snapshot",
+        "buttons",
+        "ui",
+        "campaign_map",
+        "sha256",
+    }:
+        raise SemanticGateClosed("combat fixture frame schema changed")
     payload = {
         "snapshot": value.get("snapshot"),
         "buttons": value.get("buttons"),
@@ -689,7 +818,7 @@ def _parse_fixture_frame(
         "campaign_map": value.get("campaign_map"),
     }
     declared_hash = value.get("sha256")
-    if declared_hash != _canonical_sha256(payload):
+    if declared_hash != canonical_alas_combat_observer_frame_sha256(payload):
         raise SemanticGateClosed("combat fixture frame hash changed")
     snapshot_raw = payload["snapshot"]
     buttons_raw = payload["buttons"]
@@ -803,4 +932,7 @@ def load_alas_combat_observer_fixture(
         raise SemanticGateClosed("combat observer fixture requires six frames")
     if any("phase" in frame for frame in frames if isinstance(frame, dict)):
         raise SemanticGateClosed("combat fixture must not provide phase tokens")
-    return tuple(_parse_fixture_frame(frame, manifest) for frame in frames)
+    return tuple(
+        parse_alas_combat_observer_fixture_frame(frame, manifest)
+        for frame in frames
+    )

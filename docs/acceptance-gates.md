@@ -25,6 +25,12 @@ hash-bound snapshots, all 38 original ALAS resource queries, reviewed blockers,
 three top-raycast action Buttons, map/fleet/ammunition closure, and six typed
 HP/level records. The checked-in mapping is deliberately `0/38`, so G20 is a
 contract pass rather than a live mapping or input pass.
+G21 adds a package-verified, input-free raw trace and offline fixture pipeline.
+It versions the exact 38-resource manifest, rejects phase labels in evidence,
+selects six explicit generations, emits review-only path/sprite/text
+candidates, and derives map frames through the existing typed G13 parser. The
+current recurrent network dialog prevented a real battle trace, so G21 does
+not change G20 coverage or the G18 production stop.
 G4 includes
 login/main reachability, sustained semantic state, RectTransform bounds, top
 EventSystem raycast identity for each action, and a settings-page return loop.

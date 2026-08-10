@@ -4,6 +4,31 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G21 combat evidence acquisition: pipeline pass, battle trace blocked
+
+- The 38-resource combat mapping is now a strict versioned JSON manifest;
+  coverage audit reads that file and still honestly reports `0/38`, with
+  blocker and six-ship stat mappings unqualified.
+- A package-verified, input-free recorder persists coherent raw snapshot,
+  Button, and UI triples with per-frame SHA-256, increasing generations,
+  atomic output, and rejection reasons. Trace files cannot contain phase
+  labels or map projections.
+- Six exact generations can be selected for deterministic phase-local
+  Button/Image/Text candidate diffs. The compiler derives the last two full
+  campaign-map projections offline through the existing G13 parser and emits a
+  phase-label-free G20 fixture; it never edits the manifest automatically.
+- Twelve focused tests and the full `279/279` suite pass. A live blocked-surface
+  recorder smoke captured three complete samples at `137332..137337`, PID
+  `19277`, with no rejected triples, duplicates, or input.
+- One separately recorded, package-verified exact network-reconnect confirm at
+  generation `130033` briefly removed the dialog at `130098..130099`; it later
+  returned. The underlying 12-4/D6 records remained visible, but complete map
+  proof correctly failed under the renewed Msgbox.
+- No D6 or combat input was injected. The ALAS patch/state machine and G18
+  production stop are unchanged.
+
+See [G21 combat trace pipeline](g21-alas-combat-trace-pipeline-validation-report.md).
+
 ### G20 exact combat observer input: contract pass, live mappings open
 
 - G19's six replay phases can now be built from complete raw Unity observer

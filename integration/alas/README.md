@@ -131,6 +131,22 @@ tokens are rejected. The checked-in manifest remains deliberately `0/38`, so
 the boundary is testable but cannot yet run production combat or spend the
 campaign-combat budget.
 
+G21 makes the remaining evidence work reproducible. The sole durable mapping
+source is `combat-observer-manifest.json`; it must retain exactly 38 entries and
+currently contains no qualified selectors. The package-verified trace recorder
+stores only raw, hash-bound observer triples with `input_injected=false`:
+
+```powershell
+python scripts/python/capture_alas_combat_observer_trace.py `
+  --serial 127.0.0.1:5581 `
+  --output artifacts/g21-combat-trace.json
+```
+
+After review chooses six exact increasing generations, the fixture compiler
+emits phase-local candidates and reconstructs the two map frames offline using
+the pinned 12-4 topology. Neither tool imports or changes ALAS state-machine
+logic, writes mappings automatically, or enables D6.
+
 Commission start has a separate integer budget and remains closed by default:
 
 ```powershell

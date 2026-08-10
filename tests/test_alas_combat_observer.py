@@ -4,9 +4,11 @@ import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from unittest import mock
 
 from alas_headless import (
     ALAS_COMBAT_OBSERVER_FIXTURE_SCHEMA,
+    ALAS_COMBAT_OBSERVER_TRACE_SCHEMA,
     ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES,
     ALAS_COMBAT_REPLAY_RESOURCE_NAMES,
     AlasCampaignCombatAdmission,
@@ -19,8 +21,16 @@ from alas_headless import (
     Point,
     SemanticGateClosed,
     audit_alas_combat_observer_manifest,
+    analyze_alas_combat_observer_candidates,
+    build_alas_combat_observer_trace,
+    build_alas_combat_trace_frame,
     build_alas_campaign_combat_replay_from_observer,
+    compile_alas_combat_observer_fixture,
     load_alas_combat_observer_fixture,
+    load_alas_combat_observer_manifest,
+    parse_alas_combat_observer_fixture_frame,
+    parse_alas_combat_observer_trace,
+    select_alas_combat_observer_trace_samples,
     unqualified_alas_combat_observer_manifest,
 )
 
@@ -453,6 +463,122 @@ class AlasCombatObserverContractTests(unittest.TestCase):
             audit_alas_combat_observer_manifest(
                 replace(manifest, resources=manifest.resources[:-1])
             )
+
+    def test_versioned_json_manifest_preserves_zero_of_38(self):
+        root = Path(__file__).resolve().parents[1]
+        manifest = load_alas_combat_observer_manifest(
+            root / "integration" / "alas" / "combat-observer-manifest.json"
+        )
+        coverage = audit_alas_combat_observer_manifest(manifest)
+
+        self.assertEqual(coverage.total_resources, 38)
+        self.assertEqual(coverage.qualified_resources, 0)
+        self.assertFalse(coverage.production_ready)
+
+    @staticmethod
+    def trace_frames():
+        manifest = qualified_manifest()
+        fixture = fixture_value()
+        frames = []
+        typed_maps = []
+        for source in fixture["frames"]:
+            typed_maps.append(
+                parse_alas_combat_observer_fixture_frame(source, manifest).campaign_map
+            )
+            frame_value = json.loads(json.dumps(source))
+            frame_value["campaign_map"] = None
+            payload = {
+                key: frame_value[key]
+                for key in ("snapshot", "buttons", "ui", "campaign_map")
+            }
+            frame_value["sha256"] = hashlib.sha256(
+                json.dumps(
+                    payload,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            rebuilt, typed = build_alas_combat_trace_frame(
+                frame_value["snapshot"],
+                frame_value["buttons"],
+                frame_value["ui"],
+                manifest,
+            )
+            self_hash = rebuilt["sha256"]
+            if self_hash != frame_value["sha256"] or typed.campaign_map is not None:
+                raise AssertionError("test trace frame did not round-trip")
+            frames.append(rebuilt)
+        return manifest, tuple(frames), tuple(typed_maps)
+
+    def test_raw_trace_round_trip_selects_generations_and_reports_candidates(self):
+        manifest, frames, _ = self.trace_frames()
+        samples = tuple(
+            ("2026-08-10T06:00:{0:02d}Z".format(index), frame_value)
+            for index, frame_value in enumerate(frames, start=1)
+        )
+        value = build_alas_combat_observer_trace(manifest, samples)
+
+        trace = parse_alas_combat_observer_trace(value, manifest)
+        selected = select_alas_combat_observer_trace_samples(
+            trace, trace.generations
+        )
+        report = analyze_alas_combat_observer_candidates(selected)
+
+        self.assertEqual(value["schema"], ALAS_COMBAT_OBSERVER_TRACE_SCHEMA)
+        self.assertFalse(value["input_injected"])
+        self.assertEqual(trace.generations, (11, 12, 13, 14, 15, 16))
+        self.assertEqual(len(report["phases"]), 6)
+        self.assertEqual(report["phases"][0]["phase"], "battle_preparation")
+        self.assertTrue(report["phases"][0]["actionable_buttons"])
+
+    def test_trace_rejects_input_claim_and_phase_token(self):
+        manifest, frames, _ = self.trace_frames()
+        samples = tuple(
+            ("2026-08-10T06:01:{0:02d}Z".format(index), frame_value)
+            for index, frame_value in enumerate(frames, start=1)
+        )
+        value = build_alas_combat_observer_trace(manifest, samples)
+        value["input_injected"] = True
+        with self.assertRaisesRegex(SemanticGateClosed, "not read-only"):
+            parse_alas_combat_observer_trace(value, manifest)
+
+        value["input_injected"] = False
+        value["samples"][0]["frame"]["phase"] = "battle_preparation"
+        with self.assertRaisesRegex(SemanticGateClosed, "frame is malformed"):
+            parse_alas_combat_observer_trace(value, manifest)
+
+    def test_trace_compiler_adds_only_derived_map_projections(self):
+        manifest, frames, typed_maps = self.trace_frames()
+        samples = tuple(
+            ("2026-08-10T06:02:{0:02d}Z".format(index), frame_value)
+            for index, frame_value in enumerate(frames, start=1)
+        )
+        trace = parse_alas_combat_observer_trace(
+            build_alas_combat_observer_trace(manifest, samples), manifest
+        )
+        selected = select_alas_combat_observer_trace_samples(
+            trace, trace.generations
+        )
+        with mock.patch(
+            "alas_headless.alas_combat_trace._offline_campaign_map",
+            side_effect=(typed_maps[4], typed_maps[5]),
+        ):
+            compiled = compile_alas_combat_observer_fixture(
+                selected,
+                manifest,
+                stage_code="12-4",
+                columns=11,
+                rows=8,
+                land_cells=((0, 0),),
+                expected_fleet_count=2,
+            )
+
+        self.assertEqual(compiled["schema"], ALAS_COMBAT_OBSERVER_FIXTURE_SCHEMA)
+        self.assertTrue(all("phase" not in frame_value for frame_value in compiled["frames"]))
+        self.assertIsNone(compiled["frames"][3]["campaign_map"])
+        self.assertIsNotNone(compiled["frames"][4]["campaign_map"])
+        self.assertEqual(compiled["frames"][5]["campaign_map"]["stage_code"], "12-4")
 
 
 if __name__ == "__main__":

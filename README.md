@@ -61,6 +61,9 @@ is documented in the
 Its exact raw-Unity input contract and intentionally unqualified live mapping
 manifest are documented in the
 [G20 validation report](docs/g20-alas-combat-observer-contract-validation-report.md).
+The input-free raw trace, candidate-diff, and frozen-fixture acquisition
+pipeline is documented in the
+[G21 validation report](docs/g21-alas-combat-trace-pipeline-validation-report.md).
 
 G1, G2, G3, and the formal G4 harmless closed loop passed. G4 includes
 EventSystem top-raycast proof for every injected target, not only object state
@@ -106,7 +109,10 @@ strict typed replay phases and four virtual actions. G20 can reconstruct those
 phases only from six complete, hash-bound raw Unity snapshots and an exact
 38-resource mapping; it rejects fixture phase labels. The current live mapping
 coverage is honestly `0/38`, so production remains at the G18 capture boundary.
-Lua/game-state coverage,
+G21 makes that gap operationally fillable through a versioned mapping manifest,
+package-verified raw trace recorder, exact six-generation selection, and
+offline map/fixture compilation; the current recurrent network dialog still
+prevents a real battle trace. Lua/game-state coverage,
 formation-layout changes, campaign movement execution, battle state,
 weekly-only end-to-end
 coverage, repeated sorties, and full unattended ALAS task coverage remain
