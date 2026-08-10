@@ -88,6 +88,15 @@ translated with ALAS's existing reversed-fleet rule before native indexed
 locations are populated. No grid Button, movement, combat, retreat, or map
 reward input is mapped.
 
+The indexed projection is now also passed to a decision-only executor. It
+calls ALAS's original `find_path_initial()` and `battle_function()` on an
+isolated shell, keeps campaign-file `RoadGrids` attached to transactionally
+overlaid native grid identities, and intercepts the first public `goto()`.
+The runner logs ALAS's branch, logical fleet, target, expected result, cost,
+full route, and optimized goto nodes, then returns. Any Device access, fleet
+switch, `_goto()`, combat, retreat, timed emotion wait, unknown target, stale
+projection, or route disagreement fails closed.
+
 Commission start has a separate integer budget and remains closed by default:
 
 ```powershell
@@ -212,8 +221,8 @@ reviewed popup chain, and passed a full dual-budget-zero replay. Reward budget
 list also passed exact-handle multipage scanning and stable row-index merging.
 Nonzero-oil rows, cancellation, repeated unattended starts, and multi-order
 construction are not live-qualified. Numeric-row claiming, campaign hard-mode
-fleet restrictions, formation-layout changes, decision-only campaign branch
-qualification, movement and battle input, Lua/game-state access, other reward
-popups,
+fleet restrictions, formation-layout changes, a fresh unobstructed
+same-process campaign-decision replay, movement and battle input,
+Lua/game-state access, other reward popups,
 gestures outside the exact commission handle, and full unattended task flows
 remain fail-closed.

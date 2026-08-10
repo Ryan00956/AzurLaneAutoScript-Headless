@@ -6,6 +6,10 @@ from .alas_map_sync import (
     AlasCampaignRoutePlan,
     synchronize_alas_campaign_map,
 )
+from .alas_decision_preview import (
+    AlasCampaignDecisionPreview,
+    preview_alas_campaign_decision,
+)
 from .alas_adapter import (
     AlasSemanticAdapter,
     AlasSemanticSession,
@@ -98,6 +102,7 @@ __all__ = (
     "ActionReceipt",
     "AdbObserverBridge",
     "AlasCampaignFleetPlan",
+    "AlasCampaignDecisionPreview",
     "AlasCampaignMapProjection",
     "AlasCampaignRoutePlan",
     "AlasSemanticAdapter",
@@ -179,5 +184,6 @@ __all__ = (
     "bind_semantic_session",
     "current_semantic_session",
     "reset_semantic_session",
+    "preview_alas_campaign_decision",
     "synchronize_alas_campaign_map",
 )

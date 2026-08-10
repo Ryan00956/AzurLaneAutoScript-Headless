@@ -204,7 +204,7 @@ class AlasIntegrationPatchTests(unittest.TestCase):
 
     def test_campaign_map_projection_delegates_to_alas_without_movement(self):
         self.assertIn(
-            "from alas_headless import synchronize_alas_campaign_map",
+            "synchronize_alas_campaign_map,",
             self.patch_text,
         )
         self.assertIn(
@@ -221,6 +221,25 @@ class AlasIntegrationPatchTests(unittest.TestCase):
         self.assertIn("fleet.is_current", self.patch_text)
         self.assertNotIn("semantic_map_projection.goto", self.patch_text)
         self.assertNotIn("semantic_map_projection.map_control_init", self.patch_text)
+
+    def test_campaign_decision_runs_alas_branch_but_intercepts_goto(self):
+        self.assertIn(
+            "preview_alas_campaign_decision,",
+            self.patch_text,
+        )
+        self.assertIn(
+            "decision = preview_alas_campaign_decision(",
+            self.patch_text,
+        )
+        self.assertIn("self.campaign, projection", self.patch_text)
+        self.assertIn("Semantic ALAS campaign decision:", self.patch_text)
+        self.assertIn("decision.branch_name", self.patch_text)
+        self.assertIn("decision.fleet_index", self.patch_text)
+        self.assertIn("decision.target_node", self.patch_text)
+        self.assertIn("decision.route_nodes", self.patch_text)
+        self.assertIn("decision.goto_nodes", self.patch_text)
+        self.assertNotIn("self.campaign.goto(decision", self.patch_text)
+        self.assertNotIn("self.campaign._goto(decision", self.patch_text)
 
 
 if __name__ == "__main__":

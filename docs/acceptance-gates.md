@@ -7,6 +7,9 @@ adapter slices, and the G10-G13 campaign slices passed. G14 has a pinned
 native-object pass while its fresh same-process live replay is network-blocked.
 G15 adds a live passive fleet-identity pass and pinned indexed projection; its
 fresh complete live-map projection remains blocked by the same network dialog.
+G16 adds a pinned original-ALAS decision-only pass with first `goto()` capture;
+its fresh same-process replay remains blocked by that dialog, and no movement
+or combat input is enabled.
 G4 includes
 login/main reachability, sustained semantic state, RectTransform bounds, top
 EventSystem raycast identity for each action, and a settings-page return loop.
@@ -284,6 +287,25 @@ See [G14 ALAS map synchronization validation](g14-alas-map-sync-validation-repor
   when an overlay blocks the complete live model.
 
 See [G15 fleet-index validation](g15-campaign-fleet-index-validation-report.md).
+
+## G16 - Original ALAS campaign decision preview
+
+- Feed the indexed native shadow map into ALAS's original
+  `find_path_initial()` and `battle_function()`; do not reproduce campaign
+  branch or target-selection logic in the semantic layer.
+- Preserve class-level `MAP` grid identity so campaign `RoadGrids` see the
+  projected state, and restore every map/grid dictionary transactionally.
+- Capture and abort the first public `goto()` admission. Record branch, battle
+  count, logical fleet/marker, origin, target kind/node, expected result, cost,
+  full route, and native goto nodes.
+- Reject stale projections, non-semantic targets, route disagreements, Device
+  access, fleet switching, `_goto()`, combat, retreat, timed waits, and branches
+  that return without a decision.
+- Require a pinned real-ALAS qualification, exact rollback assertions, clean
+  canonical patch application/matching, and explicit disclosure when the live
+  map is blocked.
+
+See [G16 ALAS campaign decision preview](g16-alas-campaign-decision-preview-validation-report.md).
 
 ## Stop or pivot conditions
 

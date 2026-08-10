@@ -13,6 +13,7 @@ from alas_headless import (
     CampaignMapState,
     Point,
     SemanticGateClosed,
+    preview_alas_campaign_decision,
     synchronize_alas_campaign_map,
 )
 
@@ -69,6 +70,13 @@ class FakeMap:
     def __getitem__(self, location):
         return self.grids[tuple(location)]
 
+    def select(self, **attributes):
+        return [
+            grid
+            for grid in self
+            if all(getattr(grid, name) == value for name, value in attributes.items())
+        ]
+
     def reset(self):
         for grid in self:
             grid.reset()
@@ -96,6 +104,15 @@ class FakeMap:
                 if not self[neighbor].is_enemy:
                     queue.append(neighbor)
 
+    def find_path_initial_multi_fleet(self, location_dict, current, has_ambush):
+        for fleet, location in sorted(
+            location_dict.items(),
+            key=lambda item: int(tuple(item[1]) == tuple(current)),
+        ):
+            self.find_path_initial(location, has_ambush=has_ambush)
+            for grid in self:
+                setattr(grid, "cost_" + str(fleet), grid.cost)
+
     def _find_path(self, location):
         location = tuple(location)
         if self[location].cost >= 9999:
@@ -106,18 +123,31 @@ class FakeMap:
         route.reverse()
         return route
 
+    def find_path(self, location, step=0, turning_optimize=False):
+        del step, turning_optimize
+        return self._find_path(location)
+
 
 class FakeCampaign:
     def __init__(self):
         self.MAP = FakeMap()
         self.map = "original-map"
         self.config = SimpleNamespace(
+            Campaign_UseFleetLock=True,
+            Emotion_Mode="ignore",
+            EnemyPriority_EnemyScaleBalanceWeight="default_mode",
+            MAP_CLEAR_ALL_THIS_TIME=False,
             MAP_HAS_AMBUSH=False,
+            MAP_HAS_FLEET_STEP=False,
+            MAP_HAS_FORTRESS=False,
+            MAP_HAS_MAZE=False,
+            MAP_HAS_PORTAL=False,
             POOR_MAP_DATA=True,
         )
         self.map_data_init_calls = 0
         self.fleet_1_location = ()
         self.fleet_2_location = ()
+        self.battle_count = 0
 
     def map_data_init(self, map_):
         self.map_data_init_calls += 1
@@ -129,6 +159,30 @@ class FakeCampaign:
 
     def click(self, *args):
         raise AssertionError("read-only ALAS synchronization attempted input")
+
+    @property
+    def fleet_current(self):
+        if self.fleet_current_index == 2:
+            return self.fleet_2_location
+        return self.fleet_1_location
+
+    def find_path_initial(self):
+        locations = {1: self.fleet_1_location}
+        if self.fleet_2_location:
+            locations[2] = self.fleet_2_location
+        self.map.find_path_initial_multi_fleet(
+            locations,
+            current=self.fleet_current,
+            has_ambush=self.config.MAP_HAS_AMBUSH,
+        )
+
+    def battle_function(self):
+        enemies = self.map.select(is_enemy=True)
+        enemies = sorted(enemies, key=lambda grid: (grid.weight, grid.cost))
+        if not enemies:
+            return False
+        self.goto(enemies[0], expected="combat")
+        return True
 
 
 def make_state(pickup_node="C1"):
@@ -310,6 +364,135 @@ class AlasCampaignMapSyncTests(unittest.TestCase):
         self.assertTrue(campaign.config.POOR_MAP_DATA)
         self.assertFalse(hasattr(campaign, "semantic_map_projection"))
 
+
+class AlasCampaignDecisionPreviewTests(unittest.TestCase):
+    def test_runs_original_branch_and_captures_first_goto_without_input(self):
+        campaign = FakeCampaign()
+        projection = synchronize_alas_campaign_map(campaign, make_state())
+        source_map_dict = campaign.MAP.__dict__
+        source_grid_dicts = {
+            location: grid.__dict__
+            for location, grid in campaign.MAP.grids.items()
+        }
+        original_config = copy.deepcopy(campaign.config.__dict__)
+
+        decision = preview_alas_campaign_decision(campaign, projection)
+
+        self.assertEqual(decision.branch_name, "battle_function")
+        self.assertEqual(decision.fleet_index, 1)
+        self.assertEqual(decision.fleet_marker, "alpha")
+        self.assertEqual(decision.origin_node, "A2")
+        self.assertEqual(decision.target_node, "A1")
+        self.assertEqual(decision.target_kind, "enemy")
+        self.assertEqual(decision.expected, "combat")
+        self.assertEqual(decision.route_nodes, ("A2", "A1"))
+        self.assertEqual(decision.goto_nodes, ("A2", "A1"))
+        self.assertFalse(decision.step_optimize)
+        self.assertFalse(decision.turning_optimize)
+        self.assertIs(campaign.MAP.__dict__, source_map_dict)
+        for location, grid_dict in source_grid_dicts.items():
+            self.assertIs(campaign.MAP[location].__dict__, grid_dict)
+        self.assertTrue(all(grid.cost == 9999 for grid in campaign.map))
+        self.assertEqual(campaign.config.__dict__, original_config)
+
+    def test_rejects_forbidden_boundary_before_goto(self):
+        class SwitchingCampaign(FakeCampaign):
+            def battle_function(self):
+                self.fleet_set(index=2)
+
+        campaign = SwitchingCampaign()
+        projection = synchronize_alas_campaign_map(campaign, make_state())
+
+        with self.assertRaisesRegex(SemanticGateClosed, "fleet_set"):
+            preview_alas_campaign_decision(campaign, projection)
+
+    def test_rejects_branch_that_returns_without_goto(self):
+        class NoDecisionCampaign(FakeCampaign):
+            def battle_function(self):
+                return False
+
+        campaign = NoDecisionCampaign()
+        projection = synchronize_alas_campaign_map(campaign, make_state())
+
+        with self.assertRaisesRegex(SemanticGateClosed, "returned without goto"):
+            preview_alas_campaign_decision(campaign, projection)
+
+    def test_rejects_target_outside_semantic_dynamic_input(self):
+        class SeaTargetCampaign(FakeCampaign):
+            def battle_function(self):
+                self.goto(self.map[(1, 1)])
+
+        campaign = SeaTargetCampaign()
+        projection = synchronize_alas_campaign_map(campaign, make_state())
+
+        with self.assertRaisesRegex(SemanticGateClosed, "outside semantic"):
+            preview_alas_campaign_decision(campaign, projection)
+
+    def test_rejects_device_access_before_goto(self):
+        class DeviceCampaign(FakeCampaign):
+            def battle_function(self):
+                self.device.screenshot()
+
+        campaign = DeviceCampaign()
+        projection = synchronize_alas_campaign_map(campaign, make_state())
+
+        with self.assertRaisesRegex(SemanticGateClosed, "Device access"):
+            preview_alas_campaign_decision(campaign, projection)
+
+    def test_accepts_canonical_string_target_from_original_branch(self):
+        class StringTargetCampaign(FakeCampaign):
+            def battle_function(self):
+                self.goto("A1", expected="combat")
+
+        campaign = StringTargetCampaign()
+        projection = synchronize_alas_campaign_map(campaign, make_state())
+
+        decision = preview_alas_campaign_decision(campaign, projection)
+
+        self.assertEqual(decision.target_node, "A1")
+        self.assertEqual(decision.route_nodes, ("A2", "A1"))
+
+    def test_rejects_timed_emotion_path_before_goto(self):
+        class EmotionCampaign(FakeCampaign):
+            def battle_function(self):
+                if self.emotion.is_calculate:
+                    self.emotion.wait(fleet_index=self.fleet_current_index)
+                self.goto(self.map[(0, 0)], expected="combat")
+
+        campaign = EmotionCampaign()
+        campaign.config.Emotion_Mode = "calculate"
+        projection = synchronize_alas_campaign_map(campaign, make_state())
+
+        with self.assertRaisesRegex(SemanticGateClosed, "emotion wait"):
+            preview_alas_campaign_decision(campaign, projection)
+
+    def test_rejects_stale_projection_object(self):
+        campaign = FakeCampaign()
+        projection = synchronize_alas_campaign_map(campaign, make_state())
+        campaign.semantic_map_projection = replace(projection, generation=21)
+
+        with self.assertRaisesRegex(SemanticGateClosed, "not current"):
+            preview_alas_campaign_decision(campaign, projection)
+
+    def test_rejects_route_that_disagrees_with_projection(self):
+        campaign = FakeCampaign()
+        projection = synchronize_alas_campaign_map(campaign, make_state())
+        first_fleet = projection.fleets[0]
+        wrong_route = replace(
+            first_fleet.enemy_routes[0],
+            nodes=("A2", "B2", "A1"),
+        )
+        bad_projection = replace(
+            projection,
+            fleets=(
+                replace(first_fleet, enemy_routes=(wrong_route,)),
+                projection.fleets[1],
+            ),
+        )
+        campaign.semantic_map_projection = bad_projection
+
+        with self.assertRaisesRegex(SemanticGateClosed, "route disagrees"):
+            preview_alas_campaign_decision(campaign, bad_projection)
 
 if __name__ == "__main__":
     unittest.main()

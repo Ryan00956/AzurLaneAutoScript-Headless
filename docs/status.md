@@ -4,6 +4,29 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G16 original ALAS campaign decision: pinned decision-only pass
+
+- The indexed shadow map now runs ALAS's original `battle_function()` on an
+  isolated campaign/config shell and intercepts the first public `goto()`
+  admission before ALAS's `goto()` implementation runs.
+- Pinned real `campaign_12_4.Campaign` selected `battle_0`, logical fleet `1`
+  (`cell_fleet_shengwang_younv`), and enemy `D6` from origin `D6`, with
+  expected `combat`, native cost `0`, route `D6`, and native goto nodes `D6`.
+- ALAS's original emotion check returned at values `119/119`; any timed wait
+  fails closed. Class-level road grids, the projected map, and real config
+  were unchanged after the transaction.
+- Device access, `_goto()`, fleet switching, map control, scanning, combat,
+  retreat, and branches without a projected enemy/ammo decision all fail
+  closed.
+- A fresh live read at generation `59956` still found the exact
+  `[NetworkDown]` blocker over the same fleet identity. No input was injected,
+  and no fresh complete same-process decision is claimed.
+- The full controller/integration suite passes `245/245`; the canonical patch
+  applies cleanly to the pinned upstream SHA and exactly matches the exercised
+  checkout's full Git diff.
+
+See [G16 ALAS campaign decision preview](g16-alas-campaign-decision-preview-validation-report.md).
+
 ### G15 fleet-index reconciliation: live passive and pinned native pass
 
 - The current displayed fleet now comes from one exact `1|2` top-stage Text

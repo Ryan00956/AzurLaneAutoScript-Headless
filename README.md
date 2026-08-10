@@ -205,3 +205,10 @@ an in-context `1 -> 0` proof with the reviewed popup chain and a second
 dual-budget-zero replay. The five-row daily list also passed exact typed
 scrollbar scanning and stable row-index deduplication. Complete unattended ALAS
 execution awaits task-by-task live qualification.
+
+The campaign slice now also has a decision-only pinned pass: the typed indexed
+map is given to ALAS's original `battle_function()`, and the first public
+`goto()` is recorded and aborted. For the qualified `12-4` state ALAS selected
+`battle_0`, fleet `1`, and the fighting enemy at `D6`; no movement, combat,
+retreat, or map reward input is enabled. See the
+[G16 validation report](docs/g16-alas-campaign-decision-preview-validation-report.md).
