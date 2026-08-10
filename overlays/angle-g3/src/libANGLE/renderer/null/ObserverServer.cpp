@@ -477,7 +477,8 @@ std::string UiResponse(uid_t peerUid, const std::string &package) {
         ",\"flags\":%u,\"active_in_hierarchy\":%s,"
         "\"active_and_enabled\":%s,\"raycast_target\":%s,\"raycast_top\":%s,"
         "\"color\":{\"red\":%.6f,\"green\":%.6f,\"blue\":%.6f,"
-        "\"alpha\":%.6f},\"fill_amount\":%.6f,\"adb_bounds\":%s}",
+        "\"alpha\":%.6f},\"fill_amount\":%.6f,\"adb_bounds\":%s,"
+        "\"anchor_world_position\":%s}",
         record.flags, (record.flags & 0x1u) != 0 ? "true" : "false",
         (record.flags & 0x2u) != 0 ? "true" : "false",
         (record.flags & 0x40u) != 0 ? "true" : "false",
@@ -485,7 +486,8 @@ std::string UiResponse(uid_t peerUid, const std::string &package) {
             ? ((record.flags & 0x400u) != 0 ? "true" : "false")
             : "null",
         record.red, record.green, record.blue, record.alpha, record.fillAmount,
-        (record.flags & 0x4u) != 0 ? "{}" : "null"));
+        (record.flags & 0x4u) != 0 ? "{}" : "null",
+        (record.flags & 0x800u) != 0 ? "{}" : "null"));
     if (fieldCount <= 0 || static_cast<size_t>(fieldCount) >= sizeof(fields)) {
       return {};
     }
@@ -499,6 +501,21 @@ std::string UiResponse(uid_t peerUid, const std::string &package) {
           "\"adb_bounds\":{\"left\":%.3f,\"top\":%.3f,\"right\":%.3f,"
           "\"bottom\":%.3f}",
           record.adbLeft, record.adbTop, record.adbRight, record.adbBottom));
+      if (position == std::string::npos || count <= 0 ||
+          static_cast<size_t>(count) >= sizeof(value)) {
+        return {};
+      }
+      response.replace(position, marker.size(), value,
+                       static_cast<size_t>(count));
+    }
+    if ((record.flags & 0x800u) != 0) {
+      const std::string marker = "\"anchor_world_position\":{}";
+      const size_t position = response.rfind(marker);
+      char value[256];
+      const int count = ANGLE_UNSAFE_TODO(std::snprintf(
+          value, sizeof(value),
+          "\"anchor_world_position\":{\"x\":%.3f,\"y\":%.3f,\"z\":%.3f}",
+          record.anchorWorldX, record.anchorWorldY, record.anchorWorldZ));
       if (position == std::string::npos || count <= 0 ||
           static_cast<size_t>(count) >= sizeof(value)) {
         return {};

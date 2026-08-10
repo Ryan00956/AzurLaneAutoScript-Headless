@@ -3,7 +3,7 @@
 Status terms are deliberately strict. A build passing does not imply a later gate has passed.
 
 Current status: G1-G4, G5a, controlled G5b, scoped G6-G8, the G9 bounded
-adapter slices, and the G10 campaign pre-sortie slice passed. G4 includes
+adapter slices, and the G10-G13 campaign slices passed. G4 includes
 login/main reachability, sustained semantic state, RectTransform bounds, top
 EventSystem raycast identity for each action, and a settings-page return loop.
 G5a covers only the ALAS mission-reward no-claim branch. G5b covers one
@@ -213,6 +213,37 @@ See [G10 campaign pre-sortie validation](g10-campaign-pre-sortie-validation-repo
   controller tests, and an independent post-cancel typed read.
 
 See [G11 campaign fleet-preparation validation](g11-campaign-fleet-preparation-validation-report.md).
+
+## G12 - Campaign sortie: one exact bounded pass
+
+- Keep ALAS's original fleet-preparation, settings, sortie, and map-entry
+  loops; authorize only its existing sortie click.
+- Default an independent sortie budget to zero and qualify only exact value
+  one. Revalidate normal mode, requested fleets, auto-search/2x settings,
+  submarine mode, fleet order, oil, and the unique sortie target immediately
+  before input.
+- Require a later exact real `LevelGrid` map identity and stop without grid,
+  movement, combat, retreat, or reward input.
+- Keep repeated sorties and every map action outside this gate.
+
+See [G12 campaign sortie validation](g12-campaign-sortie-validation-report.md).
+
+## G13 - Campaign map model: read-only live pass
+
+- Take map shape, land topology, and enabled fleet count from ALAS's loaded
+  `CampaignMap`; do not duplicate its state machine or map definition.
+- Require a complete Button topology equal to ALAS passable cells and complete
+  non-truncated Image/Text collections for all dynamic objects.
+- Type only reviewed enemy, ammunition-pickup, fleet-ammo, and fleet-anchor
+  identities. Unknown attachments, malformed state, missing anchors, or
+  ambiguous locations fail closed.
+- Match fleet ancestors to grid Buttons through Unity world position, and
+  require an unchanged logical model across two increasing generations.
+- Feed the model to ALAS only at its existing already-in-map checkpoint and
+  return before retreat. Expose no map input and pass a zero-budget ALAS replay
+  with an input-rejecting assertion installed.
+
+See [G13 campaign map-model validation](g13-campaign-map-model-validation-report.md).
 
 ## Stop or pivot conditions
 

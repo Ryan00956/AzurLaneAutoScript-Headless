@@ -454,6 +454,86 @@ class CampaignMapEntryState:
     image_paths: Tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class CampaignMapCellState:
+    row: int
+    column: int
+    node: str
+    button_path: str
+    point: Point
+    bounds: Bounds
+
+
+@dataclass(frozen=True)
+class CampaignMapEnemyState:
+    row: int
+    column: int
+    node: str
+    object_id: int
+    sprite: str
+    scale: int
+    genre: str
+    level: int
+    fighting: bool
+
+
+@dataclass(frozen=True)
+class CampaignMapPickupState:
+    row: int
+    column: int
+    node: str
+    kind: str
+    sprite: str
+
+
+@dataclass(frozen=True)
+class CampaignMapFleetState:
+    marker: str
+    node: str
+    ammo: int
+    ammo_capacity: int
+
+
+@dataclass(frozen=True)
+class CampaignMapState:
+    generation: int
+    stage_code: str
+    rows: int
+    columns: int
+    cells: Tuple[CampaignMapCellState, ...]
+    land_nodes: Tuple[str, ...]
+    fleets: Tuple[CampaignMapFleetState, ...]
+    enemies: Tuple[CampaignMapEnemyState, ...]
+    pickups: Tuple[CampaignMapPickupState, ...]
+
+    @property
+    def signature(self) -> Tuple[Any, ...]:
+        return (
+            self.stage_code,
+            self.rows,
+            self.columns,
+            tuple((cell.node, cell.button_path) for cell in self.cells),
+            self.land_nodes,
+            tuple(
+                (fleet.marker, fleet.node, fleet.ammo, fleet.ammo_capacity)
+                for fleet in self.fleets
+            ),
+            tuple(
+                (
+                    enemy.node,
+                    enemy.object_id,
+                    enemy.sprite,
+                    enemy.scale,
+                    enemy.genre,
+                    enemy.level,
+                    enemy.fighting,
+                )
+                for enemy in self.enemies
+            ),
+            tuple((pickup.node, pickup.kind, pickup.sprite) for pickup in self.pickups),
+        )
+
+
 class ResearchProjectStatus(str, Enum):
     DETAIL = "detail"
     RUNNING = "running"
@@ -3795,6 +3875,13 @@ class SemanticOracle:
     def _campaign_map_entry_state_once(self) -> CampaignMapEntryState:
         button_state = self.read_state()
         ui_state = self.read_ui_state()
+        return self._campaign_map_entry_state_from_snapshots(button_state, ui_state)
+
+    @staticmethod
+    def _campaign_map_entry_state_from_snapshots(
+        button_state: OracleState,
+        ui_state: UiState,
+    ) -> CampaignMapEntryState:
         if (
             ui_state.generation < button_state.generation
             or ui_state.generation > button_state.generation + 2
@@ -3875,6 +3962,384 @@ class SemanticOracle:
             root_path=grid_root,
             button_paths=tuple(sorted((*fixed_button_paths, *grid_button_paths))),
             image_paths=required_image_paths,
+        )
+
+    @staticmethod
+    def _campaign_map_node(row: int, column: int) -> str:
+        if row < 1 or column < 1:
+            raise SemanticGateClosed("campaign map coordinate is invalid")
+        value = column
+        letters = ""
+        while value:
+            value, remainder = divmod(value - 1, 26)
+            letters = chr(ord("A") + remainder) + letters
+        return letters + str(row)
+
+    def campaign_map_state(
+        self,
+        stage_code: str,
+        *,
+        columns: int,
+        rows: int,
+        land_cells: Sequence[Tuple[int, int]],
+        expected_fleet_count: int,
+    ) -> CampaignMapState:
+        """Build a stable, complete, read-only map model from typed Unity state.
+
+        ``land_cells`` uses ALAS's zero-based ``CampaignMap`` locations.  The
+        complete Button topology is checked against that map definition, while
+        all dynamic objects require a non-truncated Image/Text snapshot.  Two
+        increasing generations must expose the same logical signature.
+        """
+
+        if re.fullmatch(r"[1-9][0-9]*-[1-9][0-9]*", stage_code) is None:
+            raise SemanticGateClosed("campaign map stage code is not canonical")
+        if (
+            isinstance(columns, bool)
+            or not isinstance(columns, int)
+            or isinstance(rows, bool)
+            or not isinstance(rows, int)
+            or columns < 1
+            or rows < 1
+            or columns > 26
+            or rows > 99
+        ):
+            raise SemanticGateClosed("campaign map shape is invalid")
+        if (
+            isinstance(expected_fleet_count, bool)
+            or not isinstance(expected_fleet_count, int)
+            or expected_fleet_count not in (1, 2)
+        ):
+            raise SemanticGateClosed("campaign map fleet count is invalid")
+
+        normalized_land = []
+        for location in land_cells:
+            if (
+                not isinstance(location, (tuple, list))
+                or len(location) != 2
+                or any(
+                    isinstance(value, bool) or not isinstance(value, int)
+                    for value in location
+                )
+            ):
+                raise SemanticGateClosed("campaign map land topology is malformed")
+            column0, row0 = location
+            if not (0 <= column0 < columns and 0 <= row0 < rows):
+                raise SemanticGateClosed("campaign map land coordinate is outside its shape")
+            normalized_land.append((row0 + 1, column0 + 1))
+        land = tuple(sorted(set(normalized_land)))
+        if len(land) != len(normalized_land):
+            raise SemanticGateClosed("campaign map land topology contains duplicates")
+        if not land or len(land) >= rows * columns:
+            raise SemanticGateClosed("campaign map land topology is incomplete")
+
+        reader = lambda: self._campaign_map_state_once(
+            stage_code,
+            columns=columns,
+            rows=rows,
+            land=land,
+            expected_fleet_count=expected_fleet_count,
+        )
+        previous = self._retry_transition_read(reader, attempts=12)
+        for _ in range(11):
+            self._sleep(0.25)
+            current = self._retry_transition_read(reader, attempts=1)
+            if (
+                current.generation > previous.generation
+                and current.signature == previous.signature
+            ):
+                return current
+            previous = current
+        raise SemanticGateClosed("campaign map model did not stabilize")
+
+    def _campaign_map_state_once(
+        self,
+        stage_code: str,
+        *,
+        columns: int,
+        rows: int,
+        land: Tuple[Tuple[int, int], ...],
+        expected_fleet_count: int,
+    ) -> CampaignMapState:
+        button_state = self.read_state()
+        ui_state = self.read_ui_state()
+        entry = self._campaign_map_entry_state_from_snapshots(button_state, ui_state)
+        if ui_state.image_truncated:
+            raise SemanticGateClosed("campaign map Image snapshot is truncated")
+
+        grid_root = entry.root_path
+        cell_pattern = re.compile(
+            re.escape(grid_root)
+            + r"/DragLayer/plane/quads/chapter_cell_quad_([1-9][0-9]*)_([1-9][0-9]*)$"
+        )
+        cells_by_coordinate: Dict[Tuple[int, int], CampaignMapCellState] = {}
+        cell_world_positions: Dict[Tuple[int, int], Tuple[float, float, float]] = {}
+        for button in button_state.buttons:
+            match = cell_pattern.fullmatch(button.path)
+            if match is None:
+                continue
+            row, column = (int(match.group(1)), int(match.group(2)))
+            coordinate = (row, column)
+            if (
+                coordinate in cells_by_coordinate
+                or row > rows
+                or column > columns
+                or not button.active_in_hierarchy
+                or not button.active_and_enabled
+                or not button.interactable
+                or button.point is None
+                or button.bounds is None
+                or not button.bounds.contains(button.point)
+            ):
+                raise SemanticGateClosed("campaign map grid topology is invalid")
+            world_value = button.raw.get("world_position")
+            if not isinstance(world_value, dict):
+                raise SemanticGateClosed("campaign map grid world position is absent")
+            cell_world_positions[coordinate] = tuple(
+                self._finite_number(
+                    world_value.get(axis), "campaign map grid world position." + axis
+                )
+                for axis in ("x", "y", "z")
+            )
+            cells_by_coordinate[coordinate] = CampaignMapCellState(
+                row=row,
+                column=column,
+                node=self._campaign_map_node(row, column),
+                button_path=button.path,
+                point=button.point,
+                bounds=button.bounds,
+            )
+        expected_cells = {
+            (row, column)
+            for row in range(1, rows + 1)
+            for column in range(1, columns + 1)
+            if (row, column) not in land
+        }
+        if set(cells_by_coordinate) != expected_cells:
+            raise SemanticGateClosed("campaign map grid topology disagrees with ALAS")
+
+        active_images = tuple(
+            image
+            for image in ui_state.images
+            if image.active_in_hierarchy
+            and image.active_and_enabled
+            and not image.truncated
+        )
+        active_texts = tuple(
+            item
+            for item in ui_state.texts
+            if item.active_in_hierarchy
+            and item.active_and_enabled
+            and not item.truncated
+        )
+        cell_root = grid_root + "/DragLayer/plane/cells/"
+        attachment_pattern = re.compile(
+            re.escape(cell_root)
+            + r"chapter_cell_([1-9][0-9]*)_([1-9][0-9]*)/attachment/([^/]+)"
+        )
+        attachment_roots = set()
+        for item in (*active_images, *active_texts):
+            match = attachment_pattern.match(item.path)
+            if match is not None:
+                attachment_roots.add(
+                    (int(match.group(1)), int(match.group(2)), match.group(3))
+                )
+
+        enemy_icon_pattern = re.compile(
+            re.escape(cell_root)
+            + r"chapter_cell_([1-9][0-9]*)_([1-9][0-9]*)/attachment/"
+            + r"enemy_([1-9][0-9]*)/icon$"
+        )
+        genre_names = {"qx": "Light", "zl": "Main", "hm": "Carrier"}
+        enemies = []
+        enemy_roots = set()
+        for image in active_images:
+            match = enemy_icon_pattern.fullmatch(image.path)
+            if match is None:
+                continue
+            row, column, object_id = map(int, match.groups())
+            coordinate = (row, column)
+            root_name = "enemy_{0}".format(object_id)
+            root = (
+                cell_root
+                + "chapter_cell_{0}_{1}/attachment/{2}".format(
+                    row, column, root_name
+                )
+            )
+            sprite_match = re.fullmatch(r"(qx|zl|hm)([123])", image.sprite)
+            if (
+                coordinate not in expected_cells
+                or (row, column, root_name) in enemy_roots
+                or sprite_match is None
+                or image.bounds is None
+            ):
+                raise SemanticGateClosed("campaign map enemy identity is unsupported")
+            level_matches = tuple(
+                item for item in active_texts if item.path == root + "/lv/Text"
+            )
+            label_matches = tuple(
+                item for item in active_texts if item.path == root + "/lv/lv_label"
+            )
+            fighting_images = tuple(
+                item for item in active_images if item.path == root + "/fighting"
+            )
+            fighting_texts = tuple(
+                item for item in active_texts if item.path == root + "/fighting/Text"
+            )
+            if (
+                len(level_matches) != 1
+                or re.fullmatch(r"[1-9][0-9]{0,2}", level_matches[0].text.strip()) is None
+                or len(label_matches) != 1
+                or label_matches[0].text.strip() != "Lv."
+                or bool(fighting_images) != bool(fighting_texts)
+                or (fighting_images and len(fighting_images) != 1)
+                or (fighting_texts and len(fighting_texts) != 1)
+                or (
+                    fighting_images
+                    and (
+                        fighting_images[0].sprite != "xingdongzhong"
+                        or fighting_texts[0].text.strip() != "行动中"
+                    )
+                )
+            ):
+                raise SemanticGateClosed("campaign map enemy details are incomplete")
+            prefix, scale_text = sprite_match.groups()
+            enemies.append(
+                CampaignMapEnemyState(
+                    row=row,
+                    column=column,
+                    node=self._campaign_map_node(row, column),
+                    object_id=object_id,
+                    sprite=image.sprite,
+                    scale=int(scale_text),
+                    genre=genre_names[prefix],
+                    level=int(level_matches[0].text.strip()),
+                    fighting=bool(fighting_images),
+                )
+            )
+            enemy_roots.add((row, column, root_name))
+
+        pickups = []
+        supply_roots = set()
+        supply_pattern = re.compile(
+            re.escape(cell_root)
+            + r"chapter_cell_([1-9][0-9]*)_([1-9][0-9]*)/attachment/"
+            + r"supply/Tpl_Supply\(Clone\)/normal$"
+        )
+        for image in active_images:
+            match = supply_pattern.fullmatch(image.path)
+            if match is None:
+                continue
+            row, column = map(int, match.groups())
+            if (
+                (row, column) not in expected_cells
+                or (row, column, "supply") in supply_roots
+                or image.sprite != "event4"
+                or image.bounds is None
+            ):
+                raise SemanticGateClosed("campaign map pickup identity is unsupported")
+            pickups.append(
+                CampaignMapPickupState(
+                    row=row,
+                    column=column,
+                    node=self._campaign_map_node(row, column),
+                    kind="ammo",
+                    sprite=image.sprite,
+                )
+            )
+            supply_roots.add((row, column, "supply"))
+        if attachment_roots != enemy_roots | supply_roots:
+            raise SemanticGateClosed("campaign map contains an unsupported attachment")
+
+        fleet_marker_pattern = re.compile(
+            re.escape(cell_root) + r"(cell_fleet_[A-Za-z0-9_]+)/"
+        )
+        fleet_markers = {
+            match.group(1)
+            for item in (*active_images, *active_texts)
+            for match in (fleet_marker_pattern.match(item.path),)
+            if match is not None
+        }
+        if len(fleet_markers) != expected_fleet_count:
+            raise SemanticGateClosed("campaign map fleet count is unexpected")
+        fleets = []
+        occupied_nodes = set()
+        for marker in sorted(fleet_markers):
+            root = cell_root + marker
+            ammo_matches = tuple(
+                item for item in active_texts if item.path == root + "/ammo/text"
+            )
+            anchor_matches = tuple(
+                image for image in active_images if image.path == root + "/ammo/bg"
+            )
+            if (
+                len(ammo_matches) != 1
+                or len(anchor_matches) != 1
+                or anchor_matches[0].sprite != "danyao_bar"
+            ):
+                raise SemanticGateClosed("campaign map fleet details are incomplete")
+            ammo_match = re.fullmatch(
+                r"([0-9]+)/([1-9][0-9]*)", ammo_matches[0].text.strip()
+            )
+            if ammo_match is None:
+                raise SemanticGateClosed("campaign map fleet ammo is malformed")
+            ammo, capacity = map(int, ammo_match.groups())
+            if ammo > capacity:
+                raise SemanticGateClosed("campaign map fleet ammo exceeds capacity")
+            anchor_value = anchor_matches[0].raw.get("anchor_world_position")
+            if not isinstance(anchor_value, dict):
+                raise SemanticGateClosed("campaign map fleet world anchor is absent")
+            anchor = tuple(
+                self._finite_number(
+                    anchor_value.get(axis), "campaign map fleet world anchor." + axis
+                )
+                for axis in ("x", "y", "z")
+            )
+            distances = sorted(
+                (
+                    sum((anchor[index] - world[index]) ** 2 for index in range(3)),
+                    coordinate,
+                )
+                for coordinate, world in cell_world_positions.items()
+            )
+            if not distances or distances[0][0] > 0.05 ** 2:
+                raise SemanticGateClosed("campaign map fleet world anchor is unmatched")
+            if (
+                len(distances) > 1
+                and abs(distances[1][0] - distances[0][0]) <= 0.05 ** 2
+            ):
+                raise SemanticGateClosed("campaign map fleet world anchor is ambiguous")
+            matched_cell = cells_by_coordinate[distances[0][1]]
+            if matched_cell.node in occupied_nodes:
+                raise SemanticGateClosed("campaign map fleet location is ambiguous")
+            fleets.append(
+                CampaignMapFleetState(
+                    marker=marker,
+                    node=matched_cell.node,
+                    ammo=ammo,
+                    ammo_capacity=capacity,
+                )
+            )
+            occupied_nodes.add(matched_cell.node)
+
+        return CampaignMapState(
+            generation=max(button_state.generation, ui_state.generation),
+            stage_code=stage_code,
+            rows=rows,
+            columns=columns,
+            cells=tuple(
+                cells_by_coordinate[key] for key in sorted(cells_by_coordinate)
+            ),
+            land_nodes=tuple(
+                self._campaign_map_node(row, column) for row, column in land
+            ),
+            fleets=tuple(sorted(fleets, key=lambda item: (item.node, item.marker))),
+            enemies=tuple(
+                sorted(enemies, key=lambda item: (item.row, item.column, item.object_id))
+            ),
+            pickups=tuple(
+                sorted(pickups, key=lambda item: (item.row, item.column, item.kind))
+            ),
         )
 
     def campaign_is_in_map(self) -> bool:

@@ -737,17 +737,39 @@ struct LoadedObjectCollector {
   // FindObjectsOfTypeAll omits destroyed components but can still return
   // inactive objects retained by repeated overlays.  Keep the temporary set
   // bounded independently from the much smaller active typed record set.
-  std::array<void *, 1024> objects = {};
+  std::array<void *, 4096> objects = {};
   size_t count = 0;
   bool truncated = false;
 };
 
-UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
-                           const void *coreImage, const void *uiImage,
-                           const void *uiModuleImage,
-                           const void *textMeshProImage, int screenWidth,
-                           int screenHeight) {
-  UiProbeResult result;
+const UiProbeResult &ProbeUnityUi(const Il2CppDynamicProbe &probe,
+                                 const void *coreImage, const void *uiImage,
+                                 const void *uiModuleImage,
+                                 const void *textMeshProImage, int screenWidth,
+                                 int screenHeight) {
+  // Campaign maps need more complete Image records than overlay pages.  Keep
+  // the large reusable collection out of UnityMain's comparatively small
+  // native stack; only scalar counters need resetting between generations.
+  static thread_local UiProbeResult result;
+  result.success = false;
+  result.buttonCount = 0;
+  result.activeCount = 0;
+  result.interactableCount = 0;
+  result.sceneHandle = 0;
+  result.diagnosticStage = 0;
+  result.methodMask = 0;
+  result.recordCount = 0;
+  result.recordTruncated = 0;
+  result.recordErrors = 0;
+  result.toggleRecordCount = 0;
+  result.toggleRecordTruncated = 0;
+  result.textRecordCount = 0;
+  result.textRecordTruncated = 0;
+  result.imageRecordCount = 0;
+  result.imageRecordTruncated = 0;
+  result.uiRecordErrors = 0;
+  result.uiRecordSkipped = 0;
+  result.uiMethodMask = 0;
   result.diagnosticStage = 10;
   if (coreImage == nullptr || uiImage == nullptr) {
     return result;
@@ -1879,6 +1901,30 @@ UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
           record.adbBottom = geometry.adbBottom;
           record.flags |= 0x4u;
         }
+        void *imageGameObject = invokeObject(getGameObject, image);
+        void *imageTransform = imageGameObject != nullptr
+                                   ? invokeObject(getTransform, imageGameObject)
+                                   : nullptr;
+        void *ancestorTransform = imageTransform;
+        for (int depth = 0; ancestorTransform != nullptr && depth < 24;
+             ++depth) {
+          const std::string ancestorName = invokeString(ancestorTransform);
+          if (ancestorName.rfind("cell_fleet_", 0) == 0) {
+            Vector3 anchorWorld = {};
+            if (getPosition != nullptr &&
+                invokeValue(getPosition, ancestorTransform, nullptr,
+                            &anchorWorld, sizeof(anchorWorld))) {
+              record.anchorWorldX = anchorWorld.x;
+              record.anchorWorldY = anchorWorld.y;
+              record.anchorWorldZ = anchorWorld.z;
+              record.flags |= 0x800u;
+            }
+            break;
+          }
+          ancestorTransform = getParent != nullptr
+                                  ? invokeObject(getParent, ancestorTransform)
+                                  : nullptr;
+        }
         const std::string_view imageName(
             record.name.data(),
             ANGLE_UNSAFE_TODO(strnlen(record.name.data(), record.name.size())));
@@ -1887,13 +1933,9 @@ UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
             ANGLE_UNSAFE_TODO(strnlen(record.path.data(), record.path.size())));
         if (ShouldEvaluateImageTopRaycast(imageName, imagePath) &&
             (geometry.flags & 0x100u) != 0 && (geometry.flags & 0x400u) != 0) {
-          void *gameObject = invokeObject(getGameObject, image);
-          void *transform = gameObject != nullptr
-                                ? invokeObject(getTransform, gameObject)
-                                : nullptr;
           bool raycastEvaluated = false;
           const bool raycastMatches = topRaycastMatches(
-              transform, Vector2{geometry.screenX, geometry.screenY},
+              imageTransform, Vector2{geometry.screenX, geometry.screenY},
               &raycastEvaluated);
           if (raycastEvaluated) {
             record.flags |= 0x200u;
@@ -1941,7 +1983,10 @@ int32_t ObserverMainThreadTick(uint64_t requestGeneration,
                                int height, int expectedTid) {
   ObserverSnapshot snapshot;
   ObserverSemanticSnapshot semanticSnapshot;
-  ObserverUiSnapshot uiSnapshot;
+  // This snapshot contains the full fixed-capacity Image array.  Reuse TLS
+  // storage so increasing the read-only map capacity cannot overflow the
+  // Unity main-thread stack before the first observer sample.
+  static thread_local ObserverUiSnapshot uiSnapshot;
 #if defined(ANGLE_PLATFORM_ANDROID)
   const int actualTid = gettid();
   snapshot.tid = actualTid;
@@ -2067,7 +2112,7 @@ int32_t ObserverMainThreadTick(uint64_t requestGeneration,
   snapshot.observerAttached = observerAttach ? 1u : 0u;
   snapshot.mainThread = actualTid == gObserverMainThreadTid.load() ? 1u : 0u;
   if (snapshot.mainThread != 0) {
-    const UiProbeResult ui = ProbeUnityUi(
+    const UiProbeResult &ui = ProbeUnityUi(
         probe, coreImage, uiImage, uiModuleImage, textMeshProImage, width,
         height);
     snapshot.uiDiagnosticStage = ui.diagnosticStage;

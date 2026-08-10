@@ -85,9 +85,31 @@ if ! grep -Fq 'FindObjectsOfTypeAll omits destroyed components' \
   echo "Non-recursive Unity object enumeration is missing" >&2
   exit 1
 fi
-if ! grep -Fq 'std::array<void *, 1024> objects' \
+if ! grep -Fq 'std::array<void *, 4096> objects' \
     "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
   echo "Long-session Unity object capacity is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'kMaxObserverImages = 512' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.h"; then
+  echo "Complete campaign-map Image capacity is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'static thread_local UiProbeResult result' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Stack-safe campaign-map UI collector is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'static thread_local ObserverUiSnapshot uiSnapshot' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Stack-safe campaign-map snapshot is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'anchor_world_position' \
+    "${angle_dir}/src/libANGLE/renderer/null/ObserverServer.cpp" || \
+   ! grep -Fq 'ancestorName.rfind("cell_fleet_", 0)' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Campaign fleet world-position anchor is missing" >&2
   exit 1
 fi
 if grep -Fq 'livenessFromStatics(' \

@@ -192,6 +192,16 @@ class AlasIntegrationPatchTests(unittest.TestCase):
             self.patch_text,
         )
 
+    def test_campaign_map_model_replaces_only_the_read_only_input_boundary(self):
+        self.assertIn("semantic_adapter.campaign_map_state(", self.patch_text)
+        self.assertIn("columns=campaign_map.shape[0] + 1", self.patch_text)
+        self.assertIn("grid.location for grid in campaign_map", self.patch_text)
+        self.assertIn("if grid.is_land", self.patch_text)
+        self.assertIn("expected_fleet_count=sum((", self.patch_text)
+        self.assertIn("Semantic campaign map model:", self.patch_text)
+        self.assertIn("+                    return True", self.patch_text)
+        self.assertIn("logger.info('Already in map, retreating.')", self.patch_text)
+
 
 if __name__ == "__main__":
     unittest.main()

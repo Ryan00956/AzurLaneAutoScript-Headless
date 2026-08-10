@@ -15,7 +15,7 @@ constexpr size_t kIl2CppAllowlistSize = 32;
 constexpr size_t kMaxObserverButtons = 128;
 constexpr size_t kMaxObserverToggles = 64;
 constexpr size_t kMaxObserverTexts = 192;
-constexpr size_t kMaxObserverImages = 256;
+constexpr size_t kMaxObserverImages = 512;
 constexpr size_t kObserverNameBytes = 96;
 constexpr size_t kObserverPathBytes = 384;
 constexpr size_t kObserverTextBytes = 512;
@@ -130,6 +130,9 @@ struct ObserverImageRecord {
   float adbTop = 0.0f;
   float adbRight = 0.0f;
   float adbBottom = 0.0f;
+  float anchorWorldX = 0.0f;
+  float anchorWorldY = 0.0f;
+  float anchorWorldZ = 0.0f;
 };
 
 struct ObserverUiSnapshot {

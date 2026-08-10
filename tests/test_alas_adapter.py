@@ -142,6 +142,18 @@ class FakeOracle:
         self.campaign_oil_value = 9504
         self.campaign_in_map_value = False
         self.campaign_map_generation = 50
+        self.campaign_map_state_calls = []
+        self.campaign_map_state_value = SimpleNamespace(
+            generation=51,
+            stage_code="12-4",
+            rows=8,
+            columns=11,
+            cells=tuple(range(68)),
+            land_nodes=tuple(range(20)),
+            fleets=(SimpleNamespace(node="D6"), SimpleNamespace(node="F8")),
+            enemies=(SimpleNamespace(node="C6"), SimpleNamespace(node="D6")),
+            pickups=(SimpleNamespace(node="F2"),),
+        )
 
     def enabled(self, semantic_id):
         self.enabled_calls.append(semantic_id)
@@ -311,6 +323,26 @@ class FakeOracle:
                 "display/mask/sea",
             ),
         )
+
+    def campaign_map_state(
+        self,
+        stage_code,
+        *,
+        columns,
+        rows,
+        land_cells,
+        expected_fleet_count,
+    ):
+        self.campaign_map_state_calls.append(
+            (
+                stage_code,
+                columns,
+                rows,
+                tuple(land_cells),
+                expected_fleet_count,
+            )
+        )
+        return self.campaign_map_state_value
 
     def campaign_mode_switch_state(self):
         return "hard"
@@ -1617,6 +1649,36 @@ class AlasSemanticAdapterTests(unittest.TestCase):
             )
         self.assertNotIn("campaign/fleet-preparation/sortie", oracle.click_calls)
         adapter.end_campaign_pre_sortie()
+
+    def test_campaign_map_model_is_read_only_and_context_bound(self):
+        oracle = FakeOracle()
+        package_checks = []
+        adapter = AlasSemanticAdapter(oracle, lambda: package_checks.append(True))
+        adapter.begin_campaign_pre_sortie("12-4")
+
+        state = adapter.campaign_map_state(
+            columns=11,
+            rows=8,
+            land_cells=((5, 0), (6, 0)),
+            expected_fleet_count=2,
+        )
+
+        self.assertIs(state, oracle.campaign_map_state_value)
+        self.assertEqual(
+            oracle.campaign_map_state_calls,
+            [("12-4", 11, 8, ((5, 0), (6, 0)), 2)],
+        )
+        self.assertEqual(oracle.click_calls, [])
+        self.assertEqual(len(package_checks), 2)
+        adapter.end_campaign_pre_sortie()
+
+        with self.assertRaisesRegex(SemanticGateClosed, "pre-sortie flow"):
+            adapter.campaign_map_state(
+                columns=11,
+                rows=8,
+                land_cells=((5, 0),),
+                expected_fleet_count=2,
+            )
 
     def test_goto_main_from_mission_uses_exact_task_back(self):
         adapter, oracle, _ = self.make_adapter()

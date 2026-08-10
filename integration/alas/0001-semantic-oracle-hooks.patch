@@ -193,6 +193,37 @@ index 5703330..1270b8e 100644
          name, folder = self.handle_stage_name(name, folder, mode=mode)
          self.config.override(Campaign_Name=name, Campaign_Event=folder)
          self.load_campaign(name, folder=folder)
+@@ -399,6 +410,30 @@ class CampaignRun(CampaignEvent):
+                 self.device.screenshot()
+             self.campaign.device.image = self.device.image
+             if self.campaign.is_in_map():
++                if semantic_adapter is not None:
++                    campaign_map = self.campaign.MAP
++                    state = semantic_adapter.campaign_map_state(
++                        columns=campaign_map.shape[0] + 1,
++                        rows=campaign_map.shape[1] + 1,
++                        land_cells=tuple(
++                            grid.location for grid in campaign_map
++                            if grid.is_land
++                        ),
++                        expected_fleet_count=sum((
++                            bool(self.campaign.config.Fleet_Fleet1),
++                            bool(self.campaign.config.Fleet_Fleet2),
++                        )),
++                    )
++                    logger.info(
++                        f'Semantic campaign map model: {state.stage_code}, '
++                        f'{state.columns}x{state.rows}, '
++                        f'cells={len(state.cells)}, land={len(state.land_nodes)}, '
++                        f'fleets={[fleet.node for fleet in state.fleets]}, '
++                        f'enemies={[enemy.node for enemy in state.enemies]}, '
++                        f'pickups={[pickup.node for pickup in state.pickups]}, '
++                        f'generation={state.generation}'
++                    )
++                    return True
+                 logger.info('Already in map, retreating.')
+                 try:
+                     self.campaign.withdraw()
 @@ -435,6 +446,12 @@ class CampaignRun(CampaignEvent):
              self.device.stuck_record_clear()
              self.device.click_record_clear()

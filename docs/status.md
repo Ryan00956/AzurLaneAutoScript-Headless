@@ -4,6 +4,34 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G13 read-only campaign map model: live ALAS pass
+
+- The stable `12-4` model combines ALAS's own `11x8` shape and exact 20-cell
+  land topology with complete Unity state: 92 Buttons, 300 Images, and 55
+  Texts, all non-truncated and unchanged across two increasing generations.
+- It reported 68 passable cells, fleets `D6/F8` with `5/5` ammo, enemies
+  `C6/D6` with typed class/scale/level/fighting state, and the `event4`
+  ammunition pickup at `F2`.
+- Fleet localization no longer depends on visible `shadow` Images. Each
+  active fleet child carries its `cell_fleet_*` ancestor world position and
+  must match one grid Button uniquely. Both live distances were exactly zero;
+  the next-nearest cells were about `1.528` away.
+- The final campaign replay used stage/fleet/sortie budgets `0/0/0`, replaced
+  input injection with a rejecting assertion, logged the model at generation
+  `4817`, and returned `ALAS_G13_READ_ONLY_MAP_RESULT True` before upstream
+  retreat.
+- One controlled `1/3/1` sortie recreated the map after the observer update.
+  Its later generic `POPUP_CONFIRM_WHITE` probe failed closed after arrival;
+  no grid, movement, combat, retreat, or reward input occurred.
+- A later recurring `[NetworkDown]` overlay left the underlying map loaded but
+  blocked the read-only model exactly as intended; no obscured map state was
+  returned.
+- Final observer APK SHA-256:
+  `bb9bdaa7838182731296ce5ab4f6f17aad0394660aa7b24c245a1ccfed18b220`.
+  The controller/integration suite passes `225/225`.
+
+See [G13 campaign map-model validation](g13-campaign-map-model-validation-report.md).
+
 ### G12 campaign sortie: one exact input and real map-root proof
 
 - `ALAS_SEMANTIC_CAMPAIGN_SORTIE_BUDGET` is independent, defaults to `0`, and

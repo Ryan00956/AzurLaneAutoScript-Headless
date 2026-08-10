@@ -24,6 +24,7 @@ from .semantic_oracle import (
     CampaignFleetRowState,
     CampaignFleetSelectionState,
     CampaignMapEntryState,
+    CampaignMapState,
     CampaignPageState,
     CommissionDetailState,
     CommissionRewardProof,
@@ -2455,6 +2456,30 @@ class AlasSemanticAdapter:
         self._require_campaign_context()
         return self.oracle.campaign_oil()
 
+    def campaign_map_state(
+        self,
+        *,
+        columns: int,
+        rows: int,
+        land_cells: Sequence[Tuple[int, int]],
+        expected_fleet_count: int,
+    ) -> CampaignMapState:
+        """Supply one read-only typed map input to the ALAS campaign flow."""
+
+        self._package_gate()
+        context = self._require_campaign_context()
+        if context.mode != "normal":
+            raise SemanticGateClosed(
+                "campaign map model is qualified only in normal mode"
+            )
+        return self.oracle.campaign_map_state(
+            context.stage_code,
+            columns=columns,
+            rows=rows,
+            land_cells=land_cells,
+            expected_fleet_count=expected_fleet_count,
+        )
+
     def research_series(self) -> List[int]:
         return [project.series for project in self.research_projects()]
 
@@ -4316,6 +4341,21 @@ class AlasSemanticSession:
 
     def campaign_oil(self) -> int:
         return self.open().campaign_oil()
+
+    def campaign_map_state(
+        self,
+        *,
+        columns: int,
+        rows: int,
+        land_cells: Sequence[Tuple[int, int]],
+        expected_fleet_count: int,
+    ) -> CampaignMapState:
+        return self.open().campaign_map_state(
+            columns=columns,
+            rows=rows,
+            land_cells=land_cells,
+            expected_fleet_count=expected_fleet_count,
+        )
 
     def campaign_stage_entry_allowed(self) -> bool:
         return self.open().campaign_stage_entry_allowed()

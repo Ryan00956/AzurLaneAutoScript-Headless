@@ -43,6 +43,8 @@ The bounded ALAS-owned fleet-selection pass is documented in the
 [G11 validation report](docs/g11-campaign-fleet-preparation-validation-report.md).
 The separately budgeted single-sortie and real map-entry proof are documented
 in the [G12 validation report](docs/g12-campaign-sortie-validation-report.md).
+The complete read-only ALAS-backed map model is documented in the
+[G13 validation report](docs/g13-campaign-map-model-validation-report.md).
 
 G1, G2, G3, and the formal G4 harmless closed loop passed. G4 includes
 EventSystem top-raycast proof for every injected target, not only object state
@@ -68,10 +70,14 @@ budgets. The live G11 pass preserved ALAS's original fleet-preparation state
 machine, reconciled `(1, 2, 1) -> (1, 2, 0)` with exactly three mutations,
 then canceled and independently proved `(1, 2, 1)` restored. G12 separately
 admits exactly one default-closed sortie after typed fleet/settings/oil proof,
-then stops at the real read-only `LevelGrid` map identity. Lua/game-state
-coverage, formation-layout changes, map movement, battle state, weekly-only
-end-to-end coverage, repeated sorties, and full unattended ALAS task coverage
-remain open.
+then stops at the real read-only `LevelGrid` map identity. G13 builds a stable
+`11x8` model from ALAS topology plus complete Unity Button/Image/Text state,
+including both fleets, enemies, and the ammunition pickup. ALAS consumes that
+model at its existing already-in-map checkpoint and returns before retreat;
+there is still no map input. Lua/game-state coverage, formation-layout
+changes, ALAS grid synchronization/planning, map movement, battle state,
+weekly-only end-to-end coverage, repeated sorties, and full unattended ALAS
+task coverage remain open.
 
 ## Repository layout
 

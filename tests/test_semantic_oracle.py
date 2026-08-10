@@ -23,10 +23,18 @@ PACKAGE = "com.bilibili.azurlane"
 COMPONENT = "com.bilibili.azurlane/com.manjuu.azurlane.MainActivity"
 
 
-def make_button(name, path, x=640.0, y=360.0, bounds=None, raycast_top=True):
+def make_button(
+    name,
+    path,
+    x=640.0,
+    y=360.0,
+    bounds=None,
+    raycast_top=True,
+    world_position=None,
+):
     if bounds is None:
         bounds = {"left": x - 20, "top": y - 20, "right": x + 20, "bottom": y + 20}
-    return {
+    value = {
         "name": name,
         "path": path,
         "active_in_hierarchy": True,
@@ -36,6 +44,9 @@ def make_button(name, path, x=640.0, y=360.0, bounds=None, raycast_top=True):
         "adb_point": {"x": x, "y": y},
         "adb_bounds": bounds,
     }
+    if world_position is not None:
+        value["world_position"] = dict(zip(("x", "y", "z"), world_position))
+    return value
 
 
 def make_snapshot(generation=10, age_ms=20):
@@ -93,10 +104,10 @@ def make_text(text, path="root/value", bounds=None, kind="ugui-text"):
     }
 
 
-def make_image(path="root/icon", sprite="icon", bounds=None):
+def make_image(path="root/icon", sprite="icon", bounds=None, anchor_world_position=None):
     if bounds is None:
         bounds = {"left": 200.0, "top": 100.0, "right": 240.0, "bottom": 140.0}
-    return {
+    value = {
         "kind": "image",
         "name": path.rsplit("/", 1)[-1],
         "path": path,
@@ -110,6 +121,12 @@ def make_image(path="root/icon", sprite="icon", bounds=None):
         "fill_amount": 1.0,
         "adb_bounds": bounds,
     }
+    if anchor_world_position is not None:
+        value["flags"] |= 0x800
+        value["anchor_world_position"] = dict(
+            zip(("x", "y", "z"), anchor_world_position)
+        )
+    return value
 
 
 def make_toggle(
@@ -268,6 +285,96 @@ def make_oracle(backend):
         sleep=lambda _: None,
         swipe=backend.swipe,
     )
+
+
+def make_campaign_map_backend(generations=(10, 11)):
+    map_root = "LevelCamera/Canvas/UIMain/LevelGrid"
+    stage_root = "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)"
+    cells = {
+        (1, 1): (100.0, 100.0),
+        (1, 3): (300.0, 100.0),
+        (2, 1): (100.0, 220.0),
+        (2, 2): (200.0, 220.0),
+        (2, 3): (300.0, 220.0),
+    }
+    buttons = [
+        make_button(
+            "retreat", map_root + "/DragLayer/op1/retreat", raycast_top=None
+        ),
+        make_button(
+            "back_button", stage_root + "/top_stage/back_button", raycast_top=None
+        ),
+    ]
+    for (row, column), (x, y) in cells.items():
+        buttons.append(
+            make_button(
+                "chapter_cell_quad_{0}_{1}".format(row, column),
+                map_root
+                + "/DragLayer/plane/quads/chapter_cell_quad_{0}_{1}".format(
+                    row, column
+                ),
+                x=x,
+                y=y,
+                bounds={
+                    "left": x - 45,
+                    "top": y - 45,
+                    "right": x + 45,
+                    "bottom": y + 45,
+                },
+                raycast_top=None,
+                world_position=(column * 1.5, row * -1.5, -178.0),
+            )
+        )
+    enemy_root = (
+        map_root
+        + "/DragLayer/plane/cells/chapter_cell_1_1/attachment/enemy_1001"
+    )
+    supply_root = (
+        map_root
+        + "/DragLayer/plane/cells/chapter_cell_1_3/attachment/supply/"
+        + "Tpl_Supply(Clone)"
+    )
+    fleet1 = map_root + "/DragLayer/plane/cells/cell_fleet_one"
+    fleet2 = map_root + "/DragLayer/plane/cells/cell_fleet_two"
+    images = [
+        make_image(map_root + "/DragLayer/op1/retreat/retreat", "reteat_popo"),
+        make_image(map_root + "/DragLayer/plane/display/mask/sea", "sea_day"),
+        make_image(stage_root + "/top_stage/back_button/mask/Image", "back_btn"),
+        make_image(enemy_root + "/icon", "qx2"),
+        make_image(supply_root + "/normal", "event4"),
+        make_image(
+            fleet1 + "/shadow",
+            "shadow",
+            {"left": 80, "top": 200, "right": 120, "bottom": 240},
+        ),
+        make_image(
+            fleet1 + "/ammo/bg",
+            "danyao_bar",
+            anchor_world_position=(1.5, -3.0, -178.0),
+        ),
+        make_image(
+            fleet2 + "/ammo/bg",
+            "danyao_bar",
+            anchor_world_position=(3.0, -3.0, -178.0),
+        ),
+    ]
+    texts = [
+        make_text("10", enemy_root + "/lv/Text"),
+        make_text("Lv.", enemy_root + "/lv/lv_label"),
+        make_text("5/5", fleet1 + "/ammo/text"),
+        make_text("4/5", fleet2 + "/ammo/text"),
+    ]
+    backend = FakeBackend(buttons)
+    backend.buttons_sequence = [
+        make_buttons(buttons, generation=generation) for generation in generations
+    ]
+    backend.ui_sequence = [
+        make_ui(texts, images=images, generation=generation)
+        for generation in generations
+    ]
+    backend.buttons = make_buttons(buttons, generation=generations[-1])
+    backend.ui = make_ui(texts, images=images, generation=generations[-1])
+    return backend
 
 
 class SemanticOracleTests(unittest.TestCase):
@@ -1068,6 +1175,88 @@ class SemanticOracleTests(unittest.TestCase):
         in_map.buttons["button_count"] += 1
         with self.assertRaisesRegex(SemanticGateClosed, "overlap"):
             make_oracle(in_map).campaign_map_entry_state()
+
+    def test_campaign_map_model_is_complete_stable_and_uses_alas_topology(self):
+        backend = make_campaign_map_backend()
+
+        state = make_oracle(backend).campaign_map_state(
+            "12-4",
+            columns=3,
+            rows=2,
+            land_cells=((1, 0),),
+            expected_fleet_count=2,
+        )
+
+        self.assertEqual(state.generation, 11)
+        self.assertEqual(tuple(cell.node for cell in state.cells), ("A1", "C1", "A2", "B2", "C2"))
+        self.assertEqual(state.land_nodes, ("B1",))
+        self.assertEqual(
+            tuple((fleet.node, fleet.ammo) for fleet in state.fleets),
+            (("A2", 5), ("B2", 4)),
+        )
+        self.assertEqual(
+            tuple(
+                (enemy.node, enemy.object_id, enemy.genre, enemy.scale, enemy.level)
+                for enemy in state.enemies
+            ),
+            (("A1", 1001, "Light", 2, 10),),
+        )
+        self.assertEqual(
+            tuple((pickup.node, pickup.kind) for pickup in state.pickups),
+            (("C1", "ammo"),),
+        )
+        self.assertEqual(backend.taps, [])
+
+    def test_campaign_map_model_rejects_truncated_images_and_topology_drift(self):
+        truncated = make_campaign_map_backend(generations=(10,))
+        truncated.ui["image_truncated"] = True
+        truncated.ui_sequence[0]["image_truncated"] = True
+        with self.assertRaisesRegex(SemanticGateClosed, "Image snapshot is truncated"):
+            make_oracle(truncated).campaign_map_state(
+                "12-4",
+                columns=3,
+                rows=2,
+                land_cells=((1, 0),),
+                expected_fleet_count=2,
+            )
+
+        topology = make_campaign_map_backend(generations=(10,))
+        with self.assertRaisesRegex(SemanticGateClosed, "disagrees with ALAS"):
+            make_oracle(topology).campaign_map_state(
+                "12-4",
+                columns=3,
+                rows=2,
+                land_cells=((2, 0),),
+                expected_fleet_count=2,
+            )
+
+        unanchored = make_campaign_map_backend(generations=(10,))
+        fleet_anchor = next(
+            image
+            for image in unanchored.ui["images"]
+            if image["path"].endswith("cell_fleet_two/ammo/bg")
+        )
+        fleet_anchor.pop("anchor_world_position")
+        with self.assertRaisesRegex(SemanticGateClosed, "world anchor is absent"):
+            make_oracle(unanchored).campaign_map_state(
+                "12-4",
+                columns=3,
+                rows=2,
+                land_cells=((1, 0),),
+                expected_fleet_count=2,
+            )
+
+    def test_campaign_map_model_requires_two_unchanged_increasing_generations(self):
+        backend = make_campaign_map_backend(generations=(10, 10))
+
+        with self.assertRaisesRegex(SemanticGateClosed, "did not stabilize"):
+            make_oracle(backend).campaign_map_state(
+                "12-4",
+                columns=3,
+                rows=2,
+                land_cells=((1, 0),),
+                expected_fleet_count=2,
+            )
 
     def test_campaign_page_rejects_stage_id_text_mismatch(self):
         root = "root/UICamera/Canvas/UIMain/LevelMainScene(Clone)/"

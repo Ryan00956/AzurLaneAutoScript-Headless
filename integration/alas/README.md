@@ -75,6 +75,12 @@ visible campaign chapter/stage labels. The pinned patch changes those ALAS
 observation and input ports while leaving ALAS responsible for filtering,
 selection, retry loops, queue filling, popup loops, and scheduling.
 
+When ALAS is already on a normal campaign map, the patch now passes ALAS's own
+map shape, land cells, and enabled fleet count to the read-only semantic map
+model. The returned stable cells, fleets, enemies, and pickups are logged and
+the invocation returns before ALAS's existing retreat branch. No grid Button,
+movement, combat, retreat, or map reward input is mapped.
+
 Commission start has a separate integer budget and remains closed by default:
 
 ```powershell
@@ -169,9 +175,11 @@ ordered mutation plan. The qualified request `(1, 2, 0)` from live
 then select fleet option 2. ALAS's original `FleetPreparation` and
 `FleetOperator` loops remained the owners, and its cancel loop restored the
 original selection. Hard mode remains closed because its restriction rows are
-not typed. The fleet sortie target is not mapped; formation-layout, map
-movement, and battle input remain unauthorized. Complete patched commands
-return success for Tactical, Research, Dorm, and the bounded campaign slice. A
+not typed. One separately budgeted normal-mode sortie is qualified, and the
+resulting map is consumed only through the read-only model described above;
+formation-layout, map movement, and battle input remain unauthorized. Complete
+patched commands return success for Tactical, Research, Dorm, and the bounded
+campaign slice. A
 full Gacha attempt submitted one exact Light order but returned
 false after exposing the now-fixed warning/order phase alias; its corrected
 full replay remains gated by the resulting natural nonempty queue.
@@ -197,6 +205,7 @@ reviewed popup chain, and passed a full dual-budget-zero replay. Reward budget
 list also passed exact-handle multipage scanning and stable row-index merging.
 Nonzero-oil rows, cancellation, repeated unattended starts, and multi-order
 construction are not live-qualified. Numeric-row claiming, campaign hard-mode
-fleet restrictions, formation-layout changes, sortie, map and battle state,
-Lua/game-state access, other reward popups, gestures outside the exact
-commission handle, and full unattended task flows remain fail-closed.
+fleet restrictions, formation-layout changes, map synchronization/planning,
+movement and battle input, Lua/game-state access, other reward popups,
+gestures outside the exact commission handle, and full unattended task flows
+remain fail-closed.
