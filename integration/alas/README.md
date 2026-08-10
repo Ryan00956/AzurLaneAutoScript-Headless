@@ -127,14 +127,14 @@ G20 adds that replacement input boundary without changing the ALAS patch or
 state machine. It accepts six complete, hash-bound raw observer snapshots only
 when all 38 resource queries, blockers, three post-grid action Buttons, and
 fleet HP/levels have reviewed exact Unity mappings. Fixture-provided phase
-tokens are rejected. The checked-in manifest remains deliberately `0/38`, so
-the boundary is testable but cannot yet run production combat or spend the
-campaign-combat budget.
+tokens are rejected. The G20 baseline was deliberately `0/38`, so the boundary
+was testable but could not run production combat or spend the campaign-combat
+budget.
 
 G21 makes the remaining evidence work reproducible. The sole durable mapping
-source is `combat-observer-manifest.json`; it must retain exactly 38 entries and
-currently contains no qualified selectors. The package-verified trace recorder
-stores only raw, hash-bound observer triples with `input_injected=false`:
+source is `combat-observer-manifest.json`; it must retain exactly 38 entries.
+The package-verified trace recorder stores only raw, hash-bound observer
+triples with `input_injected=false`:
 
 ```powershell
 python scripts/python/capture_alas_combat_observer_trace.py `
@@ -146,6 +146,28 @@ After review chooses six exact increasing generations, the fixture compiler
 emits phase-local candidates and reconstructs the two map frames offline using
 the pinned 12-4 topology. Neither tool imports or changes ALAS state-machine
 logic, writes mappings automatically, or enables D6.
+
+G22 adds a separate evidence-review promotion boundary. A review names exact
+generations and exact all-of selectors; the promoter reparses the raw trace,
+requires every selector in every chosen frame, computes evidence hashes, and
+emits a manifest plus a source-frame receipt. The receipt verifier binds those
+selectors back to the current manifest and raw frame hashes.
+
+The first review promotes only `IN_MAP` from three complete blocked-surface
+frames (`1/38`). It also records the exact `network_down` blocker as one
+three-selector all-of rule. Blocker rules are now named and grouped, so a
+generic cancel Button alone cannot trigger the rule. The separately explicit
+`blocker_review_complete=false`, the remaining `37/38`, and unqualified fleet
+stats keep `production_ready=false`:
+
+```powershell
+python scripts/python/verify_alas_combat_mapping_receipt.py `
+  --trace artifacts/g21-current-blocked-trace.json `
+  --receipt integration/alas/combat-observer-reviews/g22-in-map-network-down.receipt.json
+```
+
+This is still an observer-input change only. The canonical ALAS patch, G19
+state machine, G18 production stop, D6 input, and combat budget are unchanged.
 
 Commission start has a separate integer budget and remains closed by default:
 

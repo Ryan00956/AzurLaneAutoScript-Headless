@@ -4,9 +4,8 @@ G19 qualified ALAS's original state machine with synthetic phase frames.  This
 module is the boundary that may replace those frames: every ALAS presence
 query must have a reviewed exact Unity selector, every observer slice must be
 complete and hash-bound, and the six phases are inferred from records rather
-than accepted as fixture labels.  The checked-in manifest deliberately has no
-live combat mappings yet, so production use fails closed until real captures
-are reviewed.
+than accepted as fixture labels.  G22 promotes the first real map identity but
+keeps the incomplete resource, blocker, and fleet-stat surface fail-closed.
 """
 
 from __future__ import annotations
@@ -54,7 +53,7 @@ ALAS_COMBAT_OBSERVER_FIXTURE_SCHEMA = (
     "alas-headless.g20-combat-observer-fixture/v1"
 )
 ALAS_COMBAT_OBSERVER_MANIFEST_SCHEMA = (
-    "alas-headless.g21-combat-observer-manifest/v1"
+    "alas-headless.g22-combat-observer-manifest/v1"
 )
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _ACTION_RESOURCES = frozenset(
@@ -92,6 +91,19 @@ class AlasCombatResourceMapping:
 
 
 @dataclass(frozen=True)
+class AlasCombatBlockerMapping:
+    """One reviewed blocking condition expressed as an exact all-of rule."""
+
+    blocker_name: str
+    selectors: Tuple[AlasCombatUnitySelector, ...] = ()
+    evidence_sha256: str = ""
+
+    @property
+    def qualified(self) -> bool:
+        return bool(self.selectors) and _is_sha256(self.evidence_sha256)
+
+
+@dataclass(frozen=True)
 class AlasCombatFleetStatsMapping:
     hp_images: Tuple[AlasCombatUnitySelector, ...] = ()
     level_texts: Tuple[AlasCombatUnitySelector, ...] = ()
@@ -112,8 +124,8 @@ class AlasCombatObserverManifest:
     driver_revision: str
     game_fingerprint: str
     resources: Tuple[AlasCombatResourceMapping, ...]
-    blocker_selectors: Tuple[AlasCombatUnitySelector, ...] = ()
-    blocker_evidence_sha256: str = ""
+    blockers: Tuple[AlasCombatBlockerMapping, ...] = ()
+    blocker_review_complete: bool = False
     fleet_stats: AlasCombatFleetStatsMapping = AlasCombatFleetStatsMapping()
 
 
@@ -122,6 +134,9 @@ class AlasCombatObserverCoverage:
     total_resources: int
     qualified_resources: int
     unqualified_resources: Tuple[str, ...]
+    total_blockers: int
+    qualified_blockers: int
+    blocker_review_complete: bool
     blockers_qualified: bool
     fleet_stats_qualified: bool
 
@@ -204,6 +219,12 @@ def _selector_from_json(value: Any) -> AlasCombatUnitySelector:
     return selector
 
 
+def parse_alas_combat_unity_selector(value: Any) -> AlasCombatUnitySelector:
+    selector = _selector_from_json(value)
+    _validate_selector(selector)
+    return selector
+
+
 def _mapping_from_json(value: Any) -> AlasCombatResourceMapping:
     if not isinstance(value, dict) or set(value) != {
         "resource_name",
@@ -225,6 +246,29 @@ def _mapping_from_json(value: Any) -> AlasCombatResourceMapping:
     )
 
 
+def _blocker_from_json(value: Any) -> AlasCombatBlockerMapping:
+    if not isinstance(value, dict) or set(value) != {
+        "blocker_name",
+        "selectors",
+        "evidence_sha256",
+    }:
+        raise SemanticGateClosed("combat manifest blocker schema changed")
+    selectors = value["selectors"]
+    if not isinstance(selectors, list):
+        raise SemanticGateClosed("combat manifest blocker selectors are malformed")
+    return AlasCombatBlockerMapping(
+        blocker_name=(
+            value["blocker_name"] if isinstance(value["blocker_name"], str) else ""
+        ),
+        selectors=tuple(_selector_from_json(item) for item in selectors),
+        evidence_sha256=(
+            value["evidence_sha256"]
+            if isinstance(value["evidence_sha256"], str)
+            else ""
+        ),
+    )
+
+
 def load_alas_combat_observer_manifest(
     path: Path,
 ) -> AlasCombatObserverManifest:
@@ -240,8 +284,8 @@ def load_alas_combat_observer_manifest(
         "driver_revision",
         "game_fingerprint",
         "resources",
-        "blocker_selectors",
-        "blocker_evidence_sha256",
+        "blockers",
+        "blocker_review_complete",
         "fleet_stats",
     }:
         raise SemanticGateClosed("combat observer manifest schema changed")
@@ -253,12 +297,13 @@ def load_alas_combat_observer_manifest(
             "package",
             "driver_revision",
             "game_fingerprint",
-            "blocker_evidence_sha256",
         )
     ):
         raise SemanticGateClosed("combat observer manifest identity is malformed")
+    if not isinstance(value["blocker_review_complete"], bool):
+        raise SemanticGateClosed("combat blocker review flag is malformed")
     resources = value["resources"]
-    blockers = value["blocker_selectors"]
+    blockers = value["blockers"]
     stats = value["fleet_stats"]
     if not isinstance(resources, list) or not isinstance(blockers, list):
         raise SemanticGateClosed("combat observer manifest lists are malformed")
@@ -279,8 +324,8 @@ def load_alas_combat_observer_manifest(
         driver_revision=value["driver_revision"],
         game_fingerprint=value["game_fingerprint"],
         resources=tuple(_mapping_from_json(item) for item in resources),
-        blocker_selectors=tuple(_selector_from_json(item) for item in blockers),
-        blocker_evidence_sha256=value["blocker_evidence_sha256"],
+        blockers=tuple(_blocker_from_json(item) for item in blockers),
+        blocker_review_complete=value["blocker_review_complete"],
         fleet_stats=AlasCombatFleetStatsMapping(
             hp_images=tuple(_selector_from_json(item) for item in stats["hp_images"]),
             level_texts=tuple(
@@ -291,6 +336,65 @@ def load_alas_combat_observer_manifest(
     )
     audit_alas_combat_observer_manifest(manifest)
     return manifest
+
+
+def alas_combat_unity_selector_to_json(
+    selector: AlasCombatUnitySelector,
+    *,
+    allow_dynamic_text: bool = False,
+) -> Mapping[str, Any]:
+    _validate_selector(selector, allow_dynamic_text=allow_dynamic_text)
+    return {
+        "kind": selector.kind.value,
+        "path": selector.path,
+        "name": selector.name,
+        "sprite": selector.sprite,
+        "text": selector.text,
+        "require_top_raycast": selector.require_top_raycast,
+    }
+
+
+def alas_combat_observer_manifest_to_json(
+    manifest: AlasCombatObserverManifest,
+) -> Mapping[str, Any]:
+    """Serialize only the strict checked-in manifest surface."""
+
+    audit_alas_combat_observer_manifest(manifest)
+
+    def selectors(items: Sequence[AlasCombatUnitySelector]) -> list[Mapping[str, Any]]:
+        return [alas_combat_unity_selector_to_json(item) for item in items]
+
+    return {
+        "schema": ALAS_COMBAT_OBSERVER_MANIFEST_SCHEMA,
+        "package": manifest.package,
+        "driver_revision": manifest.driver_revision,
+        "game_fingerprint": manifest.game_fingerprint,
+        "resources": [
+            {
+                "resource_name": mapping.resource_name,
+                "selectors": selectors(mapping.selectors),
+                "evidence_sha256": mapping.evidence_sha256,
+            }
+            for mapping in manifest.resources
+        ],
+        "blockers": [
+            {
+                "blocker_name": mapping.blocker_name,
+                "selectors": selectors(mapping.selectors),
+                "evidence_sha256": mapping.evidence_sha256,
+            }
+            for mapping in manifest.blockers
+        ],
+        "blocker_review_complete": manifest.blocker_review_complete,
+        "fleet_stats": {
+            "hp_images": selectors(manifest.fleet_stats.hp_images),
+            "level_texts": [
+                alas_combat_unity_selector_to_json(item, allow_dynamic_text=True)
+                for item in manifest.fleet_stats.level_texts
+            ],
+            "evidence_sha256": manifest.fleet_stats.evidence_sha256,
+        },
+    }
 
 
 def audit_alas_combat_observer_manifest(
@@ -307,12 +411,11 @@ def audit_alas_combat_observer_manifest(
         raise SemanticGateClosed("combat observer resource surface changed")
     for mapping in manifest.resources:
         _validate_mapping_shape(mapping)
-    for selector in manifest.blocker_selectors:
-        _validate_selector(selector)
-    if manifest.blocker_evidence_sha256 and not _is_sha256(
-        manifest.blocker_evidence_sha256
-    ):
-        raise SemanticGateClosed("combat blocker evidence hash is malformed")
+    blocker_names = tuple(mapping.blocker_name for mapping in manifest.blockers)
+    if len(blocker_names) != len(set(blocker_names)):
+        raise SemanticGateClosed("combat observer manifest has duplicate blockers")
+    for mapping in manifest.blockers:
+        _validate_blocker_shape(mapping)
     _validate_stats_shape(manifest.fleet_stats)
     unqualified = tuple(
         sorted(
@@ -321,13 +424,21 @@ def audit_alas_combat_observer_manifest(
             if not mapping.qualified
         )
     )
+    qualified_blockers = sum(mapping.qualified for mapping in manifest.blockers)
+    blockers_qualified = (
+        manifest.blocker_review_complete
+        and bool(manifest.blockers)
+        and qualified_blockers == len(manifest.blockers)
+    )
     return AlasCombatObserverCoverage(
         total_resources=len(ALAS_COMBAT_REPLAY_RESOURCE_NAMES),
         qualified_resources=len(ALAS_COMBAT_REPLAY_RESOURCE_NAMES)
         - len(unqualified),
         unqualified_resources=unqualified,
-        blockers_qualified=bool(manifest.blocker_selectors)
-        and _is_sha256(manifest.blocker_evidence_sha256),
+        total_blockers=len(manifest.blockers),
+        qualified_blockers=qualified_blockers,
+        blocker_review_complete=manifest.blocker_review_complete,
+        blockers_qualified=blockers_qualified,
         fleet_stats_qualified=manifest.fleet_stats.qualified,
     )
 
@@ -382,6 +493,20 @@ def _validate_mapping_shape(mapping: AlasCombatResourceMapping) -> None:
             raise SemanticGateClosed(
                 "combat action mapping lacks an exact top-raycast Button"
             )
+
+
+def _validate_blocker_shape(mapping: AlasCombatBlockerMapping) -> None:
+    if not isinstance(mapping, AlasCombatBlockerMapping) or not mapping.blocker_name:
+        raise SemanticGateClosed("combat blocker mapping is malformed")
+    if re.fullmatch(r"[a-z0-9]+(?:_[a-z0-9]+)*", mapping.blocker_name) is None:
+        raise SemanticGateClosed("combat blocker name is malformed")
+    for selector in mapping.selectors:
+        _validate_selector(selector)
+    identities = tuple((selector.kind, selector.path) for selector in mapping.selectors)
+    if len(identities) != len(set(identities)):
+        raise SemanticGateClosed("combat blocker mapping has duplicate selectors")
+    if mapping.evidence_sha256 and not _is_sha256(mapping.evidence_sha256):
+        raise SemanticGateClosed("combat blocker evidence hash is malformed")
 
 
 def _validate_stats_shape(mapping: AlasCombatFleetStatsMapping) -> None:
@@ -457,6 +582,15 @@ def _validate_snapshot(
             raise SemanticGateClosed("combat map observation is generation-incoherent")
 
 
+def validate_alas_combat_observer_snapshot(
+    snapshot: AlasCombatObserverSnapshot,
+    manifest: AlasCombatObserverManifest,
+) -> None:
+    """Revalidate a typed snapshot before an evidence-sensitive operation."""
+
+    _validate_snapshot(snapshot, manifest)
+
+
 def _record_for_selector(
     snapshot: AlasCombatObserverSnapshot,
     selector: AlasCombatUnitySelector,
@@ -503,6 +637,16 @@ def _selector_present(
                 "combat action Button is not exact top-raycast actionable"
             )
     return True
+
+
+def alas_combat_unity_selector_present(
+    snapshot: AlasCombatObserverSnapshot,
+    selector: AlasCombatUnitySelector,
+) -> bool:
+    """Review helper using the same exact matcher as production replay."""
+
+    _validate_selector(selector)
+    return _selector_present(snapshot, selector)
 
 
 def _resource_visible(
@@ -616,9 +760,9 @@ def build_alas_campaign_combat_replay_from_observer(
             )
         previous = snapshot.generation
         active_blockers = tuple(
-            selector.path
-            for selector in manifest.blocker_selectors
-            if _selector_present(snapshot, selector)
+            mapping.blocker_name
+            for mapping in manifest.blockers
+            if all(_selector_present(snapshot, item) for item in mapping.selectors)
         )
         if active_blockers:
             raise SemanticGateClosed(

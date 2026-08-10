@@ -1,0 +1,117 @@
+{
+  "schema": "alas-headless.g22-combat-mapping-receipt/v1",
+  "review_id": "g22-in-map-network-down",
+  "source_trace_sha256": "82ed1d7c76142c3113283d6eec327970eced816aeb2e4b15f4911c38764436f5",
+  "source_frames": [
+    {
+      "sequence": 1,
+      "captured_at_utc": "2026-08-10T06:35:45.585Z",
+      "generation": 137332,
+      "frame_sha256": "d72396de0e99d987a4fcb94e1bd1c7a8c911bccc1b2f972a714c6d3d61f8d288"
+    },
+    {
+      "sequence": 2,
+      "captured_at_utc": "2026-08-10T06:35:45.873Z",
+      "generation": 137335,
+      "frame_sha256": "71b8a411850d2a168db5654abd22baa66dd8b645c3debc9092c2928c394ffaab"
+    },
+    {
+      "sequence": 3,
+      "captured_at_utc": "2026-08-10T06:35:46.026Z",
+      "generation": 137337,
+      "frame_sha256": "34bd41a45a01c1a3ff0ad1bdc526a5b36d568237733858c138edf6eac7f9870d"
+    }
+  ],
+  "manifest_before_sha256": "6fa00f62cbc61ad0a468e8822d0f646a04b1d053bc3d8ded8accf5e923da7384",
+  "manifest_after_sha256": "8f93a9ab9ce1fb4f53c75b1ba75a156ae8f649586c4543ca3294fbf17774bb0a",
+  "resource_promotions": [
+    {
+      "resource_name": "IN_MAP",
+      "match": "all_of",
+      "selectors": [
+        {
+          "kind": "image",
+          "path": "LevelCamera/Canvas/UIMain/LevelGrid/DragLayer/op1/retreat/retreat",
+          "name": "retreat",
+          "sprite": "reteat_popo",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "LevelCamera/Canvas/UIMain/LevelGrid/DragLayer/plane/display/mask/sea",
+          "name": "sea",
+          "sprite": "sea_day",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "LevelCamera/Canvas/LevelOrigin/top/LevelStageView(Clone)/top_stage/back_button/mask/Image",
+          "name": "Image",
+          "sprite": "back_btn",
+          "text": "",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "bb889cce779285bd23d7e8a226c931a5583d83ac4083dd3d95a5a621eb6615d3",
+      "present_in_all_samples": true
+    }
+  ],
+  "blocker_promotions": [
+    {
+      "blocker_name": "network_down",
+      "match": "all_of",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_2(Clone)",
+          "name": "custom_button_2(Clone)",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_2(Clone)/pic",
+          "name": "pic",
+          "sprite": "",
+          "text": "取 消",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/msg_panel/content",
+          "name": "content",
+          "sprite": "",
+          "text": "服务器连接失败，是否重新连接？\n[NetworkDown]",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "e3c5369e2c97e0b28df7af4ea86a166354207a81466864a0204a63f95dfc67b6",
+      "present_in_all_samples": true
+    }
+  ],
+  "blocker_review_complete": false,
+  "coverage_before": {
+    "production_ready": false,
+    "qualified_resources": 0,
+    "total_resources": 38,
+    "qualified_blockers": 0,
+    "total_blockers": 0,
+    "blocker_review_complete": false,
+    "blockers_qualified": false,
+    "fleet_stats_qualified": false
+  },
+  "coverage_after": {
+    "production_ready": false,
+    "qualified_resources": 1,
+    "total_resources": 38,
+    "qualified_blockers": 1,
+    "total_blockers": 1,
+    "blocker_review_complete": false,
+    "blockers_qualified": false,
+    "fleet_stats_qualified": false
+  },
+  "input_injected": false
+}

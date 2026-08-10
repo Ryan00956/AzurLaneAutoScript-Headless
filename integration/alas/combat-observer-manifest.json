@@ -1,5 +1,5 @@
 {
-  "schema": "alas-headless.g21-combat-observer-manifest/v1",
+  "schema": "alas-headless.g22-combat-observer-manifest/v1",
   "package": "com.bilibili.azurlane",
   "driver_revision": "be80ce591a481c12d60c50d6040d40c035b40a2b",
   "game_fingerprint": "9.7.10:9710:x86_64:e6d3ef4baac2509cc97a289b91bfd5f9d0dcd7ad8994880a192298983208699f:e3f1cfc442b67f1d4c9877fd9ceaedc3d68f2842ad677445241b9cc9c05d1c67",
@@ -27,7 +27,36 @@
     {"resource_name": "GET_MISSION", "selectors": [], "evidence_sha256": ""},
     {"resource_name": "GET_SHIP", "selectors": [], "evidence_sha256": ""},
     {"resource_name": "GUILD_POPUP_CONFIRM", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "IN_MAP", "selectors": [], "evidence_sha256": ""},
+    {
+      "resource_name": "IN_MAP",
+      "selectors": [
+        {
+          "kind": "image",
+          "path": "LevelCamera/Canvas/UIMain/LevelGrid/DragLayer/op1/retreat/retreat",
+          "name": "retreat",
+          "sprite": "reteat_popo",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "LevelCamera/Canvas/UIMain/LevelGrid/DragLayer/plane/display/mask/sea",
+          "name": "sea",
+          "sprite": "sea_day",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "LevelCamera/Canvas/LevelOrigin/top/LevelStageView(Clone)/top_stage/back_button/mask/Image",
+          "name": "Image",
+          "sprite": "back_btn",
+          "text": "",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "bb889cce779285bd23d7e8a226c931a5583d83ac4083dd3d95a5a621eb6615d3"
+    },
     {"resource_name": "IN_RETIREMENT_CHECK", "selectors": [], "evidence_sha256": ""},
     {"resource_name": "MAP_AMBUSH_EVADE", "selectors": [], "evidence_sha256": ""},
     {"resource_name": "MAP_CAT_ATTACK", "selectors": [], "evidence_sha256": ""},
@@ -43,8 +72,39 @@
     {"resource_name": "STORY_CLOSE", "selectors": [], "evidence_sha256": ""},
     {"resource_name": "STORY_SKIP_3", "selectors": [], "evidence_sha256": ""}
   ],
-  "blocker_selectors": [],
-  "blocker_evidence_sha256": "",
+  "blockers": [
+    {
+      "blocker_name": "network_down",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_2(Clone)",
+          "name": "custom_button_2(Clone)",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_2(Clone)/pic",
+          "name": "pic",
+          "sprite": "",
+          "text": "取 消",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/msg_panel/content",
+          "name": "content",
+          "sprite": "",
+          "text": "服务器连接失败，是否重新连接？\n[NetworkDown]",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "e3c5369e2c97e0b28df7af4ea86a166354207a81466864a0204a63f95dfc67b6"
+    }
+  ],
+  "blocker_review_complete": false,
   "fleet_stats": {
     "hp_images": [],
     "level_texts": [],

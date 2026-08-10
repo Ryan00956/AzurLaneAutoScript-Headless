@@ -4,11 +4,32 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G22 combat mapping promotion: first real mapping, still fail-closed
+
+- Three complete G21 raw frames at generations `137332`, `137335`, and
+  `137337` prove the same three-anchor `IN_MAP` identity. The versioned
+  manifest now reports exact resource coverage `1/38`.
+- The exact `[NetworkDown]` surface is recorded as one named three-selector
+  all-of blocker: actionable cancel Button, exact `取 消` child, and exact
+  content Text. One selector alone no longer activates a compound blocker.
+- Blocker completeness is a separate explicit gate and remains false. The one
+  verified blocker is partial evidence, fleet HP/levels remain unqualified,
+  and `production_ready=false`.
+- A strict promotion tool binds selected generations, full trace SHA-256,
+  frame hashes, selectors, and before/after manifest hashes into a committed
+  receipt. A separate verifier replays the exact production selector matcher
+  against the raw trace and rejects receipt/frame/manifest drift.
+- Fourteen focused tests and the full `281/281` suite pass. Coverage remains
+  fail-closed; no Android input was used, and the canonical ALAS patch/state
+  machine, G18 production stop, D6, and combat budget are unchanged.
+
+See [G22 combat mapping promotion](g22-alas-combat-mapping-promotion-validation-report.md).
+
 ### G21 combat evidence acquisition: pipeline pass, battle trace blocked
 
-- The 38-resource combat mapping is now a strict versioned JSON manifest;
-  coverage audit reads that file and still honestly reports `0/38`, with
-  blocker and six-ship stat mappings unqualified.
+- At G21, the 38-resource combat mapping became a strict versioned JSON
+  manifest; its audit honestly reported `0/38`, with blocker and six-ship stat
+  mappings unqualified.
 - A package-verified, input-free recorder persists coherent raw snapshot,
   Button, and UI triples with per-frame SHA-256, increasing generations,
   atomic output, and rejection reasons. Trace files cannot contain phase
@@ -43,9 +64,9 @@ See [G21 combat trace pipeline](g21-alas-combat-trace-pipeline-validation-report
 - A test-only complete six-frame fixture drives the same G19 replay without a
   phase field. Tampering, unqualified coverage, active blocker, non-top
   raycast, and resource-surface drift fail closed.
-- The honest live manifest remains `0/38`, with blockers and six-ship HP/level
+- The G20 live manifest was `0/38`, with blockers and six-ship HP/level
   mappings also unqualified. Therefore `production_ready=false`, the canonical
-  ALAS patch is unchanged, and D6 input remains closed at G18.
+  ALAS patch was unchanged, and D6 input remained closed at G18.
 - The suite passes `275/275`. Current read-only generations
   `119693..119695` remained complete (`96` Buttons, `60` Texts, `320` Images)
   and still showed the exact `[NetworkDown]` text; no input was injected.

@@ -8,10 +8,12 @@ from unittest import mock
 
 from alas_headless import (
     ALAS_COMBAT_OBSERVER_FIXTURE_SCHEMA,
+    ALAS_COMBAT_MAPPING_RECEIPT_SCHEMA,
     ALAS_COMBAT_OBSERVER_TRACE_SCHEMA,
     ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES,
     ALAS_COMBAT_REPLAY_RESOURCE_NAMES,
     AlasCampaignCombatAdmission,
+    AlasCombatBlockerMapping,
     AlasCombatFleetStatsMapping,
     AlasCombatObserverManifest,
     AlasCombatResourceMapping,
@@ -30,8 +32,10 @@ from alas_headless import (
     load_alas_combat_observer_manifest,
     parse_alas_combat_observer_fixture_frame,
     parse_alas_combat_observer_trace,
+    promote_alas_combat_mapping_review,
     select_alas_combat_observer_trace_samples,
     unqualified_alas_combat_observer_manifest,
+    verify_alas_combat_mapping_receipt,
 )
 
 
@@ -93,8 +97,14 @@ def qualified_manifest(blockers=None):
             AlasCombatResourceMapping(name, (selector_for(name),), EVIDENCE)
             for name in ALAS_COMBAT_REPLAY_RESOURCE_NAMES
         ),
-        blocker_selectors=tuple(blockers),
-        blocker_evidence_sha256=EVIDENCE,
+        blockers=(
+            AlasCombatBlockerMapping(
+                "test_blocker",
+                tuple(blockers),
+                EVIDENCE,
+            ),
+        ),
+        blocker_review_complete=True,
         fleet_stats=AlasCombatFleetStatsMapping(hp, levels, EVIDENCE),
     )
 
@@ -368,7 +378,7 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
         return path
 
-    def test_checked_in_manifest_is_honestly_zero_of_38(self):
+    def test_unqualified_manifest_is_honestly_zero_of_38(self):
         coverage = audit_alas_combat_observer_manifest(
             unqualified_alas_combat_observer_manifest(
                 driver_revision=DRIVER, game_fingerprint=GAME
@@ -457,6 +467,40 @@ class AlasCombatObserverContractTests(unittest.TestCase):
                 admission(), snapshots, manifest
             )
 
+    def test_compound_blocker_requires_every_exact_selector(self):
+        active = AlasCombatUnitySelector(
+            AlasCombatUnityRecordKind.IMAGE,
+            "Combat/Image/AUTOMATION_ON",
+            "AUTOMATION_ON",
+            sprite="sprite_automation_on",
+        )
+        absent = AlasCombatUnitySelector(
+            AlasCombatUnityRecordKind.TEXT,
+            "Combat/Blocker/NetworkDown/content",
+            "content",
+            text="[NetworkDown]",
+        )
+        manifest = qualified_manifest()
+        manifest = replace(
+            manifest,
+            blockers=(
+                AlasCombatBlockerMapping(
+                    "network_down",
+                    (active, absent),
+                    EVIDENCE,
+                ),
+            ),
+        )
+        snapshots = load_alas_combat_observer_fixture(
+            self.write_fixture(fixture_value()), manifest
+        )
+
+        replay = build_alas_campaign_combat_replay_from_observer(
+            admission(), snapshots, manifest
+        )
+
+        self.assertEqual(len(replay.frames), 6)
+
     def test_removed_resource_mapping_is_surface_drift(self):
         manifest = qualified_manifest()
         with self.assertRaisesRegex(SemanticGateClosed, "surface changed"):
@@ -464,7 +508,7 @@ class AlasCombatObserverContractTests(unittest.TestCase):
                 replace(manifest, resources=manifest.resources[:-1])
             )
 
-    def test_versioned_json_manifest_preserves_zero_of_38(self):
+    def test_versioned_json_manifest_preserves_partial_fail_closed_coverage(self):
         root = Path(__file__).resolve().parents[1]
         manifest = load_alas_combat_observer_manifest(
             root / "integration" / "alas" / "combat-observer-manifest.json"
@@ -472,7 +516,10 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         coverage = audit_alas_combat_observer_manifest(manifest)
 
         self.assertEqual(coverage.total_resources, 38)
-        self.assertEqual(coverage.qualified_resources, 0)
+        self.assertEqual(coverage.qualified_resources, 1)
+        self.assertEqual(coverage.qualified_blockers, 1)
+        self.assertFalse(coverage.blocker_review_complete)
+        self.assertFalse(coverage.blockers_qualified)
         self.assertFalse(coverage.production_ready)
 
     @staticmethod
@@ -579,6 +626,101 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         self.assertIsNone(compiled["frames"][3]["campaign_map"])
         self.assertIsNotNone(compiled["frames"][4]["campaign_map"])
         self.assertEqual(compiled["frames"][5]["campaign_map"]["stage_code"], "12-4")
+
+    def test_mapping_review_promotes_only_records_present_in_every_frame(self):
+        qualified, frames, _ = self.trace_frames()
+        baseline = replace(
+            qualified,
+            resources=tuple(
+                (
+                    AlasCombatResourceMapping(mapping.resource_name)
+                    if mapping.resource_name == "IN_MAP"
+                    else mapping
+                )
+                for mapping in qualified.resources
+            ),
+            blockers=(),
+            blocker_review_complete=False,
+        )
+        trace = parse_alas_combat_observer_trace(
+            build_alas_combat_observer_trace(
+                baseline,
+                tuple(
+                    ("2026-08-10T07:00:{0:02d}Z".format(index), frame)
+                    for index, frame in enumerate(frames, start=1)
+                ),
+            ),
+            baseline,
+        )
+        selector = selector_for("IN_MAP")
+        selector_json = {
+            "kind": selector.kind.value,
+            "path": selector.path,
+            "name": selector.name,
+            "sprite": selector.sprite,
+            "text": selector.text,
+            "require_top_raycast": selector.require_top_raycast,
+        }
+        review = {
+            "schema": "alas-headless.g22-combat-mapping-review/v1",
+            "review_id": "unit-in-map",
+            "trace_sha256": EVIDENCE,
+            "generations": [15, 16],
+            "resources": [{"resource_name": "IN_MAP", "selectors": [selector_json]}],
+            "blockers": [{"blocker_name": "map_overlay", "selectors": [selector_json]}],
+            "blocker_review_complete": False,
+        }
+
+        promoted, receipt = promote_alas_combat_mapping_review(
+            baseline,
+            trace,
+            review,
+            source_trace_sha256=EVIDENCE,
+        )
+        coverage = audit_alas_combat_observer_manifest(promoted)
+
+        self.assertEqual(receipt["schema"], ALAS_COMBAT_MAPPING_RECEIPT_SCHEMA)
+        self.assertEqual(coverage.qualified_resources, 38)
+        self.assertEqual(coverage.qualified_blockers, 1)
+        self.assertFalse(coverage.blockers_qualified)
+        self.assertFalse(coverage.production_ready)
+        self.assertFalse(receipt["input_injected"])
+        verified = verify_alas_combat_mapping_receipt(
+            promoted,
+            trace,
+            receipt,
+            source_trace_sha256=EVIDENCE,
+        )
+        self.assertTrue(verified["passed"])
+        self.assertEqual(verified["verified_resources"], 1)
+        self.assertEqual(verified["verified_blockers"], 1)
+        idempotent, _ = promote_alas_combat_mapping_review(
+            promoted,
+            trace,
+            review,
+            source_trace_sha256=EVIDENCE,
+        )
+        self.assertEqual(idempotent, promoted)
+
+        tampered_receipt = json.loads(json.dumps(receipt))
+        tampered_receipt["source_frames"][0]["frame_sha256"] = "0" * 64
+        with self.assertRaisesRegex(SemanticGateClosed, "frame identity changed"):
+            verify_alas_combat_mapping_receipt(
+                promoted,
+                trace,
+                tampered_receipt,
+                source_trace_sha256=EVIDENCE,
+            )
+
+        changed = json.loads(json.dumps(review))
+        changed["resources"][0]["selectors"][0]["sprite"] = "drifted"
+        with self.assertRaisesRegex(SemanticGateClosed, "selector is absent"):
+            promote_alas_combat_mapping_review(
+                baseline,
+                trace,
+                changed,
+                source_trace_sha256=EVIDENCE,
+            )
 
 
 if __name__ == "__main__":

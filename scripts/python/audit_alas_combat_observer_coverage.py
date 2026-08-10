@@ -39,12 +39,15 @@ def main() -> int:
     print(
         json.dumps(
             {
-                "schema": "alas-headless.g20-combat-observer-coverage/v1",
+                "schema": "alas-headless.g22-combat-observer-coverage/v1",
                 "contract_valid": coverage.total_resources == 38,
                 "production_ready": coverage.production_ready,
                 "qualified_resources": coverage.qualified_resources,
                 "total_resources": coverage.total_resources,
                 "unqualified_resources": coverage.unqualified_resources,
+                "qualified_blockers": coverage.qualified_blockers,
+                "total_blockers": coverage.total_blockers,
+                "blocker_review_complete": coverage.blocker_review_complete,
                 "blockers_qualified": coverage.blockers_qualified,
                 "fleet_stats_qualified": coverage.fleet_stats_qualified,
                 "phase_positive_resources": {

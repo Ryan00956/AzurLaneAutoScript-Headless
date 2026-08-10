@@ -1,0 +1,69 @@
+{
+  "schema": "alas-headless.g22-combat-mapping-review/v1",
+  "review_id": "g22-in-map-network-down",
+  "trace_sha256": "82ed1d7c76142c3113283d6eec327970eced816aeb2e4b15f4911c38764436f5",
+  "generations": [137332, 137335, 137337],
+  "resources": [
+    {
+      "resource_name": "IN_MAP",
+      "selectors": [
+        {
+          "kind": "image",
+          "path": "LevelCamera/Canvas/UIMain/LevelGrid/DragLayer/op1/retreat/retreat",
+          "name": "retreat",
+          "sprite": "reteat_popo",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "LevelCamera/Canvas/UIMain/LevelGrid/DragLayer/plane/display/mask/sea",
+          "name": "sea",
+          "sprite": "sea_day",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "LevelCamera/Canvas/LevelOrigin/top/LevelStageView(Clone)/top_stage/back_button/mask/Image",
+          "name": "Image",
+          "sprite": "back_btn",
+          "text": "",
+          "require_top_raycast": false
+        }
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "blocker_name": "network_down",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_2(Clone)",
+          "name": "custom_button_2(Clone)",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_2(Clone)/pic",
+          "name": "pic",
+          "sprite": "",
+          "text": "取 消",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/msg_panel/content",
+          "name": "content",
+          "sprite": "",
+          "text": "服务器连接失败，是否重新连接？\n[NetworkDown]",
+          "require_top_raycast": false
+        }
+      ]
+    }
+  ],
+  "blocker_review_complete": false
+}

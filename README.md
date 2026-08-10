@@ -64,6 +64,9 @@ manifest are documented in the
 The input-free raw trace, candidate-diff, and frozen-fixture acquisition
 pipeline is documented in the
 [G21 validation report](docs/g21-alas-combat-trace-pipeline-validation-report.md).
+The first evidence-bound mapping promotion and compound blocker contract are
+documented in the
+[G22 validation report](docs/g22-alas-combat-mapping-promotion-validation-report.md).
 
 G1, G2, G3, and the formal G4 harmless closed loop passed. G4 includes
 EventSystem top-raycast proof for every injected target, not only object state
@@ -107,12 +110,14 @@ G19 qualification then drives ALAS's original combat preparation, execution,
 status, enemy-searching, arrival, and native-map mutation logic with six
 strict typed replay phases and four virtual actions. G20 can reconstruct those
 phases only from six complete, hash-bound raw Unity snapshots and an exact
-38-resource mapping; it rejects fixture phase labels. The current live mapping
-coverage is honestly `0/38`, so production remains at the G18 capture boundary.
-G21 makes that gap operationally fillable through a versioned mapping manifest,
-package-verified raw trace recorder, exact six-generation selection, and
-offline map/fixture compilation; the current recurrent network dialog still
-prevents a real battle trace. Lua/game-state coverage,
+38-resource mapping; it rejects fixture phase labels. G21 makes that gap
+operationally fillable through a versioned mapping manifest, package-verified
+raw trace recorder, exact six-generation selection, and offline map/fixture
+compilation. G22 evidence-binds the first real `IN_MAP` mapping and an exact
+compound `network_down` blocker across three complete raw frames. Coverage is
+honestly `1/38`; blocker review and fleet stats remain incomplete, so
+production remains at the G18 capture boundary and the recurrent network
+dialog still prevents a real battle trace. Lua/game-state coverage,
 formation-layout changes, campaign movement execution, battle state,
 weekly-only end-to-end
 coverage, repeated sorties, and full unattended ALAS task coverage remain
