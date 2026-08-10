@@ -66,6 +66,15 @@ A reversible retreat popup promotes generic cancel/confirm observations and
 their two exact actions without retreating. Current coverage is canonical
 `13/41`, defensive `14/52`, and actions `9/37`; branch and blocker review remain
 incomplete, `production_ready=false`, and production still stops at G18.
+G27 corrects the pinned surface to 54 queries and 38 action targets after a
+source audit finds `EXERCISE_CHECK` and `STORY_LETTERS_ONLY`. Manifest v3 allows
+mutually exclusive evidence-bound Unity variants under one original-ALAS
+target; it does not move branching into the adapter. Repeated historical frames
+qualify campaign, map-preparation, fleet-preparation, and preparation-under-
+overlay resources. Current coverage is canonical `16/41`, defensive `18/54`,
+actions `12/38`, and blockers `1/4`. Ambush, retirement, and story branch roots
+are explicit but incomplete, so `production_ready=false` and production still
+stops at G18.
 G4 includes
 login/main reachability, sustained semantic state, RectTransform bounds, top
 EventSystem raycast identity for each action, and a settings-page return loop.

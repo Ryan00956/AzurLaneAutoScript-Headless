@@ -1,0 +1,41 @@
+{
+  "schema": "alas-headless.g27-combat-mapping-review/v3",
+  "review_id": "g27-12-4-battle-preparation-overlay",
+  "trace_sha256": "6eb9043ed54138571cdc19522eab5ae29a5e9b259ba9db2f74e9ef138e56e4e9",
+  "generations": [7608, 7613, 7618],
+  "resources": [
+    {
+      "resource_name": "BATTLE_PREPARATION_WITH_OVERLAY",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "LevelCamera/Canvas/LevelOrigin/ChapterPreCombatUI(Clone)/adapt/right/start",
+          "name": "start",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/help_panel/list/help_tpl/icon",
+          "name": "icon",
+          "sprite": "zilv",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/top/bg/infomation/title_en",
+          "name": "title_en",
+          "sprite": "",
+          "text": "INFORMATION",
+          "require_top_raycast": false
+        }
+      ]
+    }
+  ],
+  "actions": [],
+  "branch_review_complete": false,
+  "blockers": [],
+  "blocker_review_complete": false
+}

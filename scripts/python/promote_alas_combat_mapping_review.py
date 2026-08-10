@@ -68,7 +68,7 @@ def main() -> int:
     print(
         json.dumps(
             {
-                "schema": "alas-headless.g26-combat-mapping-promotion-result/v2",
+                "schema": "alas-headless.g27-combat-mapping-promotion-result/v3",
                 "passed": True,
                 "manifest": str(args.output_manifest.resolve()),
                 "receipt": str(args.receipt.resolve()),

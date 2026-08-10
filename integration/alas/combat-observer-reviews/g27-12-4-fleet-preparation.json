@@ -1,0 +1,62 @@
+{
+  "schema": "alas-headless.g27-combat-mapping-review/v3",
+  "review_id": "g27-12-4-fleet-preparation",
+  "trace_sha256": "81b2534068d2da24ed67588e8426ddaf7f17fa23c7190a25fb3ef20360040fb2",
+  "generations": [16412, 16422, 16431],
+  "resources": [
+    {
+      "resource_name": "FLEET_PREPARATION",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/LevelFleetSelectView(Clone)/panel/Fixed/start_button",
+          "name": "start_button",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/LevelFleetSelectView(Clone)/panel/Fixed/btnBack",
+          "name": "btnBack",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "action_name": "FLEET_PREPARATION",
+      "variant_id": "fleet-preparation",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/LevelFleetSelectView(Clone)/panel/Fixed/start_button",
+          "name": "start_button",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        }
+      ]
+    },
+    {
+      "action_name": "MAP_PREPARATION_CANCEL",
+      "variant_id": "fleet-preparation",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/LevelFleetSelectView(Clone)/panel/Fixed/btnBack",
+          "name": "btnBack",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        }
+      ]
+    }
+  ],
+  "branch_review_complete": false,
+  "blockers": [],
+  "blocker_review_complete": false
+}

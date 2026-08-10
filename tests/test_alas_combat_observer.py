@@ -18,6 +18,7 @@ from alas_headless import (
     ALAS_COMBAT_REPLAY_RESOURCE_NAMES,
     AlasCampaignCombatAdmission,
     AlasCombatActionMapping,
+    AlasCombatActionVariant,
     AlasCombatBlockerMapping,
     AlasCombatFleetStatsMapping,
     AlasCombatObserverManifest,
@@ -454,9 +455,9 @@ class AlasCombatObserverContractTests(unittest.TestCase):
 
         self.assertEqual(coverage.canonical_resources, 41)
         self.assertEqual(coverage.canonical_qualified_resources, 0)
-        self.assertEqual(coverage.total_resources, 52)
+        self.assertEqual(coverage.total_resources, 54)
         self.assertEqual(coverage.qualified_resources, 0)
-        self.assertEqual(coverage.total_actions, 37)
+        self.assertEqual(coverage.total_actions, 38)
         self.assertEqual(coverage.qualified_actions, 0)
         self.assertFalse(coverage.branch_review_complete)
         self.assertFalse(coverage.production_ready)
@@ -731,7 +732,7 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         manifest = unqualified_alas_combat_observer_manifest(
             driver_revision=DRIVER, game_fingerprint=GAME
         )
-        with self.assertRaisesRegex(SemanticGateClosed, "0/52"):
+        with self.assertRaisesRegex(SemanticGateClosed, "0/54"):
             build_alas_campaign_combat_replay_from_observer(
                 admission(), (), manifest
             )
@@ -782,6 +783,92 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         self.assertEqual(receipt.generation, 20)
         self.assertEqual(receipt.path, "Combat/Button/BATTLE_STATUS_S")
         self.assertEqual(receipt.point, Point(100.0, 100.0))
+
+    def test_action_variants_resolve_exclusively_and_fail_closed_on_overlap(self):
+        manifest = qualified_manifest()
+        resource_selector = AlasCombatUnitySelector(
+            AlasCombatUnityRecordKind.IMAGE,
+            "Combat/Image/BATTLE_STATUS_S",
+            "BATTLE_STATUS_S",
+            sprite="sprite_battle_status_s",
+        )
+        variant_a_selector = AlasCombatUnitySelector(
+            AlasCombatUnityRecordKind.BUTTON,
+            "Combat/Button/BATTLE_STATUS_S_A",
+            "BATTLE_STATUS_S_A",
+            require_top_raycast=True,
+        )
+        variant_b_selector = AlasCombatUnitySelector(
+            AlasCombatUnityRecordKind.BUTTON,
+            "Combat/Button/BATTLE_STATUS_S_B",
+            "BATTLE_STATUS_S_B",
+            require_top_raycast=True,
+        )
+        manifest = replace(
+            manifest,
+            resources=tuple(
+                AlasCombatResourceMapping(
+                    "BATTLE_STATUS_S", (resource_selector,), EVIDENCE
+                )
+                if mapping.resource_name == "BATTLE_STATUS_S"
+                else mapping
+                for mapping in manifest.resources
+            ),
+            actions=tuple(
+                AlasCombatActionMapping(
+                    "BATTLE_STATUS_S",
+                    variants=(
+                        AlasCombatActionVariant(
+                            "page-a", (variant_a_selector,), EVIDENCE
+                        ),
+                        AlasCombatActionVariant(
+                            "page-b", (variant_b_selector,), EVIDENCE
+                        ),
+                    ),
+                )
+                if mapping.action_name == "BATTLE_STATUS_S"
+                else mapping
+                for mapping in manifest.actions
+            ),
+        )
+
+        def snapshot_for(*variant_names):
+            value = frame(20, ())
+            value["ui"]["images"].append(image_record("BATTLE_STATUS_S"))
+            value["ui"]["image_count"] += 1
+            value["buttons"]["buttons"].extend(
+                button_record(name) for name in variant_names
+            )
+            value["buttons"]["button_count"] += len(variant_names)
+            payload = {
+                key: value[key]
+                for key in ("snapshot", "buttons", "ui", "campaign_map")
+            }
+            value["sha256"] = hashlib.sha256(
+                json.dumps(
+                    payload,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            return parse_alas_combat_observer_fixture_frame(value, manifest)
+
+        receipt_a = prepare_alas_combat_resource_action(
+            snapshot_for("BATTLE_STATUS_S_A"), manifest, "BATTLE_STATUS_S"
+        )
+        receipt_b = prepare_alas_combat_resource_action(
+            snapshot_for("BATTLE_STATUS_S_B"), manifest, "BATTLE_STATUS_S"
+        )
+
+        self.assertEqual(receipt_a.path, variant_a_selector.path)
+        self.assertEqual(receipt_b.path, variant_b_selector.path)
+        with self.assertRaisesRegex(SemanticGateClosed, "exact visible variant"):
+            prepare_alas_combat_resource_action(
+                snapshot_for("BATTLE_STATUS_S_A", "BATTLE_STATUS_S_B"),
+                manifest,
+                "BATTLE_STATUS_S",
+            )
 
     def test_reviewed_action_rejects_active_blocker_and_competing_action(self):
         blocked_manifest = qualified_manifest(
@@ -839,6 +926,24 @@ class AlasCombatObserverContractTests(unittest.TestCase):
 
     def test_live_evidence_action_requires_two_stable_generations_then_taps_once(self):
         manifest = qualified_manifest()
+        manifest = replace(
+            manifest,
+            actions=tuple(
+                AlasCombatActionMapping(
+                    "BATTLE_STATUS_S",
+                    variants=(
+                        AlasCombatActionVariant(
+                            "result-s",
+                            (selector_for("BATTLE_STATUS_S"),),
+                            EVIDENCE,
+                        ),
+                    ),
+                )
+                if mapping.action_name == "BATTLE_STATUS_S"
+                else mapping
+                for mapping in manifest.actions
+            ),
+        )
         frames = (
             frame(20, ("BATTLE_STATUS_S",)),
             frame(21, ("BATTLE_STATUS_S",)),
@@ -893,6 +998,7 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         self.assertEqual(bridge.taps, [(100, 100)])
         self.assertEqual(commit.first_generation, 20)
         self.assertEqual(commit.commit_generation, 21)
+        self.assertEqual(commit.action_variant_id, "result-s")
         self.assertEqual(commit.receipt.semantic_id, "combat/resource/BATTLE_STATUS_S")
 
     def test_live_evidence_action_rejects_wrong_pid_before_read_or_tap(self):
@@ -1052,14 +1158,15 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         coverage = audit_alas_combat_observer_manifest(manifest)
 
         self.assertEqual(coverage.canonical_resources, 41)
-        self.assertEqual(coverage.canonical_qualified_resources, 13)
-        self.assertEqual(coverage.total_resources, 52)
-        self.assertEqual(coverage.qualified_resources, 14)
-        self.assertEqual(coverage.total_actions, 37)
-        self.assertEqual(coverage.qualified_actions, 9)
+        self.assertEqual(coverage.canonical_qualified_resources, 16)
+        self.assertEqual(coverage.total_resources, 54)
+        self.assertEqual(coverage.qualified_resources, 18)
+        self.assertEqual(coverage.total_actions, 38)
+        self.assertEqual(coverage.qualified_actions, 12)
         self.assertFalse(coverage.branch_review_complete)
         self.assertTrue(coverage.fleet_stats_qualified)
         self.assertEqual(coverage.qualified_blockers, 1)
+        self.assertEqual(coverage.total_blockers, 4)
         self.assertFalse(coverage.blocker_review_complete)
         self.assertFalse(coverage.blockers_qualified)
         self.assertFalse(coverage.production_ready)
@@ -1304,7 +1411,7 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         coverage = audit_alas_combat_observer_manifest(promoted)
 
         self.assertEqual(receipt["schema"], ALAS_COMBAT_MAPPING_RECEIPT_SCHEMA)
-        self.assertEqual(coverage.qualified_resources, 52)
+        self.assertEqual(coverage.qualified_resources, 54)
         self.assertEqual(coverage.qualified_blockers, 1)
         self.assertFalse(coverage.blockers_qualified)
         self.assertFalse(coverage.production_ready)
@@ -1345,6 +1452,90 @@ class AlasCombatObserverContractTests(unittest.TestCase):
                 changed,
                 source_trace_sha256=EVIDENCE,
             )
+
+    def test_mapping_review_appends_and_verifies_an_action_variant(self):
+        manifest = qualified_manifest()
+        selector = AlasCombatUnitySelector(
+            AlasCombatUnityRecordKind.BUTTON,
+            "Combat/Button/POPUP_CANCEL_MODAL",
+            "POPUP_CANCEL_MODAL",
+            require_top_raycast=True,
+        )
+
+        def review_frame(generation):
+            value = frame(generation, ("POPUP_CANCEL",))
+            value["buttons"]["buttons"].append(button_record("POPUP_CANCEL_MODAL"))
+            value["buttons"]["button_count"] += 1
+            payload = {
+                key: value[key]
+                for key in ("snapshot", "buttons", "ui", "campaign_map")
+            }
+            value["sha256"] = hashlib.sha256(
+                json.dumps(
+                    payload,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            return value
+
+        frames = tuple(review_frame(generation) for generation in (31, 32, 33))
+        trace = parse_alas_combat_observer_trace(
+            build_alas_combat_observer_trace(
+                manifest,
+                tuple(
+                    (
+                        "2026-08-10T07:30:{0:02d}Z".format(index),
+                        value,
+                    )
+                    for index, value in enumerate(frames, start=1)
+                ),
+            ),
+            manifest,
+        )
+        review = {
+            "schema": ALAS_COMBAT_MAPPING_REVIEW_SCHEMA,
+            "review_id": "unit-popup-cancel-variant",
+            "trace_sha256": EVIDENCE,
+            "generations": [31, 32, 33],
+            "resources": [],
+            "actions": [
+                {
+                    "action_name": "POPUP_CANCEL",
+                    "variant_id": "modal",
+                    "selectors": [
+                        alas_combat_unity_selector_to_json(selector)
+                    ],
+                }
+            ],
+            "branch_review_complete": True,
+            "blockers": [],
+            "blocker_review_complete": True,
+        }
+
+        promoted, receipt = promote_alas_combat_mapping_review(
+            manifest,
+            trace,
+            review,
+            source_trace_sha256=EVIDENCE,
+        )
+        action = next(
+            item for item in promoted.actions if item.action_name == "POPUP_CANCEL"
+        )
+
+        self.assertEqual(
+            tuple(variant.variant_id for variant in action.resolved_variants),
+            ("default", "modal"),
+        )
+        self.assertEqual(receipt["action_promotions"][0]["variant_id"], "modal")
+        verified = verify_alas_combat_mapping_receipt(
+            promoted,
+            trace,
+            receipt,
+            source_trace_sha256=EVIDENCE,
+        )
+        self.assertEqual(verified["verified_action_variants"], 1)
 
     def test_mapping_review_promotes_ordered_clone_fleet_stats(self):
         manifest = replace(

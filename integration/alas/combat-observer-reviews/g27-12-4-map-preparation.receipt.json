@@ -1,0 +1,123 @@
+{
+  "schema": "alas-headless.g27-combat-mapping-receipt/v3",
+  "review_id": "g27-12-4-map-preparation",
+  "source_trace_sha256": "81b2534068d2da24ed67588e8426ddaf7f17fa23c7190a25fb3ef20360040fb2",
+  "source_frames": [
+    {
+      "sequence": 18,
+      "captured_at_utc": "2026-08-10T09:39:45.995Z",
+      "generation": 16373,
+      "frame_sha256": "ba41de3dd9ccd653ab84b8d84d9868c26df066c674dbe9e4f001cbdfd9fabc6d"
+    },
+    {
+      "sequence": 19,
+      "captured_at_utc": "2026-08-10T09:39:46.519Z",
+      "generation": 16384,
+      "frame_sha256": "cf9a0ad25e8a652eaf20deb6571db403faf0c9194a252f7c2a2d55b56e5b5764"
+    },
+    {
+      "sequence": 20,
+      "captured_at_utc": "2026-08-10T09:39:47.025Z",
+      "generation": 16394,
+      "frame_sha256": "2fbfc2d246a87401945763ad0cf5781fc5440e346d4d46524df481432ffc8d12"
+    }
+  ],
+  "manifest_before_sha256": "63e9d04e0938bd5d9c099b0739e9c55e88bf3be31f27890865fe416477d03ff2",
+  "manifest_after_sha256": "63e9d04e0938bd5d9c099b0739e9c55e88bf3be31f27890865fe416477d03ff2",
+  "resource_promotions": [
+    {
+      "resource_name": "MAP_PREPARATION",
+      "match": "all_of",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/LevelStageInfoView(Clone)/panel/start_button",
+          "name": "start_button",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/LevelStageInfoView(Clone)/panel/title_form/title_index",
+          "name": "title_index",
+          "sprite": "",
+          "text": "12–4  ",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "a2bc482d2da8b1a082768b1f397da5fffe29878ffc55ab83e5160d1ec01c07b5",
+      "present_in_all_samples": true
+    }
+  ],
+  "action_promotions": [
+    {
+      "action_name": "MAP_PREPARATION",
+      "variant_id": "map-preparation",
+      "match": "all_of_with_exactly_one_control",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/LevelStageInfoView(Clone)/panel/start_button",
+          "name": "start_button",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        }
+      ],
+      "evidence_sha256": "5867df661b2ceafc92a586f922bfb7c89edb42fcda0d1385c4c6ab856a3f9bf3",
+      "present_in_all_samples": true
+    },
+    {
+      "action_name": "MAP_PREPARATION_CANCEL",
+      "variant_id": "map-preparation",
+      "match": "all_of_with_exactly_one_control",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/LevelStageInfoView(Clone)/panel/btnBack",
+          "name": "btnBack",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        }
+      ],
+      "evidence_sha256": "f9da73b8c18f8206b2bbf7ba61a9e7fa027666967a1b6bdf8c160010dce94568",
+      "present_in_all_samples": true
+    }
+  ],
+  "branch_review_complete": false,
+  "blocker_promotions": [],
+  "blocker_review_complete": false,
+  "coverage_before": {
+    "production_ready": false,
+    "canonical_qualified_resources": 16,
+    "canonical_resources": 41,
+    "qualified_resources": 18,
+    "total_resources": 54,
+    "qualified_actions": 12,
+    "total_actions": 38,
+    "branch_review_complete": false,
+    "qualified_blockers": 1,
+    "total_blockers": 4,
+    "blocker_review_complete": false,
+    "blockers_qualified": false,
+    "fleet_stats_qualified": true
+  },
+  "coverage_after": {
+    "production_ready": false,
+    "canonical_qualified_resources": 16,
+    "canonical_resources": 41,
+    "qualified_resources": 18,
+    "total_resources": 54,
+    "qualified_actions": 12,
+    "total_actions": 38,
+    "branch_review_complete": false,
+    "qualified_blockers": 1,
+    "total_blockers": 4,
+    "blocker_review_complete": false,
+    "blockers_qualified": false,
+    "fleet_stats_qualified": true
+  },
+  "input_injected": false
+}

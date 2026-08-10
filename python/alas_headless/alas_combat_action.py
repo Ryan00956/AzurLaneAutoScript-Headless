@@ -13,7 +13,10 @@ from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Optional, Tuple
 
 from .alas_combat_observer import (
+    AlasCombatActionMapping,
     AlasCombatObserverManifest,
+    AlasCombatObserverSnapshot,
+    alas_combat_unity_selector_present,
     prepare_alas_combat_resource_action,
 )
 from .alas_combat_state_replay import ALAS_COMBAT_RESOURCE_ACTION_TARGETS
@@ -22,7 +25,7 @@ from .semantic_oracle import ActionReceipt, SemanticGateClosed
 
 
 ALAS_COMBAT_RESOURCE_ACTION_COMMIT_SCHEMA = (
-    "alas-headless.g26-combat-resource-action-commit/v2"
+    "alas-headless.g27-combat-resource-action-commit/v3"
 )
 
 
@@ -32,6 +35,7 @@ class AlasCombatResourceActionCommit:
 
     resource_name: str
     action_name: str
+    action_variant_id: str
     pid: int
     first_generation: int
     commit_generation: int
@@ -46,7 +50,7 @@ def _mapping_evidence(
     manifest: AlasCombatObserverManifest,
     resource_name: str,
     action_name: Optional[str],
-) -> Tuple[str, str, str]:
+) -> Tuple[str, str, AlasCombatActionMapping]:
     resource_matches = tuple(
         mapping
         for mapping in manifest.resources
@@ -75,8 +79,33 @@ def _mapping_evidence(
     return (
         action_name,
         resource_matches[0].evidence_sha256,
-        action_matches[0].evidence_sha256,
+        action_matches[0],
     )
+
+
+def _action_variant_evidence(
+    mapping: AlasCombatActionMapping,
+    snapshot: AlasCombatObserverSnapshot,
+    path: str,
+) -> Tuple[str, str]:
+    matches = tuple(
+        variant
+        for variant in mapping.resolved_variants
+        if variant.qualified
+        and any(
+            selector.require_top_raycast and selector.path == path
+            for selector in variant.selectors
+        )
+        and all(
+            alas_combat_unity_selector_present(snapshot, selector)
+            for selector in variant.selectors
+        )
+    )
+    if len(matches) != 1 or not matches[0].qualified:
+        raise SemanticGateClosed(
+            "combat action receipt is not bound to one qualified variant"
+        )
+    return matches[0].variant_id, matches[0].evidence_sha256
 
 
 def _read_action(
@@ -155,7 +184,7 @@ def commit_alas_combat_resource_action_for_evidence(
     if bridge.foreground_component() != component:
         raise SemanticGateClosed("combat evidence game is not top-resumed")
 
-    resolved_action, resource_evidence, action_evidence = _mapping_evidence(
+    resolved_action, resource_evidence, action_mapping = _mapping_evidence(
         manifest, resource_name, action_name
     )
     first_frame, first_snapshot, first_receipt = _read_action(
@@ -165,6 +194,9 @@ def commit_alas_combat_resource_action_for_evidence(
         raise SemanticGateClosed("combat evidence snapshot process changed")
     if first_snapshot.generation <= minimum_generation:
         raise SemanticGateClosed("combat evidence generation did not advance")
+    action_variant_id, action_evidence = _action_variant_evidence(
+        action_mapping, first_snapshot, first_receipt.path
+    )
     second_frame: Optional[Mapping[str, Any]] = None
     second_snapshot = None
     second_receipt: Optional[ActionReceipt] = None
@@ -194,6 +226,14 @@ def commit_alas_combat_resource_action_for_evidence(
         raise SemanticGateClosed(
             "combat evidence action did not obtain an increasing generation"
         )
+    second_variant_id, second_action_evidence = _action_variant_evidence(
+        action_mapping, second_snapshot, second_receipt.path
+    )
+    if (
+        second_variant_id != action_variant_id
+        or second_action_evidence != action_evidence
+    ):
+        raise SemanticGateClosed("combat evidence action variant changed")
     if (
         first_receipt.semantic_id != second_receipt.semantic_id
         or first_receipt.path != second_receipt.path
@@ -222,6 +262,7 @@ def commit_alas_combat_resource_action_for_evidence(
     return AlasCombatResourceActionCommit(
         resource_name=resource_name,
         action_name=resolved_action,
+        action_variant_id=action_variant_id,
         pid=expected_pid,
         first_generation=first_snapshot.generation,
         commit_generation=second_snapshot.generation,
@@ -243,6 +284,7 @@ def alas_combat_resource_action_commit_to_json(
         "schema": ALAS_COMBAT_RESOURCE_ACTION_COMMIT_SCHEMA,
         "resource_name": commit.resource_name,
         "action_name": commit.action_name,
+        "action_variant_id": commit.action_variant_id,
         "pid": commit.pid,
         "first_generation": commit.first_generation,
         "commit_generation": commit.commit_generation,

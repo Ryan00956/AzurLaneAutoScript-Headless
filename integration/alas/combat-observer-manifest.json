@@ -1,9 +1,14 @@
 {
-  "schema": "alas-headless.g26-combat-observer-manifest/v2",
+  "schema": "alas-headless.g27-combat-observer-manifest/v3",
   "package": "com.bilibili.azurlane",
   "driver_revision": "be80ce591a481c12d60c50d6040d40c035b40a2b",
   "game_fingerprint": "9.7.10:9710:x86_64:e6d3ef4baac2509cc97a289b91bfd5f9d0dcd7ad8994880a192298983208699f:e3f1cfc442b67f1d4c9877fd9ceaedc3d68f2842ad677445241b9cc9c05d1c67",
   "resources": [
+    {
+      "resource_name": "AUTO_SEARCH_MENU_EXIT",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
     {
       "resource_name": "AUTOMATION_CONFIRM",
       "selectors": [
@@ -133,7 +138,7 @@
       "evidence_sha256": "99c6849af86aff329a88f7d28cc36c826552fdb84bc0da75701b4fa0f0497e18"
     },
     {
-      "resource_name": "AUTO_SEARCH_MENU_EXIT",
+      "resource_name": "BACK_ARROW",
       "selectors": [],
       "evidence_sha256": ""
     },
@@ -174,6 +179,36 @@
         }
       ],
       "evidence_sha256": "15a0fccb4e5e87f93455788b17b6014f185616fce68f8b8d2223f9c5a70e2eef"
+    },
+    {
+      "resource_name": "BATTLE_PREPARATION_WITH_OVERLAY",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "LevelCamera/Canvas/LevelOrigin/ChapterPreCombatUI(Clone)/adapt/right/start",
+          "name": "start",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/help_panel/list/help_tpl/icon",
+          "name": "icon",
+          "sprite": "zilv",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/top/bg/infomation/title_en",
+          "name": "title_en",
+          "sprite": "",
+          "text": "INFORMATION",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "34dd937499f9566b663afb111f8f34efc8ca69ce8f8f675e7c530f6ebec5d19a"
     },
     {
       "resource_name": "BATTLE_STATUS_A",
@@ -243,11 +278,43 @@
     },
     {
       "resource_name": "CAMPAIGN_CHECK",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "UICamera/Canvas/UIMain/LevelMainScene(Clone)/float/levels/items/Chapter_1204/main",
+          "name": "main",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "image",
+          "path": "UICamera/Canvas/UIMain/LevelMainScene(Clone)/float/levels/items/Chapter_1204/main/circle/bk",
+          "name": "bk",
+          "sprite": "banner01",
+          "text": "",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "86969f8d986ca488ad9bf333b539e90f369801eede1ff0a0ad1bb31195ccaeee"
+    },
+    {
+      "resource_name": "DAILY_CHECK",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "EMERGENCY_REPAIR_CONFIRM",
       "selectors": [],
       "evidence_sha256": ""
     },
     {
       "resource_name": "EVENT_CHECK",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "EXERCISE_CHECK",
       "selectors": [],
       "evidence_sha256": ""
     },
@@ -309,8 +376,25 @@
     },
     {
       "resource_name": "FLEET_PREPARATION",
-      "selectors": [],
-      "evidence_sha256": ""
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/LevelFleetSelectView(Clone)/panel/Fixed/start_button",
+          "name": "start_button",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/LevelFleetSelectView(Clone)/panel/Fixed/btnBack",
+          "name": "btnBack",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        }
+      ],
+      "evidence_sha256": "6f8bec35549e2c88bbe37a21e4ab63dbf974807f6cabaa16b660cb9111c22e5c"
     },
     {
       "resource_name": "GAME_TIPS",
@@ -324,6 +408,11 @@
     },
     {
       "resource_name": "GAME_TIPS4",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "GET_AMMO",
       "selectors": [],
       "evidence_sha256": ""
     },
@@ -372,6 +461,11 @@
     },
     {
       "resource_name": "GET_ITEMS_3",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "GET_ITEMS_SHIP_1",
       "selectors": [],
       "evidence_sha256": ""
     },
@@ -431,6 +525,11 @@
     },
     {
       "resource_name": "GET_SHIP",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "GUILD_POPUP_CANCEL",
       "selectors": [],
       "evidence_sha256": ""
     },
@@ -521,11 +620,43 @@
     },
     {
       "resource_name": "MAP_PREPARATION",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/LevelStageInfoView(Clone)/panel/start_button",
+          "name": "start_button",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/LevelStageInfoView(Clone)/panel/title_form/title_index",
+          "name": "title_index",
+          "sprite": "",
+          "text": "12–4  ",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "a2bc482d2da8b1a082768b1f397da5fffe29878ffc55ab83e5160d1ec01c07b5"
+    },
+    {
+      "resource_name": "MISSION_POPUP_ACK",
       "selectors": [],
       "evidence_sha256": ""
     },
     {
       "resource_name": "MISSION_POPUP_GO",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "MUNITIONS_CHECK",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "NEW_SHIP",
       "selectors": [],
       "evidence_sha256": ""
     },
@@ -574,81 +705,6 @@
       "evidence_sha256": "fa93af5872ac6919500ed285e3a32b2b672249ef454dbd31b6276eb6ead016d1"
     },
     {
-      "resource_name": "POPUP_CONFIRM_WHITE",
-      "selectors": [],
-      "evidence_sha256": ""
-    },
-    {
-      "resource_name": "RETIRE_APPEAR_1",
-      "selectors": [],
-      "evidence_sha256": ""
-    },
-    {
-      "resource_name": "SP_CHECK",
-      "selectors": [],
-      "evidence_sha256": ""
-    },
-    {
-      "resource_name": "STORY_CLOSE",
-      "selectors": [],
-      "evidence_sha256": ""
-    },
-    {
-      "resource_name": "STORY_SKIP_3",
-      "selectors": [],
-      "evidence_sha256": ""
-    },
-    {
-      "resource_name": "BACK_ARROW",
-      "selectors": [],
-      "evidence_sha256": ""
-    },
-    {
-      "resource_name": "BATTLE_PREPARATION_WITH_OVERLAY",
-      "selectors": [],
-      "evidence_sha256": ""
-    },
-    {
-      "resource_name": "DAILY_CHECK",
-      "selectors": [],
-      "evidence_sha256": ""
-    },
-    {
-      "resource_name": "EMERGENCY_REPAIR_CONFIRM",
-      "selectors": [],
-      "evidence_sha256": ""
-    },
-    {
-      "resource_name": "GET_AMMO",
-      "selectors": [],
-      "evidence_sha256": ""
-    },
-    {
-      "resource_name": "GET_ITEMS_SHIP_1",
-      "selectors": [],
-      "evidence_sha256": ""
-    },
-    {
-      "resource_name": "GUILD_POPUP_CANCEL",
-      "selectors": [],
-      "evidence_sha256": ""
-    },
-    {
-      "resource_name": "MISSION_POPUP_ACK",
-      "selectors": [],
-      "evidence_sha256": ""
-    },
-    {
-      "resource_name": "MUNITIONS_CHECK",
-      "selectors": [],
-      "evidence_sha256": ""
-    },
-    {
-      "resource_name": "NEW_SHIP",
-      "selectors": [],
-      "evidence_sha256": ""
-    },
-    {
       "resource_name": "POPUP_CONFIRM",
       "selectors": [
         {
@@ -677,278 +733,393 @@
         }
       ],
       "evidence_sha256": "2ec76a2949d4d93581c450c739c6dd46bc1e2b773ef04d5c33059e9cc530bc8b"
+    },
+    {
+      "resource_name": "POPUP_CONFIRM_WHITE",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "RETIRE_APPEAR_1",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "SP_CHECK",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "STORY_CLOSE",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "STORY_LETTERS_ONLY",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "resource_name": "STORY_SKIP_3",
+      "selectors": [],
+      "evidence_sha256": ""
     }
   ],
   "actions": [
     {
+      "action_name": "AUTO_SEARCH_MENU_EXIT",
+      "variants": []
+    },
+    {
       "action_name": "AUTOMATION_CONFIRM",
-      "selectors": [
+      "variants": [
         {
-          "kind": "button",
-          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
-          "name": "custom_button_1(Clone)",
-          "sprite": "",
-          "text": "",
-          "require_top_raycast": true
+          "variant_id": "default",
+          "selectors": [
+            {
+              "kind": "button",
+              "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
+              "name": "custom_button_1(Clone)",
+              "sprite": "",
+              "text": "",
+              "require_top_raycast": true
+            }
+          ],
+          "evidence_sha256": "b1154ef08edb1c25dd6fcf5340d6edf2ba0ba660024d296adc26991addd2491b"
         }
-      ],
-      "evidence_sha256": "b1154ef08edb1c25dd6fcf5340d6edf2ba0ba660024d296adc26991addd2491b"
+      ]
     },
     {
       "action_name": "AUTOMATION_SWITCH",
-      "selectors": [
+      "variants": [
         {
-          "kind": "image",
-          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/middle/auto_toggle/bg",
-          "name": "bg",
-          "sprite": "auto_toggle_bg",
-          "text": "",
-          "require_top_raycast": true
+          "variant_id": "default",
+          "selectors": [
+            {
+              "kind": "image",
+              "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/middle/auto_toggle/bg",
+              "name": "bg",
+              "sprite": "auto_toggle_bg",
+              "text": "",
+              "require_top_raycast": true
+            }
+          ],
+          "evidence_sha256": "5bc3e4b17782d54690583e46fc349372e21111eff6dde37808b41ae546329fab"
         }
-      ],
-      "evidence_sha256": "5bc3e4b17782d54690583e46fc349372e21111eff6dde37808b41ae546329fab"
-    },
-    {
-      "action_name": "AUTO_SEARCH_MENU_EXIT",
-      "selectors": [],
-      "evidence_sha256": ""
+      ]
     },
     {
       "action_name": "BACK_ARROW",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "BATTLE_PREPARATION",
-      "selectors": [
+      "variants": [
         {
-          "kind": "button",
-          "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/right/start",
-          "name": "start",
-          "sprite": "",
-          "text": "",
-          "require_top_raycast": true
+          "variant_id": "default",
+          "selectors": [
+            {
+              "kind": "button",
+              "path": "OverlayCamera/Overlay/UIMain/ChapterPreCombatUI(Clone)/adapt/right/start",
+              "name": "start",
+              "sprite": "",
+              "text": "",
+              "require_top_raycast": true
+            }
+          ],
+          "evidence_sha256": "15a0fccb4e5e87f93455788b17b6014f185616fce68f8b8d2223f9c5a70e2eef"
         }
-      ],
-      "evidence_sha256": "15a0fccb4e5e87f93455788b17b6014f185616fce68f8b8d2223f9c5a70e2eef"
+      ]
     },
     {
       "action_name": "BATTLE_STATUS_A",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "BATTLE_STATUS_B",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "BATTLE_STATUS_C",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "BATTLE_STATUS_D",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "BATTLE_STATUS_S",
-      "selectors": [
+      "variants": [
         {
-          "kind": "button",
-          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultGradePage(Clone)",
-          "name": "NewBattleResultGradePage(Clone)",
-          "sprite": "",
-          "text": "",
-          "require_top_raycast": true
+          "variant_id": "default",
+          "selectors": [
+            {
+              "kind": "button",
+              "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultGradePage(Clone)",
+              "name": "NewBattleResultGradePage(Clone)",
+              "sprite": "",
+              "text": "",
+              "require_top_raycast": true
+            }
+          ],
+          "evidence_sha256": "c7637c4cc3cebf3765f226a58ffee83c3354a7344ddfe0f86965eb906828633d"
         }
-      ],
-      "evidence_sha256": "c7637c4cc3cebf3765f226a58ffee83c3354a7344ddfe0f86965eb906828633d"
+      ]
     },
     {
       "action_name": "EMERGENCY_REPAIR_CONFIRM",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "EXP_INFO_A",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "EXP_INFO_B",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "EXP_INFO_S",
-      "selectors": [
+      "variants": [
         {
-          "kind": "button",
-          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultStatisticsPage(Clone)/bottom/confirmBtn",
-          "name": "confirmBtn",
-          "sprite": "",
-          "text": "",
-          "require_top_raycast": true
+          "variant_id": "default",
+          "selectors": [
+            {
+              "kind": "button",
+              "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultStatisticsPage(Clone)/bottom/confirmBtn",
+              "name": "confirmBtn",
+              "sprite": "",
+              "text": "",
+              "require_top_raycast": true
+            }
+          ],
+          "evidence_sha256": "e6db62a249cfb05500feb2566d49f8751f3e3a2b0417e3550df3b82a2767ee5f"
         }
-      ],
-      "evidence_sha256": "e6db62a249cfb05500feb2566d49f8751f3e3a2b0417e3550df3b82a2767ee5f"
+      ]
     },
     {
       "action_name": "FLEET_PREPARATION",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": [
+        {
+          "variant_id": "fleet-preparation",
+          "selectors": [
+            {
+              "kind": "button",
+              "path": "OverlayCamera/Overlay/UIMain/LevelFleetSelectView(Clone)/panel/Fixed/start_button",
+              "name": "start_button",
+              "sprite": "",
+              "text": "",
+              "require_top_raycast": true
+            }
+          ],
+          "evidence_sha256": "439476985f462118dacc525cc6263b834bcfb2528f2c8ec4239b27edc55a8e28"
+        }
+      ]
     },
     {
       "action_name": "GAME_TIPS",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "GET_ITEMS_1",
-      "selectors": [
+      "variants": [
         {
-          "kind": "button",
-          "path": "OverlayCamera/Overlay/UIMain/AwardInfoUI(Clone)/items/close",
-          "name": "close",
-          "sprite": "",
-          "text": "",
-          "require_top_raycast": true
+          "variant_id": "default",
+          "selectors": [
+            {
+              "kind": "button",
+              "path": "OverlayCamera/Overlay/UIMain/AwardInfoUI(Clone)/items/close",
+              "name": "close",
+              "sprite": "",
+              "text": "",
+              "require_top_raycast": true
+            }
+          ],
+          "evidence_sha256": "20330544a5f71922227467423586fabed77ba03df0d10ef9eba44afc1037b78b"
         }
-      ],
-      "evidence_sha256": "20330544a5f71922227467423586fabed77ba03df0d10ef9eba44afc1037b78b"
+      ]
     },
     {
       "action_name": "GET_ITEMS_1_RETIREMENT_SAVE",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "GET_ITEMS_SHIP_1",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "GET_MISSION",
-      "selectors": [
+      "variants": [
         {
-          "kind": "button",
-          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
-          "name": "custom_button_1(Clone)",
-          "sprite": "",
-          "text": "",
-          "require_top_raycast": true
+          "variant_id": "default",
+          "selectors": [
+            {
+              "kind": "button",
+              "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
+              "name": "custom_button_1(Clone)",
+              "sprite": "",
+              "text": "",
+              "require_top_raycast": true
+            }
+          ],
+          "evidence_sha256": "53941f9135539e7d480e07c64214fce8068c961c8078e580335562703ee27664"
         }
-      ],
-      "evidence_sha256": "53941f9135539e7d480e07c64214fce8068c961c8078e580335562703ee27664"
+      ]
     },
     {
       "action_name": "GET_SHIP",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "GUILD_POPUP_CANCEL",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "GUILD_POPUP_CONFIRM",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "MAP_AMBUSH_EVADE",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "MAP_CAT_ATTACK",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "MAP_PREPARATION",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": [
+        {
+          "variant_id": "map-preparation",
+          "selectors": [
+            {
+              "kind": "button",
+              "path": "OverlayCamera/Overlay/UIMain/LevelStageInfoView(Clone)/panel/start_button",
+              "name": "start_button",
+              "sprite": "",
+              "text": "",
+              "require_top_raycast": true
+            }
+          ],
+          "evidence_sha256": "5867df661b2ceafc92a586f922bfb7c89edb42fcda0d1385c4c6ab856a3f9bf3"
+        }
+      ]
     },
     {
       "action_name": "MAP_PREPARATION_CANCEL",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": [
+        {
+          "variant_id": "fleet-preparation",
+          "selectors": [
+            {
+              "kind": "button",
+              "path": "OverlayCamera/Overlay/UIMain/LevelFleetSelectView(Clone)/panel/Fixed/btnBack",
+              "name": "btnBack",
+              "sprite": "",
+              "text": "",
+              "require_top_raycast": true
+            }
+          ],
+          "evidence_sha256": "2e686158ca79f2ded95c26f412876eaec9ecbcb96e25d2d09b9963b3ece1e390"
+        },
+        {
+          "variant_id": "map-preparation",
+          "selectors": [
+            {
+              "kind": "button",
+              "path": "OverlayCamera/Overlay/UIMain/LevelStageInfoView(Clone)/panel/btnBack",
+              "name": "btnBack",
+              "sprite": "",
+              "text": "",
+              "require_top_raycast": true
+            }
+          ],
+          "evidence_sha256": "f9da73b8c18f8206b2bbf7ba61a9e7fa027666967a1b6bdf8c160010dce94568"
+        }
+      ]
     },
     {
       "action_name": "MISSION_POPUP_ACK",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "MISSION_POPUP_GO",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "OS_CLICK_SAFE_AREA",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "POPUP_CANCEL",
-      "selectors": [
+      "variants": [
         {
-          "kind": "button",
-          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_2(Clone)",
-          "name": "custom_button_2(Clone)",
-          "sprite": "",
-          "text": "",
-          "require_top_raycast": true
+          "variant_id": "default",
+          "selectors": [
+            {
+              "kind": "button",
+              "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_2(Clone)",
+              "name": "custom_button_2(Clone)",
+              "sprite": "",
+              "text": "",
+              "require_top_raycast": true
+            }
+          ],
+          "evidence_sha256": "ee803278a2691b67b4c45725869173ff2c22189c5530a916800000bb9d6e369e"
         }
-      ],
-      "evidence_sha256": "ee803278a2691b67b4c45725869173ff2c22189c5530a916800000bb9d6e369e"
+      ]
     },
     {
       "action_name": "POPUP_CONFIRM",
-      "selectors": [
+      "variants": [
         {
-          "kind": "button",
-          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
-          "name": "custom_button_1(Clone)",
-          "sprite": "",
-          "text": "",
-          "require_top_raycast": true
+          "variant_id": "default",
+          "selectors": [
+            {
+              "kind": "button",
+              "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
+              "name": "custom_button_1(Clone)",
+              "sprite": "",
+              "text": "",
+              "require_top_raycast": true
+            }
+          ],
+          "evidence_sha256": "f03b3e0f50f3237c2c605ca8afc9f0930bb6273ee29ea63d0346f57fc86574c9"
         }
-      ],
-      "evidence_sha256": "f03b3e0f50f3237c2c605ca8afc9f0930bb6273ee29ea63d0346f57fc86574c9"
+      ]
     },
     {
       "action_name": "POPUP_CONFIRM_WHITE",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "RETIRE_APPEAR_1",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "STORY_CLOSE",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
+    },
+    {
+      "action_name": "STORY_LETTERS_ONLY",
+      "variants": []
     },
     {
       "action_name": "STORY_OPTION_DYNAMIC",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     },
     {
       "action_name": "STORY_SKIP",
-      "selectors": [],
-      "evidence_sha256": ""
+      "variants": []
     }
   ],
   "branch_review_complete": false,
   "blockers": [
+    {
+      "blocker_name": "ambush_branch",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
     {
       "blocker_name": "network_down",
       "selectors": [
@@ -978,6 +1149,16 @@
         }
       ],
       "evidence_sha256": "e3c5369e2c97e0b28df7af4ea86a166354207a81466864a0204a63f95dfc67b6"
+    },
+    {
+      "blocker_name": "retirement_branch",
+      "selectors": [],
+      "evidence_sha256": ""
+    },
+    {
+      "blocker_name": "story_option_branch",
+      "selectors": [],
+      "evidence_sha256": ""
     }
   ],
   "blocker_review_complete": false,

@@ -1,0 +1,33 @@
+{
+  "schema": "alas-headless.g27-combat-mapping-review/v3",
+  "review_id": "g27-12-4-campaign-stage",
+  "trace_sha256": "81b2534068d2da24ed67588e8426ddaf7f17fa23c7190a25fb3ef20360040fb2",
+  "generations": [16207, 16217, 16227],
+  "resources": [
+    {
+      "resource_name": "CAMPAIGN_CHECK",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "UICamera/Canvas/UIMain/LevelMainScene(Clone)/float/levels/items/Chapter_1204/main",
+          "name": "main",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "image",
+          "path": "UICamera/Canvas/UIMain/LevelMainScene(Clone)/float/levels/items/Chapter_1204/main/circle/bk",
+          "name": "bk",
+          "sprite": "banner01",
+          "text": "",
+          "require_top_raycast": false
+        }
+      ]
+    }
+  ],
+  "actions": [],
+  "branch_review_complete": false,
+  "blockers": [],
+  "blocker_review_complete": false
+}

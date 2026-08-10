@@ -148,16 +148,32 @@ class FakeCampaign:
         self.MAP = FakeMap()
         self.map = "original-map"
         self.config = SimpleNamespace(
+            Campaign_AmbushEvade=True,
+            Campaign_Event="campaign_main",
             Campaign_UseFleetLock=True,
             Emotion_Mode="ignore",
             EnemyPriority_EnemyScaleBalanceWeight="default_mode",
+            Fleet_Fleet1Mode="combat_auto",
+            HpControl_UseEmergencyRepair=False,
+            HpControl_UseHpBalance=False,
             MAP_CLEAR_ALL_THIS_TIME=False,
             MAP_HAS_AMBUSH=False,
             MAP_HAS_FLEET_STEP=False,
             MAP_HAS_FORTRESS=False,
+            MAP_HAS_LAND_BASED=False,
             MAP_HAS_MAZE=False,
+            MAP_HAS_MOVABLE_ENEMY=False,
             MAP_HAS_PORTAL=False,
+            MAP_MYSTERY_HAS_CARRIER=False,
+            MAP_FOCUS_ENEMY_AFTER_BATTLE=False,
             POOR_MAP_DATA=True,
+            Retirement_RetireMode="one_click_retire",
+            STOP_IF_REACH_LV32=False,
+            STORY_ALLOW_SKIP=True,
+            STORY_OPTION=0,
+            StopCondition_ReachLevel=0,
+            Submarine_Fleet=0,
+            Submarine_Mode="do_not_use",
         )
         self.map_data_init_calls = 0
         self.fleet_1_location = ()
@@ -1118,6 +1134,23 @@ class AlasCampaignCombatReplayContractTests(unittest.TestCase):
             replay_alas_campaign_combat_state_machine(
                 campaign, projection, decision, admission, state, replay
             )
+
+        campaign.config.Emotion_Mode = "calculate"
+        for name, pinned, drifted in (
+            ("Campaign_AmbushEvade", True, False),
+            ("Campaign_Event", "campaign_main", "event"),
+            ("HpControl_UseEmergencyRepair", False, True),
+            ("Retirement_RetireMode", "one_click_retire", "enhance"),
+            ("STORY_ALLOW_SKIP", True, False),
+            ("STORY_OPTION", 0, 1),
+        ):
+            with self.subTest(name=name):
+                setattr(campaign.config, name, drifted)
+                with self.assertRaisesRegex(SemanticGateClosed, name):
+                    replay_alas_campaign_combat_state_machine(
+                        campaign, projection, decision, admission, state, replay
+                    )
+                setattr(campaign.config, name, pinned)
 
 if __name__ == "__main__":
     unittest.main()

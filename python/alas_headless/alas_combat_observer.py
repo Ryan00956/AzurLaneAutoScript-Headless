@@ -60,7 +60,7 @@ ALAS_COMBAT_OBSERVER_FIXTURE_SCHEMA = (
     "alas-headless.g20-combat-observer-fixture/v1"
 )
 ALAS_COMBAT_OBSERVER_MANIFEST_SCHEMA = (
-    "alas-headless.g26-combat-observer-manifest/v2"
+    "alas-headless.g27-combat-observer-manifest/v3"
 )
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _ACTION_PRECEDENCE_ALLOWLIST = {
@@ -108,16 +108,48 @@ class AlasCombatResourceMapping:
 
 
 @dataclass(frozen=True)
-class AlasCombatActionMapping:
-    """One original-ALAS click target and its exact Unity alternatives."""
+class AlasCombatActionVariant:
+    """One evidence-bound Unity realization of an original-ALAS target."""
 
-    action_name: str
+    variant_id: str
     selectors: Tuple[AlasCombatUnitySelector, ...] = ()
     evidence_sha256: str = ""
 
     @property
     def qualified(self) -> bool:
         return bool(self.selectors) and _is_sha256(self.evidence_sha256)
+
+
+@dataclass(frozen=True)
+class AlasCombatActionMapping:
+    """One original-ALAS target with mutually exclusive Unity variants.
+
+    ``selectors`` and ``evidence_sha256`` remain a constructor-only legacy
+    shorthand for tests and callers that define one ``default`` variant.  The
+    checked-in v3 manifest always serializes the explicit ``variants`` form.
+    """
+
+    action_name: str
+    selectors: Tuple[AlasCombatUnitySelector, ...] = ()
+    evidence_sha256: str = ""
+    variants: Tuple[AlasCombatActionVariant, ...] = ()
+
+    @property
+    def resolved_variants(self) -> Tuple[AlasCombatActionVariant, ...]:
+        if self.variants:
+            return self.variants
+        if self.selectors or self.evidence_sha256:
+            return (
+                AlasCombatActionVariant(
+                    "default", self.selectors, self.evidence_sha256
+                ),
+            )
+        return ()
+
+    @property
+    def qualified(self) -> bool:
+        variants = self.resolved_variants
+        return bool(variants) and all(variant.qualified for variant in variants)
 
 
 @dataclass(frozen=True)
@@ -313,23 +345,45 @@ def _mapping_from_json(value: Any) -> AlasCombatResourceMapping:
 def _action_from_json(value: Any) -> AlasCombatActionMapping:
     if not isinstance(value, dict) or set(value) != {
         "action_name",
-        "selectors",
-        "evidence_sha256",
+        "variants",
     }:
         raise SemanticGateClosed("combat manifest action schema changed")
-    selectors = value["selectors"]
-    if not isinstance(selectors, list):
-        raise SemanticGateClosed("combat manifest action selectors are malformed")
+    variants = value["variants"]
+    if not isinstance(variants, list):
+        raise SemanticGateClosed("combat manifest action variants are malformed")
+    parsed_variants = []
+    for variant in variants:
+        if not isinstance(variant, dict) or set(variant) != {
+            "variant_id",
+            "selectors",
+            "evidence_sha256",
+        }:
+            raise SemanticGateClosed("combat manifest action variant schema changed")
+        selectors = variant["selectors"]
+        if not isinstance(selectors, list):
+            raise SemanticGateClosed(
+                "combat manifest action variant selectors are malformed"
+            )
+        parsed_variants.append(
+            AlasCombatActionVariant(
+                variant_id=(
+                    variant["variant_id"]
+                    if isinstance(variant["variant_id"], str)
+                    else ""
+                ),
+                selectors=tuple(_selector_from_json(item) for item in selectors),
+                evidence_sha256=(
+                    variant["evidence_sha256"]
+                    if isinstance(variant["evidence_sha256"], str)
+                    else ""
+                ),
+            )
+        )
     return AlasCombatActionMapping(
         action_name=(
             value["action_name"] if isinstance(value["action_name"], str) else ""
         ),
-        selectors=tuple(_selector_from_json(item) for item in selectors),
-        evidence_sha256=(
-            value["evidence_sha256"]
-            if isinstance(value["evidence_sha256"], str)
-            else ""
-        ),
+        variants=tuple(parsed_variants),
     )
 
 
@@ -483,8 +537,14 @@ def alas_combat_observer_manifest_to_json(
         "actions": [
             {
                 "action_name": mapping.action_name,
-                "selectors": selectors(mapping.selectors),
-                "evidence_sha256": mapping.evidence_sha256,
+                "variants": [
+                    {
+                        "variant_id": variant.variant_id,
+                        "selectors": selectors(variant.selectors),
+                        "evidence_sha256": variant.evidence_sha256,
+                    }
+                    for variant in mapping.resolved_variants
+                ],
             }
             for mapping in manifest.actions
         ],
@@ -648,22 +708,51 @@ def _validate_mapping_shape(mapping: AlasCombatResourceMapping) -> None:
 def _validate_action_shape(mapping: AlasCombatActionMapping) -> None:
     if not isinstance(mapping, AlasCombatActionMapping) or not mapping.action_name:
         raise SemanticGateClosed("combat action mapping is malformed")
-    for selector in mapping.selectors:
-        _validate_selector(selector)
-        if selector.kind not in (
-            AlasCombatUnityRecordKind.BUTTON,
-            AlasCombatUnityRecordKind.IMAGE,
-            AlasCombatUnityRecordKind.TOGGLE_OFF,
-            AlasCombatUnityRecordKind.TOGGLE_ON,
-        ) or not selector.require_top_raycast:
-            raise SemanticGateClosed(
-                "combat action mapping lacks an exact top-raycast control"
+    if mapping.variants and (mapping.selectors or mapping.evidence_sha256):
+        raise SemanticGateClosed("combat action mapping mixes legacy and variants")
+    variants = mapping.resolved_variants
+    variant_ids = tuple(variant.variant_id for variant in variants)
+    if len(variant_ids) != len(set(variant_ids)):
+        raise SemanticGateClosed("combat action mapping has duplicate variants")
+    for variant in variants:
+        if (
+            not isinstance(variant, AlasCombatActionVariant)
+            or re.fullmatch(
+                r"[a-z0-9]+(?:[-_][a-z0-9]+)*", variant.variant_id
             )
-    identities = tuple((selector.kind, selector.path) for selector in mapping.selectors)
-    if len(identities) != len(set(identities)):
-        raise SemanticGateClosed("combat action mapping has duplicate selectors")
-    if mapping.evidence_sha256 and not _is_sha256(mapping.evidence_sha256):
-        raise SemanticGateClosed("combat action evidence hash is malformed")
+            is None
+        ):
+            raise SemanticGateClosed("combat action variant is malformed")
+        for selector in variant.selectors:
+            _validate_selector(selector)
+        identities = tuple(
+            (selector.kind, selector.path, selector.ordinal)
+            for selector in variant.selectors
+        )
+        if len(identities) != len(set(identities)):
+            raise SemanticGateClosed(
+                "combat action variant has duplicate selectors"
+            )
+        controls = tuple(
+            selector
+            for selector in variant.selectors
+            if selector.kind
+            in (
+                AlasCombatUnityRecordKind.BUTTON,
+                AlasCombatUnityRecordKind.IMAGE,
+                AlasCombatUnityRecordKind.TOGGLE_OFF,
+                AlasCombatUnityRecordKind.TOGGLE_ON,
+            )
+            and selector.require_top_raycast
+        )
+        if variant.selectors and len(controls) != 1:
+            raise SemanticGateClosed(
+                "combat action variant must have one exact top-raycast control"
+            )
+        if variant.evidence_sha256 and not _is_sha256(
+            variant.evidence_sha256
+        ):
+            raise SemanticGateClosed("combat action evidence hash is malformed")
 
 
 def _validate_blocker_shape(mapping: AlasCombatBlockerMapping) -> None:
@@ -905,6 +994,18 @@ def alas_combat_unity_selector_present(
     return _selector_present(snapshot, selector)
 
 
+def _visible_action_variants(
+    snapshot: AlasCombatObserverSnapshot,
+    mapping: AlasCombatActionMapping,
+) -> Tuple[AlasCombatActionVariant, ...]:
+    return tuple(
+        variant
+        for variant in mapping.resolved_variants
+        if variant.qualified
+        and all(_selector_present(snapshot, item) for item in variant.selectors)
+    )
+
+
 def prepare_alas_combat_resource_action(
     snapshot: AlasCombatObserverSnapshot,
     manifest: AlasCombatObserverManifest,
@@ -968,7 +1069,13 @@ def prepare_alas_combat_resource_action(
     }
 
     def action_visible(candidate: AlasCombatActionMapping) -> bool:
-        if not any(_selector_present(snapshot, item) for item in candidate.selectors):
+        variants = _visible_action_variants(snapshot, candidate)
+        if len(variants) > 1:
+            raise SemanticGateClosed(
+                "combat action target has ambiguous Unity variants: "
+                + candidate.action_name
+            )
+        if not variants:
             return False
         triggers = tuple(
             trigger
@@ -995,10 +1102,16 @@ def prepare_alas_combat_resource_action(
             "combat action resource is ambiguous with: "
             + ", ".join(competing_actions)
         )
+    visible_variants = _visible_action_variants(snapshot, action_mapping)
+    if len(visible_variants) != 1:
+        raise SemanticGateClosed(
+            "combat action target must have one exact visible variant"
+        )
+    visible_variant = visible_variants[0]
     control_selectors = tuple(
         selector
-        for selector in action_mapping.selectors
-        if _selector_present(snapshot, selector)
+        for selector in visible_variant.selectors
+        if selector.require_top_raycast
     )
     if len(control_selectors) != 1:
         raise SemanticGateClosed(

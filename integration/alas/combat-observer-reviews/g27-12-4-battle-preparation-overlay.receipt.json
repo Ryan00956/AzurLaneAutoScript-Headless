@@ -1,0 +1,96 @@
+{
+  "schema": "alas-headless.g27-combat-mapping-receipt/v3",
+  "review_id": "g27-12-4-battle-preparation-overlay",
+  "source_trace_sha256": "6eb9043ed54138571cdc19522eab5ae29a5e9b259ba9db2f74e9ef138e56e4e9",
+  "source_frames": [
+    {
+      "sequence": 37,
+      "captured_at_utc": "2026-08-10T09:50:03.435Z",
+      "generation": 7608,
+      "frame_sha256": "b918694fae9bfe669829932df99ed6fec348c5e043879a0dc60b6beb0c20ed79"
+    },
+    {
+      "sequence": 38,
+      "captured_at_utc": "2026-08-10T09:50:04.106Z",
+      "generation": 7613,
+      "frame_sha256": "04c959250cb2e82a7281b84f5251e3687874292f0a951addd5c7c1054bee4cb1"
+    },
+    {
+      "sequence": 39,
+      "captured_at_utc": "2026-08-10T09:50:05.066Z",
+      "generation": 7618,
+      "frame_sha256": "9463a0230293e752395a10e6c1421e8d1cc85477ae40af59ea471e0d5346f145"
+    }
+  ],
+  "manifest_before_sha256": "f30adfc8ad53c826398b07b84d9cb5bc321f203bb9816adf05231074f0c96153",
+  "manifest_after_sha256": "63e9d04e0938bd5d9c099b0739e9c55e88bf3be31f27890865fe416477d03ff2",
+  "resource_promotions": [
+    {
+      "resource_name": "BATTLE_PREPARATION_WITH_OVERLAY",
+      "match": "all_of",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "LevelCamera/Canvas/LevelOrigin/ChapterPreCombatUI(Clone)/adapt/right/start",
+          "name": "start",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/help_panel/list/help_tpl/icon",
+          "name": "icon",
+          "sprite": "zilv",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/top/bg/infomation/title_en",
+          "name": "title_en",
+          "sprite": "",
+          "text": "INFORMATION",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "34dd937499f9566b663afb111f8f34efc8ca69ce8f8f675e7c530f6ebec5d19a",
+      "present_in_all_samples": true
+    }
+  ],
+  "action_promotions": [],
+  "branch_review_complete": false,
+  "blocker_promotions": [],
+  "blocker_review_complete": false,
+  "coverage_before": {
+    "production_ready": false,
+    "canonical_qualified_resources": 16,
+    "canonical_resources": 41,
+    "qualified_resources": 17,
+    "total_resources": 54,
+    "qualified_actions": 12,
+    "total_actions": 38,
+    "branch_review_complete": false,
+    "qualified_blockers": 1,
+    "total_blockers": 4,
+    "blocker_review_complete": false,
+    "blockers_qualified": false,
+    "fleet_stats_qualified": true
+  },
+  "coverage_after": {
+    "production_ready": false,
+    "canonical_qualified_resources": 16,
+    "canonical_resources": 41,
+    "qualified_resources": 18,
+    "total_resources": 54,
+    "qualified_actions": 12,
+    "total_actions": 38,
+    "branch_review_complete": false,
+    "qualified_blockers": 1,
+    "total_blockers": 4,
+    "blocker_review_complete": false,
+    "blockers_qualified": false,
+    "fleet_stats_qualified": true
+  },
+  "input_injected": false
+}

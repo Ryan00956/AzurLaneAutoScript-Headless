@@ -4,6 +4,30 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G27 action variants and nested branches: adapter expanded; production closed
+
+- Manifest v3 represents each original-ALAS action as one or more mutually
+  exclusive Unity variants. `MAP_PREPARATION_CANCEL` now resolves the distinct
+  stage-information and fleet-selection back buttons; zero or overlapping
+  variants fail closed.
+- The source-derived defensive contract now includes `EXERCISE_CHECK` and
+  `STORY_LETTERS_ONLY`, for exact totals of 54 queries and 38 action targets.
+  Ambush, retirement, and story roots plus their incomplete blocker entries are
+  explicit; original ALAS remains the state-machine owner.
+- Historical repeated raw frames promoted `CAMPAIGN_CHECK`,
+  `MAP_PREPARATION`, `FLEET_PREPARATION`, and
+  `BATTLE_PREPARATION_WITH_OVERLAY`, plus four action variants. The current
+  12-4 map was only read: eight baseline samples were captured with no input.
+- Current coverage is canonical `16/41`, defensive `18/54`, actions `12/38`,
+  and blockers `1/4`. Fleet stats are qualified, but branch and blocker review
+  remain incomplete, so `production_ready=false` and G18 remains the production
+  stop.
+- The full suite passes `313/313`; focused observer/map tests pass `69/69`.
+  The ten-phase original-ALAS replay still passes 135 calls over the unchanged
+  41 canonical names, restores source state, and injects no input.
+
+See [G27 action-variant and nested-branch validation](g27-alas-action-variant-and-nested-branch-validation-report.md).
+
 ### G26 defensive input surface: popup cancel pass; production closed
 
 - The canonical 41-query replay is now explicitly separated from the complete

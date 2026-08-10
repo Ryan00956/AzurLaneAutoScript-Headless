@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "python"))
 from alas_headless import (  # noqa: E402
     ALAS_COMBAT_ACTION_TARGET_NAMES,
     ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES,
+    ALAS_COMBAT_NESTED_BRANCH_ROOTS,
     ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES,
     ALAS_COMBAT_REPLAY_RESOURCE_NAMES,
     audit_alas_combat_observer_manifest,
@@ -41,7 +42,7 @@ def main() -> int:
     print(
         json.dumps(
             {
-                "schema": "alas-headless.g26-combat-observer-coverage/v2",
+                "schema": "alas-headless.g27-combat-observer-coverage/v3",
                 "contract_valid": (
                     coverage.total_resources
                     == len(ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES)
@@ -76,6 +77,10 @@ def main() -> int:
                     ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES
                 ),
                 "action_target_surface_exact": ALAS_COMBAT_ACTION_TARGET_NAMES,
+                "nested_branch_roots": {
+                    branch: roots
+                    for branch, roots in ALAS_COMBAT_NESTED_BRANCH_ROOTS.items()
+                },
                 "input_injected": False,
             },
             ensure_ascii=False,

@@ -221,6 +221,24 @@ Current coverage is canonical `13/41`, defensive `14/52`, actions `9/37`, with
 branch and blocker review incomplete and `production_ready=false`. See
 `docs/g26-alas-defensive-input-surface-validation-report.md`.
 
+G27 upgrades the manifest/review/receipt schemas to v3. An action target now
+contains named, evidence-bound variants; the observer accepts a target only
+when exactly one complete variant is visible. This is required for
+`MAP_PREPARATION_CANCEL`, whose stage-information and fleet-selection pages
+have different Unity back buttons even though original ALAS uses the same
+target name. The action commit binds and rechecks the selected variant; the
+adapter still does not decide which ALAS branch should run.
+
+The exact defensive surface is now 54 queries and 38 actions after adding the
+source-reachable `EXERCISE_CHECK` and `STORY_LETTERS_ONLY` paths. Ambush,
+retirement, and story roots are reported separately and their blocker reviews
+remain open. Repeated historical frames qualify campaign, map-preparation,
+fleet-preparation, and battle-preparation-under-overlay inputs. Current coverage
+is canonical `16/41`, defensive `18/54`, actions `12/38`, and blockers `1/4`;
+fleet stats are qualified, but `production_ready=false` and G18 remains the
+production stop. See
+`docs/g27-alas-action-variant-and-nested-branch-validation-report.md`.
+
 Commission start has a separate integer budget and remains closed by default:
 
 ```powershell

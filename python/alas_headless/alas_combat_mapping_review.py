@@ -15,6 +15,7 @@ from typing import Any, Mapping, Optional, Sequence, Tuple
 
 from .alas_combat_observer import (
     AlasCombatActionMapping,
+    AlasCombatActionVariant,
     AlasCombatBlockerMapping,
     AlasCombatFleetStatsMapping,
     AlasCombatObserverCoverage,
@@ -36,9 +37,9 @@ from .alas_combat_trace import (
 from .semantic_oracle import SemanticGateClosed
 
 
-ALAS_COMBAT_MAPPING_REVIEW_SCHEMA = "alas-headless.g26-combat-mapping-review/v2"
-ALAS_COMBAT_MAPPING_RECEIPT_SCHEMA = "alas-headless.g26-combat-mapping-receipt/v2"
-ALAS_COMBAT_MAPPING_EVIDENCE_SCHEMA = "alas-headless.g26-combat-mapping-evidence/v2"
+ALAS_COMBAT_MAPPING_REVIEW_SCHEMA = "alas-headless.g27-combat-mapping-review/v3"
+ALAS_COMBAT_MAPPING_RECEIPT_SCHEMA = "alas-headless.g27-combat-mapping-receipt/v3"
+ALAS_COMBAT_MAPPING_EVIDENCE_SCHEMA = "alas-headless.g27-combat-mapping-evidence/v3"
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _REVIEW_ID_PATTERN = re.compile(r"[a-z0-9]+(?:[-_][a-z0-9]+)*")
 
@@ -75,7 +76,6 @@ def _review_entries(
         raise SemanticGateClosed("combat mapping review entries are malformed")
     name_field = {
         "resource": "resource_name",
-        "action": "action_name",
         "blocker": "blocker_name",
     }.get(entry_kind)
     if name_field is None:
@@ -109,6 +109,55 @@ def _review_entries(
     if len(names) != len(set(names)):
         raise SemanticGateClosed(
             "combat mapping review has duplicate {0} names".format(entry_kind)
+        )
+    return tuple(parsed)
+
+
+def _review_action_entries(
+    value: Any,
+) -> Tuple[Tuple[str, str, Tuple[AlasCombatUnitySelector, ...]], ...]:
+    if not isinstance(value, list):
+        raise SemanticGateClosed("combat mapping review actions are malformed")
+    parsed = []
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {
+            "action_name",
+            "variant_id",
+            "selectors",
+        }:
+            raise SemanticGateClosed("combat mapping review action schema changed")
+        name = item["action_name"]
+        variant_id = item["variant_id"]
+        raw_selectors = item["selectors"]
+        if (
+            not isinstance(name, str)
+            or not name
+            or not isinstance(variant_id, str)
+            or _REVIEW_ID_PATTERN.fullmatch(variant_id) is None
+            or not isinstance(raw_selectors, list)
+        ):
+            raise SemanticGateClosed("combat mapping review action is malformed")
+        selectors = tuple(
+            parse_alas_combat_unity_selector(selector)
+            for selector in raw_selectors
+        )
+        if not selectors:
+            raise SemanticGateClosed(
+                "combat mapping review action has no selectors"
+            )
+        identities = tuple(
+            (selector.kind, selector.path, selector.ordinal)
+            for selector in selectors
+        )
+        if len(identities) != len(set(identities)):
+            raise SemanticGateClosed(
+                "combat mapping review action has duplicate selectors"
+            )
+        parsed.append((name, variant_id, selectors))
+    identities = tuple((name, variant_id) for name, variant_id, _ in parsed)
+    if len(identities) != len(set(identities)):
+        raise SemanticGateClosed(
+            "combat mapping review has duplicate action variants"
         )
     return tuple(parsed)
 
@@ -269,7 +318,7 @@ def promote_alas_combat_mapping_review(
     for sample in selected:
         validate_alas_combat_observer_snapshot(sample.snapshot, manifest)
     resources = _review_entries(review["resources"], entry_kind="resource")
-    actions = _review_entries(review["actions"], entry_kind="action")
+    actions = _review_action_entries(review["actions"])
     blockers = _review_entries(review["blockers"], entry_kind="blocker")
     reviewed_stats = _review_fleet_stats(review.get("fleet_stats"))
     if not resources and not actions and not blockers and reviewed_stats is None:
@@ -322,7 +371,7 @@ def promote_alas_combat_mapping_review(
 
     action_index = {mapping.action_name: mapping for mapping in manifest.actions}
     action_promotions = []
-    for name, selectors in actions:
+    for name, variant_id, selectors in actions:
         if name not in action_index:
             raise SemanticGateClosed(
                 "combat mapping review action is unknown: " + name
@@ -330,22 +379,37 @@ def promote_alas_combat_mapping_review(
         _prove_all_present(selected, selectors)
         evidence = _evidence_sha256(
             mapping_type="action",
-            mapping_name=name,
+            mapping_name=name + "#" + variant_id,
             selectors=selectors,
             trace_sha256=source_trace_sha256,
             selected=selected,
         )
-        reviewed_mapping = AlasCombatActionMapping(name, selectors, evidence)
         existing_mapping = action_index[name]
-        if existing_mapping.qualified and existing_mapping != reviewed_mapping:
+        variants = {
+            variant.variant_id: variant
+            for variant in existing_mapping.resolved_variants
+        }
+        reviewed_variant = AlasCombatActionVariant(
+            variant_id, selectors, evidence
+        )
+        existing_variant = variants.get(variant_id)
+        if existing_variant is not None and existing_variant != reviewed_variant:
             raise SemanticGateClosed(
-                "combat mapping review refuses to overwrite action: " + name
+                "combat mapping review refuses to overwrite action variant: "
+                + name
+                + "#"
+                + variant_id
             )
-        action_index[name] = reviewed_mapping
+        variants[variant_id] = reviewed_variant
+        action_index[name] = AlasCombatActionMapping(
+            name,
+            variants=tuple(variants[key] for key in sorted(variants)),
+        )
         action_promotions.append(
             {
                 "action_name": name,
-                "match": "exactly_one",
+                "variant_id": variant_id,
+                "match": "all_of_with_exactly_one_control",
                 "selectors": [
                     alas_combat_unity_selector_to_json(selector)
                     for selector in selectors
@@ -593,12 +657,10 @@ def verify_alas_combat_mapping_receipt(
             raise SemanticGateClosed("combat mapping receipt entries are malformed")
         name_field = {
             "resource": "resource_name",
-            "action": "action_name",
             "blocker": "blocker_name",
         }.get(mapping_type)
         expected_index = {
             "resource": resource_index,
-            "action": action_index,
             "blocker": blocker_index,
         }.get(mapping_type)
         if name_field is None or expected_index is None:
@@ -616,8 +678,7 @@ def verify_alas_combat_mapping_receipt(
             name = raw[name_field]
             if (
                 not isinstance(name, str)
-                or raw["match"]
-                != ("exactly_one" if mapping_type == "action" else "all_of")
+                or raw["match"] != "all_of"
                 or raw["present_in_all_samples"] is not True
                 or name not in expected_index
             ):
@@ -648,9 +709,71 @@ def verify_alas_combat_mapping_receipt(
     resource_count = verify_entries(
         receipt["resource_promotions"], mapping_type="resource"
     )
-    action_count = verify_entries(
-        receipt["action_promotions"], mapping_type="action"
-    )
+    def verify_action_entries(raw_entries: Any) -> int:
+        if not isinstance(raw_entries, list):
+            raise SemanticGateClosed(
+                "combat mapping receipt action entries are malformed"
+            )
+        identities = []
+        for raw in raw_entries:
+            if not isinstance(raw, dict) or set(raw) != {
+                "action_name",
+                "variant_id",
+                "match",
+                "selectors",
+                "evidence_sha256",
+                "present_in_all_samples",
+            }:
+                raise SemanticGateClosed(
+                    "combat mapping receipt action schema changed"
+                )
+            name = raw["action_name"]
+            variant_id = raw["variant_id"]
+            if (
+                not isinstance(name, str)
+                or name not in action_index
+                or not isinstance(variant_id, str)
+                or _REVIEW_ID_PATTERN.fullmatch(variant_id) is None
+                or raw["match"] != "all_of_with_exactly_one_control"
+                or raw["present_in_all_samples"] is not True
+            ):
+                raise SemanticGateClosed(
+                    "combat mapping receipt action is malformed"
+                )
+            selectors = tuple(
+                parse_alas_combat_unity_selector(item)
+                for item in raw["selectors"]
+            )
+            _prove_all_present(selected, selectors)
+            evidence = _evidence_sha256(
+                mapping_type="action",
+                mapping_name=name + "#" + variant_id,
+                selectors=selectors,
+                trace_sha256=source_trace_sha256,
+                selected=selected,
+            )
+            variants = {
+                variant.variant_id: variant
+                for variant in action_index[name].resolved_variants
+            }
+            variant = variants.get(variant_id)
+            if (
+                variant is None
+                or variant.selectors != selectors
+                or variant.evidence_sha256 != evidence
+                or raw["evidence_sha256"] != evidence
+            ):
+                raise SemanticGateClosed(
+                    "combat mapping receipt action evidence changed"
+                )
+            identities.append((name, variant_id))
+        if len(identities) != len(set(identities)):
+            raise SemanticGateClosed(
+                "combat mapping receipt has duplicate action variants"
+            )
+        return len(identities)
+
+    action_count = verify_action_entries(receipt["action_promotions"])
     blocker_count = verify_entries(
         receipt["blocker_promotions"], mapping_type="blocker"
     )
@@ -716,12 +839,13 @@ def verify_alas_combat_mapping_receipt(
     ):
         raise SemanticGateClosed("combat mapping receipt has no verified entries")
     return {
-        "schema": "alas-headless.g26-combat-mapping-verification/v2",
+        "schema": "alas-headless.g27-combat-mapping-verification/v3",
         "passed": True,
         "review_id": receipt["review_id"],
         "source_frames": len(selected),
         "verified_resources": resource_count,
         "verified_actions": action_count,
+        "verified_action_variants": action_count,
         "verified_blockers": blocker_count,
         "verified_fleet_stats": fleet_stats_verified,
         "manifest_sha256": manifest_sha256,

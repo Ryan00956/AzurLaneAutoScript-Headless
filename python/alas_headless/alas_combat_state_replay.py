@@ -284,6 +284,7 @@ _PINNED_RESOURCE_QUERY_ALLOWLIST = frozenset(
         "DAILY_CHECK",
         "EMERGENCY_REPAIR_CONFIRM",
         "EVENT_CHECK",
+        "EXERCISE_CHECK",
         "EXP_INFO_A",
         "EXP_INFO_B",
         "EXP_INFO_S",
@@ -318,6 +319,7 @@ _PINNED_RESOURCE_QUERY_ALLOWLIST = frozenset(
         "RETIRE_APPEAR_1",
         "SP_CHECK",
         "STORY_CLOSE",
+        "STORY_LETTERS_ONLY",
         "STORY_SKIP_3",
     }
 )
@@ -351,6 +353,7 @@ ALAS_COMBAT_RESOURCE_ACTION_TARGETS = MappingProxyType(
         "DAILY_CHECK": ("BACK_ARROW",),
         "EMERGENCY_REPAIR_CONFIRM": ("EMERGENCY_REPAIR_CONFIRM",),
         "EVENT_CHECK": (),
+        "EXERCISE_CHECK": ("BACK_ARROW",),
         "EXP_INFO_A": ("EXP_INFO_A",),
         "EXP_INFO_B": ("EXP_INFO_B",),
         "EXP_INFO_S": ("EXP_INFO_S",),
@@ -394,6 +397,7 @@ ALAS_COMBAT_RESOURCE_ACTION_TARGETS = MappingProxyType(
         "RETIRE_APPEAR_1": ("RETIRE_APPEAR_1",),
         "SP_CHECK": (),
         "STORY_CLOSE": ("STORY_CLOSE",),
+        "STORY_LETTERS_ONLY": ("STORY_LETTERS_ONLY",),
         "STORY_SKIP_3": (
             "OS_CLICK_SAFE_AREA",
             "STORY_OPTION_DYNAMIC",
@@ -416,6 +420,29 @@ ALAS_COMBAT_ACTION_TARGET_NAMES = tuple(
         }
     )
 )
+
+# These handlers cross from the bounded ordinary-combat loop into a nested
+# state machine.  They remain owned by original ALAS, but each root must be
+# either fully qualified or covered by an evidence-bound blocker before the
+# independent branch-review gate may close.
+ALAS_COMBAT_NESTED_BRANCH_ROOTS = MappingProxyType(
+    {
+        "ambush": ("MAP_AMBUSH_EVADE",),
+        "retirement": ("RETIRE_APPEAR_1", "IN_RETIREMENT_CHECK"),
+        "story": (
+            "STORY_SKIP_3",
+            "STORY_LETTERS_ONLY",
+            "STORY_CLOSE",
+        ),
+    }
+)
+
+if any(
+    name not in ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES
+    for names in ALAS_COMBAT_NESTED_BRANCH_ROOTS.values()
+    for name in names
+):
+    raise RuntimeError("combat nested branch root surface changed")
 
 _MUTABLE_TIMER_FIELDS = (
     "_automation_set_timer",
@@ -899,8 +926,11 @@ def _config_gate(campaign: Any) -> None:
     config = campaign.config
     required = {
         "Campaign_UseFleetLock": True,
+        "Campaign_AmbushEvade": True,
+        "Campaign_Event": "campaign_main",
         "Emotion_Mode": "calculate",
         "HpControl_UseHpBalance": False,
+        "HpControl_UseEmergencyRepair": False,
         "MAP_HAS_FLEET_STEP": False,
         "MAP_HAS_LAND_BASED": False,
         "MAP_HAS_MAZE": False,
@@ -908,6 +938,9 @@ def _config_gate(campaign: Any) -> None:
         "MAP_MYSTERY_HAS_CARRIER": False,
         "MAP_FOCUS_ENEMY_AFTER_BATTLE": False,
         "STOP_IF_REACH_LV32": False,
+        "Retirement_RetireMode": "one_click_retire",
+        "STORY_ALLOW_SKIP": True,
+        "STORY_OPTION": 0,
         "StopCondition_ReachLevel": 0,
         "Submarine_Fleet": 0,
         "Submarine_Mode": "do_not_use",

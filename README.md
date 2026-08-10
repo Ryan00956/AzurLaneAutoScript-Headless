@@ -123,11 +123,13 @@ compilation. G22 evidence-binds the first real `IN_MAP` mapping and an exact
 compound `network_down` blocker across three complete raw frames. G23-G25 then
 qualify the ordinary result chain, automation confirmation/switching, battle
 start, radar search, and ordered six-ship HP/levels while original ALAS remains
-the behavioral owner. G26 then separates the canonical 41-query path from the
-52-name defensive query union and 37 original-ALAS action targets, and promotes
-a reversible generic popup cancel/confirm pair. Current coverage is canonical
-`13/41`, defensive `14/52`, and actions `9/37`; branch and blocker review remain
-incomplete, so production remains at the G18 capture boundary. Lua/game-state coverage,
+the behavioral owner. G26 then separates the canonical path from the defensive
+input union. G27 closes two omitted true-branch queries, supports mutually
+exclusive Unity variants for one original-ALAS action target, and pins ambush,
+retirement, and story branch roots without replacing their handlers. Current
+coverage is canonical `16/41`, defensive `18/54`, actions `12/38`, and blockers
+`1/4`; branch and blocker review remain incomplete, so production remains at
+the G18 capture boundary. Lua/game-state coverage,
 formation-layout changes, campaign movement execution, battle state,
 weekly-only end-to-end
 coverage, repeated sorties, and full unattended ALAS task coverage remain

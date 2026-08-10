@@ -1,0 +1,88 @@
+{
+  "schema": "alas-headless.g27-combat-mapping-receipt/v3",
+  "review_id": "g27-12-4-campaign-stage",
+  "source_trace_sha256": "81b2534068d2da24ed67588e8426ddaf7f17fa23c7190a25fb3ef20360040fb2",
+  "source_frames": [
+    {
+      "sequence": 1,
+      "captured_at_utc": "2026-08-10T09:39:37.477Z",
+      "generation": 16207,
+      "frame_sha256": "7d4e394c3a728d4cbd84b461489e3482e18c3b91c8c704c109998f493547e792"
+    },
+    {
+      "sequence": 2,
+      "captured_at_utc": "2026-08-10T09:39:37.979Z",
+      "generation": 16217,
+      "frame_sha256": "4cb979e59d23f20a6f9435fbcf9ce244f9138c9e31e29501afaeaad9c911da60"
+    },
+    {
+      "sequence": 3,
+      "captured_at_utc": "2026-08-10T09:39:38.474Z",
+      "generation": 16227,
+      "frame_sha256": "c8b6ad80f31a6c684a16f1f582a61f809ee6100ef59c149590341d7ee005d708"
+    }
+  ],
+  "manifest_before_sha256": "63e9d04e0938bd5d9c099b0739e9c55e88bf3be31f27890865fe416477d03ff2",
+  "manifest_after_sha256": "63e9d04e0938bd5d9c099b0739e9c55e88bf3be31f27890865fe416477d03ff2",
+  "resource_promotions": [
+    {
+      "resource_name": "CAMPAIGN_CHECK",
+      "match": "all_of",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "UICamera/Canvas/UIMain/LevelMainScene(Clone)/float/levels/items/Chapter_1204/main",
+          "name": "main",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "image",
+          "path": "UICamera/Canvas/UIMain/LevelMainScene(Clone)/float/levels/items/Chapter_1204/main/circle/bk",
+          "name": "bk",
+          "sprite": "banner01",
+          "text": "",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "86969f8d986ca488ad9bf333b539e90f369801eede1ff0a0ad1bb31195ccaeee",
+      "present_in_all_samples": true
+    }
+  ],
+  "action_promotions": [],
+  "branch_review_complete": false,
+  "blocker_promotions": [],
+  "blocker_review_complete": false,
+  "coverage_before": {
+    "production_ready": false,
+    "canonical_qualified_resources": 16,
+    "canonical_resources": 41,
+    "qualified_resources": 18,
+    "total_resources": 54,
+    "qualified_actions": 12,
+    "total_actions": 38,
+    "branch_review_complete": false,
+    "qualified_blockers": 1,
+    "total_blockers": 4,
+    "blocker_review_complete": false,
+    "blockers_qualified": false,
+    "fleet_stats_qualified": true
+  },
+  "coverage_after": {
+    "production_ready": false,
+    "canonical_qualified_resources": 16,
+    "canonical_resources": 41,
+    "qualified_resources": 18,
+    "total_resources": 54,
+    "qualified_actions": 12,
+    "total_actions": 38,
+    "branch_review_complete": false,
+    "qualified_blockers": 1,
+    "total_blockers": 4,
+    "blocker_review_complete": false,
+    "blockers_qualified": false,
+    "fleet_stats_qualified": true
+  },
+  "input_injected": false
+}
