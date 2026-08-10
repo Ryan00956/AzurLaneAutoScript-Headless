@@ -129,6 +129,7 @@ $env:ALAS_SEMANTIC_DORM_COLLECT_BUDGET = '1'
 $env:ALAS_SEMANTIC_DORM_FEED_BUDGET = '1'
 $env:ALAS_SEMANTIC_BUILD_SUBMIT_BUDGET = '1'
 $env:ALAS_SEMANTIC_CAMPAIGN_STAGE_ENTRY_BUDGET = '1'
+$env:ALAS_SEMANTIC_CAMPAIGN_FLEET_MUTATION_BUDGET = '3'
 ```
 
 Tactical assignment reuses ALAS's original ship, skill, book-filter, and
@@ -160,8 +161,16 @@ therefore tactical assignment `1`, research reward `6`, research start `1`,
 dorm collect `1`, dorm feed `1`, and construction submit `1`; larger values
 remain unqualified. Campaign stage entry is separately qualified only at `1`
 for the exact reversible `12-4 -> map preparation -> fleet preparation ->
-cancel` pre-sortie flow. The fleet sortie target is not mapped; formation,
-map movement, and battle input remain unauthorized. Complete patched commands
+cancel` pre-sortie flow. Fleet preparation has a second independent budget
+that defaults to zero. Before its first fleet input, the adapter simulates
+ALAS's exact normal-mode branch order and requires budget for the complete
+ordered mutation plan. The qualified request `(1, 2, 0)` from live
+`(1, 2, 1)` consumed exactly three units: clear fleet 2, clear submarine 1,
+then select fleet option 2. ALAS's original `FleetPreparation` and
+`FleetOperator` loops remained the owners, and its cancel loop restored the
+original selection. Hard mode remains closed because its restriction rows are
+not typed. The fleet sortie target is not mapped; formation-layout, map
+movement, and battle input remain unauthorized. Complete patched commands
 return success for Tactical, Research, Dorm, and the bounded campaign slice. A
 full Gacha attempt submitted one exact Light order but returned
 false after exposing the now-fixed warning/order phase alias; its corrected
@@ -187,7 +196,7 @@ reviewed popup chain, and passed a full dual-budget-zero replay. Reward budget
 `1` is therefore live-qualified; larger budgets are not. The five-row daily
 list also passed exact-handle multipage scanning and stable row-index merging.
 Nonzero-oil rows, cancellation, repeated unattended starts, and multi-order
-construction are not live-qualified. Numeric-row claiming, campaign formation,
-sortie, map and battle state, Lua/game-state access, other reward popups, gestures
-outside the exact commission handle, and full unattended task flows remain
-fail-closed.
+construction are not live-qualified. Numeric-row claiming, campaign hard-mode
+fleet restrictions, formation-layout changes, sortie, map and battle state,
+Lua/game-state access, other reward popups, gestures outside the exact
+commission handle, and full unattended task flows remain fail-closed.

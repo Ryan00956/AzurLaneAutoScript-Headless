@@ -412,6 +412,40 @@ class CampaignPreparationState:
     cancel_button: ButtonState
 
 
+@dataclass(frozen=True)
+class CampaignFleetRowState:
+    row_key: str
+    selected_fleet: Optional[int]
+    ship_levels: Tuple[int, ...]
+    select_button: ButtonState
+    clear_button: ButtonState
+
+    @property
+    def in_use(self) -> bool:
+        return bool(self.ship_levels)
+
+
+@dataclass(frozen=True)
+class CampaignFleetSelectionState:
+    generation: int
+    stage_code: str
+    title: str
+    surface_fleets: Tuple[int, int]
+    submarine_fleets: Tuple[int, int]
+    mob_oil_cost: int
+    boss_oil_cost: int
+    submarine_oil_cost: int
+    rows: Tuple[CampaignFleetRowState, ...]
+    sortie_button: ButtonState
+
+
+@dataclass(frozen=True)
+class CampaignFleetDropdownState:
+    generation: int
+    active_indices: Tuple[int, ...]
+    options: Tuple[ToggleState, ...]
+
+
 class ResearchProjectStatus(str, Enum):
     DETAIL = "detail"
     RUNNING = "running"
@@ -718,6 +752,36 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
         "campaign/fleet-preparation/cancel",
         "btnBack",
         "LevelFleetSelectView(Clone)/panel/Fixed/btnBack",
+    ),
+    SemanticTarget(
+        "campaign/fleet-preparation/fleet/1/select",
+        "btn_select",
+        "LevelFleetSelectView(Clone)/panel/ShipList/fleet/1/btn_select",
+    ),
+    SemanticTarget(
+        "campaign/fleet-preparation/fleet/1/clear",
+        "btn_clear",
+        "LevelFleetSelectView(Clone)/panel/ShipList/fleet/1/btn_clear",
+    ),
+    SemanticTarget(
+        "campaign/fleet-preparation/fleet/2/select",
+        "btn_select",
+        "LevelFleetSelectView(Clone)/panel/ShipList/fleet/2/btn_select",
+    ),
+    SemanticTarget(
+        "campaign/fleet-preparation/fleet/2/clear",
+        "btn_clear",
+        "LevelFleetSelectView(Clone)/panel/ShipList/fleet/2/btn_clear",
+    ),
+    SemanticTarget(
+        "campaign/fleet-preparation/submarine/1/select",
+        "btn_select",
+        "LevelFleetSelectView(Clone)/panel/ShipList/sub/1/btn_select",
+    ),
+    SemanticTarget(
+        "campaign/fleet-preparation/submarine/1/clear",
+        "btn_clear",
+        "LevelFleetSelectView(Clone)/panel/ShipList/sub/1/btn_clear",
     ),
     SemanticTarget(
         "research-menu/page/back",
@@ -1042,6 +1106,36 @@ DEFAULT_IMAGE_TARGETS: Tuple[SemanticImageTarget, ...] = tuple(
 
 DEFAULT_TOGGLE_TARGETS: Tuple[SemanticToggleTarget, ...] = (
     SemanticToggleTarget(
+        "campaign/fleet-preparation/option/1",
+        "item1",
+        "LevelFleetSelectView(Clone)/mask/list/item1",
+    ),
+    SemanticToggleTarget(
+        "campaign/fleet-preparation/option/2",
+        "item2",
+        "LevelFleetSelectView(Clone)/mask/list/item2",
+    ),
+    SemanticToggleTarget(
+        "campaign/fleet-preparation/option/3",
+        "item3",
+        "LevelFleetSelectView(Clone)/mask/list/item3",
+    ),
+    SemanticToggleTarget(
+        "campaign/fleet-preparation/option/4",
+        "item4",
+        "LevelFleetSelectView(Clone)/mask/list/item4",
+    ),
+    SemanticToggleTarget(
+        "campaign/fleet-preparation/option/5",
+        "item5",
+        "LevelFleetSelectView(Clone)/mask/list/item5",
+    ),
+    SemanticToggleTarget(
+        "campaign/fleet-preparation/option/6",
+        "item6",
+        "LevelFleetSelectView(Clone)/mask/list/item6",
+    ),
+    SemanticToggleTarget(
         "build/nav/pools",
         "build_btn",
         "Overlay/UIMain/blur_panel/adapt/left_length/frame/tagRoot/build_btn",
@@ -1121,6 +1215,24 @@ DEFAULT_TOGGLE_TARGETS: Tuple[SemanticToggleTarget, ...] = (
     ),
 )
 DEFAULT_TEXT_TARGETS: Tuple[SemanticTextTarget, ...] = ()
+
+_CAMPAIGN_FLEET_INPUT_TARGETS = tuple(
+    "campaign/fleet-preparation/{0}".format(suffix)
+    for suffix in (
+        "fleet/1/select",
+        "fleet/1/clear",
+        "fleet/2/select",
+        "fleet/2/clear",
+        "submarine/1/select",
+        "submarine/1/clear",
+        "option/1",
+        "option/2",
+        "option/3",
+        "option/4",
+        "option/5",
+        "option/6",
+    )
+)
 
 
 DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
@@ -1255,6 +1367,7 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
             "campaign/map-preparation/proceed",
             "campaign/map-preparation/cancel",
             "campaign/fleet-preparation/cancel",
+            *_CAMPAIGN_FLEET_INPUT_TARGETS,
         ),
     ),
     BlockerRule(
@@ -1268,7 +1381,10 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
     BlockerRule(
         "campaign-fleet-preparation",
         "/LevelFleetSelectView(Clone)/",
-        ("campaign/fleet-preparation/cancel",),
+        (
+            "campaign/fleet-preparation/cancel",
+            *_CAMPAIGN_FLEET_INPUT_TARGETS,
+        ),
     ),
     BlockerRule(
         "build-prep",
@@ -4152,6 +4268,330 @@ class SemanticOracle:
             title=titles[0].text.strip(),
             proceed_button=sortie_matches[0],
             cancel_button=cancel,
+        )
+
+    @staticmethod
+    def _campaign_fleet_row_definition(
+        row_key: str,
+    ) -> Tuple[str, str, str]:
+        definitions = {
+            "fleet1": (
+                "campaign/fleet-preparation/fleet/1",
+                "LevelFleetSelectView(Clone)/panel/ShipList/fleet/1",
+                "surface",
+            ),
+            "fleet2": (
+                "campaign/fleet-preparation/fleet/2",
+                "LevelFleetSelectView(Clone)/panel/ShipList/fleet/2",
+                "surface",
+            ),
+            "submarine": (
+                "campaign/fleet-preparation/submarine/1",
+                "LevelFleetSelectView(Clone)/panel/ShipList/sub/1",
+                "submarine",
+            ),
+        }
+        try:
+            return definitions[row_key]
+        except KeyError as exc:
+            raise SemanticGateClosed(
+                "campaign fleet row is not reviewed: {0}".format(row_key)
+            ) from exc
+
+    def campaign_fleet_selection_state(
+        self, stage_code: str
+    ) -> CampaignFleetSelectionState:
+        """Read the closed fleet-selection panel without exposing sortie."""
+
+        return self._retry_transition_read(
+            lambda: self._campaign_fleet_selection_state_once(stage_code),
+            attempts=12,
+        )
+
+    def _campaign_fleet_selection_state_once(
+        self, stage_code: str
+    ) -> CampaignFleetSelectionState:
+        preparation = self._campaign_fleet_preparation_state_once(stage_code)
+        button_state = self.read_state()
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+            or ui_state.image_truncated
+            or ui_state.method_mask & 0x8 == 0
+        ):
+            raise SemanticGateClosed(
+                "campaign fleet-selection snapshots are incomplete"
+            )
+        visible_options = tuple(
+            toggle
+            for toggle in ui_state.toggles
+            if toggle.path.endswith(
+                tuple(
+                    "LevelFleetSelectView(Clone)/mask/list/item{0}".format(index)
+                    for index in range(1, 7)
+                )
+            )
+        )
+        if visible_options:
+            raise SemanticGateClosed(
+                "campaign fleet-selection dropdown is still open"
+            )
+
+        numerals = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6}
+        rows = []
+        for row_key in ("fleet1", "fleet2", "submarine"):
+            semantic_root, path_root, row_kind = self._campaign_fleet_row_definition(
+                row_key
+            )
+            select_button = self._unique(button_state, semantic_root + "/select")
+            clear_button = self._unique(button_state, semantic_root + "/clear")
+            for semantic_id, button in (
+                (semantic_root + "/select", select_button),
+                (semantic_root + "/clear", clear_button),
+            ):
+                if not button.actionable or self._blocking_rules(
+                    button_state, semantic_id
+                ):
+                    raise SemanticGateClosed(
+                        "campaign fleet row input is not proven: " + row_key
+                    )
+
+            names = tuple(
+                text
+                for text in ui_state.texts
+                if text.path.endswith(path_root + "/bg/name")
+                and text.active_in_hierarchy
+                and text.active_and_enabled
+                and not text.truncated
+            )
+            if len(names) > 1:
+                raise SemanticGateClosed(
+                    "campaign fleet row name is ambiguous: " + row_key
+                )
+            icons = tuple(
+                image
+                for image in ui_state.images
+                if "/" + path_root + "/" in image.path
+                and image.path.endswith("/icon_bg/icon")
+                and image.name == "icon"
+                and image.sprite
+                and image.active_in_hierarchy
+                and image.active_and_enabled
+                and not image.truncated
+            )
+            level_texts = tuple(
+                text
+                for text in ui_state.texts
+                if "/" + path_root + "/" in text.path
+                and text.path.endswith("/icon_bg/lv/Text")
+                and text.active_in_hierarchy
+                and text.active_and_enabled
+                and not text.truncated
+                and re.fullmatch(r"[0-9]+", text.text.strip()) is not None
+            )
+            maximum_ships = 3 if row_kind == "submarine" else 6
+            if (
+                len(icons) != len(level_texts)
+                or len(icons) > maximum_ships
+            ):
+                raise SemanticGateClosed(
+                    "campaign fleet row ship identity is inconsistent: " + row_key
+                )
+            levels = tuple(sorted(int(text.text.strip()) for text in level_texts))
+            if any(level < 1 or level > 125 for level in levels):
+                raise SemanticGateClosed(
+                    "campaign fleet row level is outside the pinned range"
+                )
+
+            selected_fleet = None
+            if levels:
+                if len(names) != 1:
+                    raise SemanticGateClosed(
+                        "campaign fleet row selection name is absent: " + row_key
+                    )
+                normalized = re.sub(r"\s+", "", names[0].text)
+                pattern = (
+                    r"潜艇编队([一二三四五六])"
+                    if row_kind == "submarine"
+                    else r"第([一二三四五六])舰队"
+                )
+                match = re.fullmatch(pattern, normalized)
+                if match is None:
+                    raise SemanticGateClosed(
+                        "campaign fleet row selection name is malformed: " + row_key
+                    )
+                selected_fleet = numerals[match.group(1)]
+            rows.append(
+                CampaignFleetRowState(
+                    row_key=row_key,
+                    selected_fleet=selected_fleet,
+                    ship_levels=levels,
+                    select_button=select_button,
+                    clear_button=clear_button,
+                )
+            )
+
+        def exact_text(suffix: str, pattern: str) -> re.Match[str]:
+            matches = tuple(
+                text
+                for text in ui_state.texts
+                if text.path.endswith(suffix)
+                and text.active_in_hierarchy
+                and text.active_and_enabled
+                and not text.truncated
+            )
+            if len(matches) != 1:
+                raise SemanticGateClosed(
+                    "campaign fleet summary text is absent or ambiguous"
+                )
+            match = re.fullmatch(pattern, matches[0].text.strip())
+            if match is None:
+                raise SemanticGateClosed("campaign fleet summary text is malformed")
+            return match
+
+        surface = exact_text(
+            "LevelFleetSelectView(Clone)/panel/Fixed/limit_list/limit/number",
+            r"([0-9]+)/([0-9]+)",
+        )
+        submarine = exact_text(
+            "LevelFleetSelectView(Clone)/panel/Fixed/limit_list/limit/number_sub",
+            r"([0-9]+)/([0-9]+)",
+        )
+        mob = exact_text(
+            "LevelFleetSelectView(Clone)/panel/Fixed/limit_list/cost_limit/"
+            "cost_noraml/Text",
+            r"道中\(([0-9]+)\)",
+        )
+        boss = exact_text(
+            "LevelFleetSelectView(Clone)/panel/Fixed/limit_list/cost_limit/"
+            "cost_boss/Text",
+            r"旗舰\(([0-9]+)\)",
+        )
+        sub_cost = exact_text(
+            "LevelFleetSelectView(Clone)/panel/Fixed/limit_list/cost_limit/"
+            "cost_sub/Text",
+            r"潜艇\(([0-9]+)\)",
+        )
+        surface_counts = tuple(map(int, surface.groups()))
+        submarine_counts = tuple(map(int, submarine.groups()))
+        if (
+            surface_counts[0] != sum(row.in_use for row in rows[:2])
+            or submarine_counts[0] != int(rows[2].in_use)
+            or not (0 <= surface_counts[0] <= surface_counts[1] <= 2)
+            or not (0 <= submarine_counts[0] <= submarine_counts[1] <= 1)
+        ):
+            raise SemanticGateClosed(
+                "campaign fleet counts do not match the typed rows"
+            )
+        return CampaignFleetSelectionState(
+            generation=button_state.generation,
+            stage_code=stage_code,
+            title=preparation.title,
+            surface_fleets=surface_counts,
+            submarine_fleets=submarine_counts,
+            mob_oil_cost=int(mob.group(1)),
+            boss_oil_cost=int(boss.group(1)),
+            submarine_oil_cost=int(sub_cost.group(1)),
+            rows=tuple(rows),
+            sortie_button=preparation.proceed_button,
+        )
+
+    def campaign_fleet_dropdown_state(
+        self,
+    ) -> Optional[CampaignFleetDropdownState]:
+        """Read the exact six-option fleet dropdown, or return None if closed."""
+
+        return self._retry_transition_read(
+            self._campaign_fleet_dropdown_state_once,
+            attempts=8,
+        )
+
+    def _campaign_fleet_dropdown_state_once(
+        self,
+    ) -> Optional[CampaignFleetDropdownState]:
+        """Read one coherent Button/Toggle generation pair for the dropdown."""
+
+        button_state = self.read_state()
+        ui_state = self.read_ui_state()
+        option_matches = tuple(
+            self._toggle_matches(
+                ui_state, "campaign/fleet-preparation/option/{0}".format(index)
+            )
+            for index in range(1, 7)
+        )
+        if all(not matches for matches in option_matches):
+            return None
+        if any(len(matches) != 1 for matches in option_matches):
+            raise SemanticGateClosed(
+                "campaign fleet dropdown options are incomplete or ambiguous"
+            )
+        if (
+            ui_state.generation < button_state.generation
+            or ui_state.generation > button_state.generation + 2
+        ):
+            raise SemanticGateClosed(
+                "campaign fleet dropdown snapshots are not coherent"
+            )
+        masks = tuple(
+            button
+            for button in button_state.buttons
+            if button.name == "mask"
+            and button.path.endswith("LevelFleetSelectView(Clone)/mask")
+            and button.active_in_hierarchy
+            and button.active_and_enabled
+        )
+        if len(masks) != 1:
+            raise SemanticGateClosed("campaign fleet dropdown mask is absent")
+        options = tuple(matches[0] for matches in option_matches)
+        for index, option in enumerate(options, 1):
+            semantic_id = "campaign/fleet-preparation/option/{0}".format(index)
+            if not option.actionable or self._blocking_rules(button_state, semantic_id):
+                raise SemanticGateClosed(
+                    "campaign fleet dropdown option is not actionable"
+                )
+        active_indices = []
+        for index in range(1, 7):
+            prefix = (
+                "LevelFleetSelectView(Clone)/mask/list/item{0}/".format(index)
+            )
+            states = tuple(
+                state
+                for state in ("on", "off")
+                if any(
+                    text.path.endswith(prefix + state + "/mask/number")
+                    and text.text.strip() == str(index)
+                    and text.active_in_hierarchy
+                    and text.active_and_enabled
+                    and not text.truncated
+                    for text in ui_state.texts
+                )
+            )
+            if len(states) != 1:
+                raise SemanticGateClosed(
+                    "campaign fleet dropdown option state is ambiguous"
+                )
+            if states[0] == "on":
+                active_indices.append(index)
+        return CampaignFleetDropdownState(
+            generation=ui_state.generation,
+            active_indices=tuple(active_indices),
+            options=options,
+        )
+
+    def click_campaign_fleet_row(self, row_key: str, action: str) -> ActionReceipt:
+        if action not in ("select", "clear"):
+            raise SemanticGateClosed("campaign fleet row action is not reviewed")
+        semantic_root, _, _ = self._campaign_fleet_row_definition(row_key)
+        return self.click(semantic_root + "/" + action)
+
+    def click_campaign_fleet_option(self, index: int) -> ActionReceipt:
+        if index not in range(1, 7):
+            raise SemanticGateClosed("campaign fleet option is outside 1 through 6")
+        if self.campaign_fleet_dropdown_state() is None:
+            raise SemanticGateClosed("campaign fleet dropdown is not open")
+        return self.click_toggle(
+            "campaign/fleet-preparation/option/{0}".format(index)
         )
 
     def cancel_campaign_fleet_preparation(

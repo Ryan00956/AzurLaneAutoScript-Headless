@@ -134,6 +134,40 @@ class AlasIntegrationPatchTests(unittest.TestCase):
             self.patch_text,
         )
 
+    def test_campaign_fleet_preparation_preserves_alas_state_machine(self):
+        self.assertIn(
+            "diff --git a/module/map/map_fleet_preparation.py",
+            self.patch_text,
+        )
+        self.assertIn(
+            "semantic_adapter.authorize_campaign_fleet_preparation(",
+            self.patch_text,
+        )
+        self.assertIn(
+            "+                                self.fleet_preparation()",
+            self.patch_text,
+        )
+        self.assertIn(
+            "semantic_adapter.confirm_campaign_fleet_selection()",
+            self.patch_text,
+        )
+        self.assertIn(
+            "semantic_adapter.close_campaign_fleet_dropdown_for_rollback()",
+            self.patch_text,
+        )
+        self.assertIn(
+            "semantic_adapter.confirm_campaign_fleet_preparation()",
+            self.patch_text,
+        )
+        self.assertIn(
+            "semantic_adapter.campaign_fleet_selected_indices(",
+            self.patch_text,
+        )
+        self.assertNotIn(
+            "+                    self.device.click(FLEET_PREPARATION)",
+            self.patch_text,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

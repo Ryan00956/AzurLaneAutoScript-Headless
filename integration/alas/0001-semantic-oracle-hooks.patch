@@ -165,7 +165,7 @@ index 45e8179fc13aa9391bf37929735dd3b54c7fa159..55ba834c9b9b1c21a12126f5f0ece263
          timeout = Timer(1, count=2).start()
          while 1:
 diff --git a/module/campaign/run.py b/module/campaign/run.py
-index 57033308f4cfa16bafbf6ddba6b3ecb372a3e2b4..00a6fc3e6e393ed00a2d4c106c70c18dcde05fe6 100644
+index 57033308f4cfa16bafbf6ddba6b3ecb372a3e2b4..1270b8ede73693b5064775dba973b0a7bf83f2d4 100644
 --- a/module/campaign/run.py
 +++ b/module/campaign/run.py
 @@ -366,6 +366,16 @@ class CampaignRun(CampaignEvent):
@@ -175,7 +175,7 @@ index 57033308f4cfa16bafbf6ddba6b3ecb372a3e2b4..00a6fc3e6e393ed00a2d4c106c70c18d
 +        semantic_adapter = getattr(self.device, 'semantic_adapter', None)
 +        if semantic_adapter is None:
 +            return self._run(name, folder=folder, mode=mode, total=total)
-+        semantic_adapter.begin_campaign_pre_sortie(name)
++        semantic_adapter.begin_campaign_pre_sortie(name, mode=mode)
 +        try:
 +            return self._run(name, folder=folder, mode=mode, total=total)
 +        finally:
@@ -839,8 +839,100 @@ index 08c93073b1e52d249bd4815a75b7895456b394d1..9fcf6e06d9cc79a5b6f565a818392db6
 +        finally:
 +            if semantic_adapter is not None:
 +                semantic_adapter.end_build()
+diff --git a/module/map/map_fleet_preparation.py b/module/map/map_fleet_preparation.py
+index 38c9af5c1af621800fcbd1725d0ce151d3deff5b..68fc84e402fb6b626a8250aae34b273e461b8495 100644
+--- a/module/map/map_fleet_preparation.py
++++ b/module/map/map_fleet_preparation.py
+@@ -49,6 +49,20 @@ class FleetOperator:
+     def __str__(self):
+         return str(self._choose)[:-7]
+ 
++    def _semantic_adapter(self):
++        return getattr(self.main.device, 'semantic_adapter', None)
++
++    def _semantic_row_key(self):
++        name = getattr(self._choose, 'name', str(self._choose))
++        try:
++            return {
++                'FLEET_1_CHOOSE': 'fleet1',
++                'FLEET_2_CHOOSE': 'fleet2',
++                'SUBMARINE_CHOOSE': 'submarine',
++            }[name]
++        except KeyError as exc:
++            raise ValueError(f'Unknown semantic fleet row: {name}') from exc
++
+     def parse_fleet_bar(self, image):
+         """
+         Args:
+@@ -91,6 +105,10 @@ class FleetOperator:
+         Returns:
+             bool: If current fleet is allow to be chosen.
+         """
++        semantic_adapter = self._semantic_adapter()
++        if semantic_adapter is not None:
++            return semantic_adapter.campaign_fleet_row_allowed(
++                self._semantic_row_key())
+         return self.main.appear(self._clear, offset=FleetOperator.OFFSET)
+ 
+     def is_hard(self):
+@@ -98,6 +116,10 @@ class FleetOperator:
+         Returns:
+             bool: Whether to have a recommend. If so, this stage is a hard campaign.
+         """
++        semantic_adapter = self._semantic_adapter()
++        if semantic_adapter is not None:
++            return semantic_adapter.campaign_fleet_operator_is_hard(
++                self._semantic_row_key())
+         return self.main.appear(self._advice, offset=FleetOperator.OFFSET)
+ 
+     def is_hard_satisfied(self):
+@@ -110,6 +132,10 @@ class FleetOperator:
+             bool: If current fleet satisfies hard restrictions.
+                 Or None if this is not a hard mode
+         """
++        semantic_adapter = self._semantic_adapter()
++        if semantic_adapter is not None:
++            return semantic_adapter.campaign_fleet_operator_hard_satisfied(
++                self._semantic_row_key())
+         if not self.is_hard():
+             return None
+ 
+@@ -253,6 +279,10 @@ class FleetOperator:
+         Returns:
+             list: List of int. Currently selected fleet ranges from 1 to 6.
+         """
++        semantic_adapter = self._semantic_adapter()
++        if semantic_adapter is not None:
++            return semantic_adapter.campaign_fleet_selected_indices(
++                self._semantic_row_key())
+         data = self.parse_fleet_bar(self.main.image_crop(self._bar.button, copy=False))
+         return data
+ 
+@@ -261,6 +291,11 @@ class FleetOperator:
+         Returns:
+             bool: If has selected to any fleet.
+         """
++        semantic_adapter = self._semantic_adapter()
++        if semantic_adapter is not None:
++            return semantic_adapter.campaign_fleet_operator_in_use(
++                self._semantic_row_key())
++
+         # Handle the info bar of auto search info.
+         # if area_cross_area(self._in_use.area, INFO_BAR_1.area):
+         #     self.main.handle_info_bar()
+@@ -290,6 +325,10 @@ class FleetOperator:
+         Returns:
+             bool: If dropdown menu appears.
+         """
++        semantic_adapter = self._semantic_adapter()
++        if semantic_adapter is not None:
++            return semantic_adapter.campaign_fleet_dropdown_opened()
++
+         # Check the brightness of the rightest column of the bar area.
+         luma = rgb2gray(self.main.image_crop(self._bar.button, copy=False))[:, -1]
+         # FLEET_PREPARATION is about 146~155
 diff --git a/module/map/map_operation.py b/module/map/map_operation.py
-index c44e0996e1923a5ad9e4f94cc5087b6e6c3fe5eb..19b0c5caea2d675e8eb59ea92d5e4136e1bcb67e 100644
+index c44e0996e1923a5ad9e4f94cc5087b6e6c3fe5eb..50e8ee13adf2fe64cda9a91cb4cc8058bab23713 100644
 --- a/module/map/map_operation.py
 +++ b/module/map/map_operation.py
 @@ -119,6 +119,7 @@ class MapOperation(MysteryHandler, FleetPreparation, Retirement, FastForwardHand
@@ -851,7 +943,7 @@ index c44e0996e1923a5ad9e4f94cc5087b6e6c3fe5eb..19b0c5caea2d675e8eb59ea92d5e4136
  
          with self.stat.new(
                  genre=self.config.campaign_name, method=self.config.DropRecord_CombatRecord
-@@ -150,6 +151,31 @@ class MapOperation(MysteryHandler, FleetPreparation, Retirement, FastForwardHand
+@@ -150,6 +151,60 @@ class MapOperation(MysteryHandler, FleetPreparation, Retirement, FastForwardHand
                  else:
                      checked_in_map = True
  
@@ -862,14 +954,43 @@ index c44e0996e1923a5ad9e4f94cc5087b6e6c3fe5eb..19b0c5caea2d675e8eb59ea92d5e4136
 +                    and semantic_adapter.campaign_pre_sortie_active()
 +                ):
 +                    if self.appear(FLEET_PREPARATION, offset=(20, 50)):
-+                        self.enter_map_cancel()
-+                        proof = semantic_adapter.confirm_campaign_pre_sortie()
-+                        logger.info(
-+                            f'Semantic campaign pre-sortie proof: '
-+                            f'{proof.stage_code}, {proof.preparation_kind}, '
-+                            f'{proof.entry_generation}->{proof.cancel_generation}'
-+                            f'->{proof.restored_generation}'
-+                        )
++                        fleet_authorized = False
++                        try:
++                            fleet_authorized = (
++                                semantic_adapter.authorize_campaign_fleet_preparation(
++                                    self.config.Fleet_Fleet1,
++                                    self.config.Fleet_Fleet2,
++                                    self.config.Submarine_Fleet,
++                                )
++                            )
++                            if fleet_authorized:
++                                self.fleet_preparation()
++                                semantic_adapter.confirm_campaign_fleet_selection()
++                                self.map_fleet_checked = True
++                        finally:
++                            try:
++                                semantic_adapter.close_campaign_fleet_dropdown_for_rollback()
++                            finally:
++                                self.enter_map_cancel()
++                        if fleet_authorized:
++                            proof = semantic_adapter.confirm_campaign_fleet_preparation()
++                            logger.info(
++                                f'Semantic campaign fleet-preparation proof: '
++                                f'{proof.stage_code}, {proof.initial_fleets}'
++                                f'->{proof.prepared_fleets}, '
++                                f'mutations={proof.mutation_semantic_ids}, '
++                                f'{proof.cancel_generation}'
++                                f'->{proof.restored_generation}'
++                            )
++                        else:
++                            proof = semantic_adapter.confirm_campaign_pre_sortie()
++                            logger.info(
++                                f'Semantic campaign pre-sortie proof: '
++                                f'{proof.stage_code}, {proof.preparation_kind}, '
++                                f'{proof.entry_generation}'
++                                f'->{proof.cancel_generation}'
++                                f'->{proof.restored_generation}'
++                            )
 +                        raise ScriptEnd(
 +                            'Semantic campaign pre-sortie validation complete'
 +                        )

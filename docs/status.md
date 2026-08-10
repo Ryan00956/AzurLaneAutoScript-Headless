@@ -4,6 +4,36 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G11 campaign fleet preparation: exact three-mutation reversible pass
+
+- The pinned campaign command now calls ALAS's original
+  `self.fleet_preparation()` and preserves the existing `FleetPreparation` and
+  `FleetOperator` branch, retry, dropdown, and selection loops. Semantic mode
+  replaces only reviewed typed observations and exact input endpoints.
+- `ALAS_SEMANTIC_CAMPAIGN_FLEET_MUTATION_BUDGET` is independent and defaults
+  to `0`. Preflight simulates ALAS's ordered branch decisions before any fleet
+  input. The positive run reconciled `(1, 2, 1) -> (1, 2, 0)` using exactly
+  `fleet/2/clear`, `submarine/1/clear`, and `option/2`, then returned
+  `ALAS_G11_FLEET_BUDGET3_FINAL True`.
+- The final-artifact budget-zero command injected no fleet input and returned
+  `ALAS_G11_FINAL_ARTIFACT_BUDGET0 True` with generations
+  `1220 -> 1237 -> 1245`. An independent re-entry found the original
+  `(1, 2, 1)` selection restored at generation `1051`; the second cancel
+  returned to the same chapter/stage set at generation `1057` with
+  `IN_MAP=False`.
+- Dropdown navigation and idempotent empty-row clears do not consume mutation
+  budget. Any failure closes the dropdown if necessary and invokes ALAS's
+  original cancel loop. Hard mode and formation-layout changes remain closed.
+- The fleet sortie target remains absent from the native raycast allowlist and
+  adapter click map. No sortie, map movement, combat, or reward input occurred.
+- The final observer APK SHA-256 is
+  `29f49a33318321b1c38fa2e590879701159d6404beabfe59af54a2fccb6ef91f`.
+  The controller suite passes `217/217`; the 22-file canonical patch applies
+  cleanly to `81ccf63b4540f00241628c82a58c02c7a2bb11af`, compiles, and matches
+  the live patched source by SHA-256.
+
+See [G11 campaign fleet-preparation validation](g11-campaign-fleet-preparation-validation-report.md).
+
 ### G10 campaign pre-sortie: bounded reversible ALAS pass
 
 - The original ALAS campaign navigation, chapter/stage selection,

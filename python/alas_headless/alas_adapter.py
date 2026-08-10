@@ -21,6 +21,8 @@ from .semantic_oracle import (
     BuildCostState,
     BuildPool,
     BuildSubmitState,
+    CampaignFleetRowState,
+    CampaignFleetSelectionState,
     CampaignPageState,
     CommissionDetailState,
     CommissionRewardProof,
@@ -237,6 +239,20 @@ COMMISSION_TAB_TARGETS: Mapping[str, str] = {
     "COMMISSION_URGENT": "commission/nav/urgent",
 }
 COMMISSION_ROW_PATTERN = re.compile(r"^COMMISSION_ROW_([0-9]+)$")
+CAMPAIGN_FLEET_ROW_RESOURCES: Mapping[str, Tuple[str, str]] = {
+    "FLEET_1_CHOOSE": ("fleet1", "select"),
+    "FLEET_1_CLEAR": ("fleet1", "clear"),
+    "FLEET_1_ADVICE": ("fleet1", "advice"),
+    "FLEET_2_CHOOSE": ("fleet2", "select"),
+    "FLEET_2_CLEAR": ("fleet2", "clear"),
+    "FLEET_2_ADVICE": ("fleet2", "advice"),
+    "SUBMARINE_CHOOSE": ("submarine", "select"),
+    "SUBMARINE_CLEAR": ("submarine", "clear"),
+    "SUBMARINE_ADVICE": ("submarine", "advice"),
+}
+CAMPAIGN_FLEET_BAR_PATTERN = re.compile(
+    r"^(FLEET_1|FLEET_2|SUBMARINE)_BAR_INDEX_([1-6])$"
+)
 CAMPAIGN_VIRTUAL_RESOURCES = frozenset(
     {
         "CAMPAIGN_CHECK",
@@ -250,6 +266,7 @@ CAMPAIGN_VIRTUAL_RESOURCES = frozenset(
         "MAP_PREPARATION",
         "FLEET_PREPARATION",
         "MAP_PREPARATION_CANCEL",
+        *CAMPAIGN_FLEET_ROW_RESOURCES.keys(),
     }
 )
 CAMPAIGN_CLICK_RESOURCES = frozenset(
@@ -258,6 +275,12 @@ CAMPAIGN_CLICK_RESOURCES = frozenset(
         "BACK_ARROW",
         "MAP_PREPARATION",
         "MAP_PREPARATION_CANCEL",
+        "FLEET_1_CHOOSE",
+        "FLEET_1_CLEAR",
+        "FLEET_2_CHOOSE",
+        "FLEET_2_CLEAR",
+        "SUBMARINE_CHOOSE",
+        "SUBMARINE_CLEAR",
     }
 )
 PAGE_VIRTUAL_RESOURCES = frozenset(
@@ -404,6 +427,19 @@ class CampaignPreSortieProof:
     restored_generation: int
 
 
+@dataclass(frozen=True)
+class CampaignFleetPreparationProof:
+    stage_code: str
+    initial_fleets: Tuple[int, int, int]
+    requested_fleets: Tuple[int, int, int]
+    prepared_fleets: Tuple[int, int, int]
+    initial_generation: int
+    prepared_generation: int
+    mutation_semantic_ids: Tuple[str, ...]
+    cancel_generation: int
+    restored_generation: int
+
+
 @dataclass
 class _MissionFlowContext:
     daily: bool
@@ -494,13 +530,24 @@ class _BuildFlowContext:
 @dataclass
 class _CampaignFlowContext:
     stage_code: str
+    mode: str = "normal"
     entry_budget: int = 0
+    fleet_mutation_budget: int = 0
     menu_entry_receipt: Optional[ActionReceipt] = None
     entry_receipt: Optional[ActionReceipt] = None
     map_preparation_receipt: Optional[ActionReceipt] = None
     preparation_kind: Optional[str] = None
     cancel_receipt: Optional[ActionReceipt] = None
     proof: Optional[CampaignPreSortieProof] = None
+    initial_fleet_state: Optional[CampaignFleetSelectionState] = None
+    prepared_fleet_state: Optional[CampaignFleetSelectionState] = None
+    requested_fleets: Optional[Tuple[int, int, int]] = None
+    required_fleet_mutations: int = 0
+    expected_fleet_mutations: Tuple[str, ...] = ()
+    fleet_mutation_receipts: List[ActionReceipt] = field(default_factory=list)
+    fleet_dropdown_row: Optional[str] = None
+    fleet_dropdown_previous_index: Optional[int] = None
+    fleet_proof: Optional[CampaignFleetPreparationProof] = None
     passive_transition_until: float = 0.0
 
 
@@ -541,6 +588,7 @@ class AlasSemanticAdapter:
         dorm_feed_budget: int = 0,
         build_submit_budget: int = 0,
         campaign_stage_entry_budget: int = 0,
+        campaign_fleet_mutation_budget: int = 0,
     ) -> None:
         if package_gate is None:
             raise ValueError("semantic ALAS mode requires a package identity gate")
@@ -565,6 +613,7 @@ class AlasSemanticAdapter:
             ("dorm feed", dorm_feed_budget),
             ("build submit", build_submit_budget),
             ("campaign stage entry", campaign_stage_entry_budget),
+            ("campaign fleet mutation", campaign_fleet_mutation_budget),
         ):
             if (
                 isinstance(budget, bool)
@@ -583,6 +632,7 @@ class AlasSemanticAdapter:
         self._dorm_feed_budget = dorm_feed_budget
         self._build_submit_budget = build_submit_budget
         self._campaign_stage_entry_budget = campaign_stage_entry_budget
+        self._campaign_fleet_mutation_budget = campaign_fleet_mutation_budget
         self._mission_context: Optional[_MissionFlowContext] = None
         self._mail_context: Optional[_MailFlowContext] = None
         self._commission_context: Optional[_CommissionFlowContext] = None
@@ -635,6 +685,7 @@ class AlasSemanticAdapter:
             or name in DORM_VIRTUAL_RESOURCES
             or name in BUILD_VIRTUAL_RESOURCES
             or name in TACTICAL_VIRTUAL_RESOURCES
+            or CAMPAIGN_FLEET_BAR_PATTERN.fullmatch(name)
             or MISSION_NAVBAR_PATTERN.fullmatch(name)
             or COMMISSION_ROW_PATTERN.fullmatch(name)
             or BUILD_SIDE_NAVBAR_PATTERN.fullmatch(name)
@@ -813,12 +864,16 @@ class AlasSemanticAdapter:
     def end_build(self) -> None:
         self._build_context = None
 
-    def begin_campaign_pre_sortie(self, stage_code: str) -> None:
+    def begin_campaign_pre_sortie(
+        self, stage_code: str, mode: str = "normal"
+    ) -> None:
         """Open one ALAS-owned, cancel-only campaign preparation run."""
 
         self._package_gate()
         if re.fullmatch(r"[1-9][0-9]*-[1-9][0-9]*", stage_code) is None:
             raise SemanticGateClosed("campaign stage code is not canonical")
+        if mode not in ("normal", "hard"):
+            raise SemanticGateClosed("campaign mode is not reviewed")
         if any(
             context is not None
             for context in (
@@ -834,7 +889,9 @@ class AlasSemanticAdapter:
             raise SemanticGateClosed("nested semantic ALAS flow is not allowed")
         self._campaign_context = _CampaignFlowContext(
             stage_code=stage_code,
+            mode=mode,
             entry_budget=self._campaign_stage_entry_budget,
+            fleet_mutation_budget=self._campaign_fleet_mutation_budget,
             passive_transition_until=time.monotonic() + 20.0,
         )
 
@@ -847,6 +904,211 @@ class AlasSemanticAdapter:
     def campaign_stage_entry_allowed(self) -> bool:
         context = self._require_campaign_context()
         return context.entry_budget > 0 and context.entry_receipt is None
+
+    @staticmethod
+    def _campaign_fleet_tuple(
+        state: CampaignFleetSelectionState,
+    ) -> Tuple[int, int, int]:
+        rows = {row.row_key: row for row in state.rows}
+        if set(rows) != {"fleet1", "fleet2", "submarine"}:
+            raise SemanticGateClosed("campaign fleet rows are incomplete")
+        return tuple(
+            int(rows[key].selected_fleet or 0)
+            for key in ("fleet1", "fleet2", "submarine")
+        )
+
+    def _campaign_fleet_row(self, row_key: str) -> CampaignFleetRowState:
+        context = self._require_campaign_context()
+        state = self.oracle.campaign_fleet_selection_state(context.stage_code)
+        matches = tuple(row for row in state.rows if row.row_key == row_key)
+        if len(matches) != 1:
+            raise SemanticGateClosed("campaign fleet row is absent or ambiguous")
+        return matches[0]
+
+    def authorize_campaign_fleet_preparation(
+        self, fleet1: int, fleet2: int, submarine: int
+    ) -> bool:
+        """Preflight the exact mutations ALAS will request before any input."""
+
+        self._package_gate()
+        context = self._require_campaign_context()
+        if context.mode != "normal":
+            raise SemanticGateClosed(
+                "typed campaign fleet preparation is qualified only for normal mode"
+            )
+        if fleet1 not in range(1, 7) or fleet2 not in range(0, 7) or submarine not in range(0, 7):
+            raise SemanticGateClosed("campaign fleet configuration is outside 1 through 6")
+        if context.initial_fleet_state is not None:
+            raise SemanticGateClosed("campaign fleet preparation was already authorized")
+        initial = self.oracle.campaign_fleet_selection_state(context.stage_code)
+        context.initial_fleet_state = initial
+        context.requested_fleets = (fleet1, fleet2, submarine)
+        if context.fleet_mutation_budget == 0:
+            return False
+
+        values = dict(
+            zip(("fleet1", "fleet2", "submarine"), self._campaign_fleet_tuple(initial))
+        )
+        operations: List[str] = []
+
+        def clear(row_key: str) -> None:
+            if values[row_key] == 0:
+                return
+            operations.append(
+                "campaign/fleet-preparation/{0}/clear".format(
+                    "submarine/1" if row_key == "submarine" else row_key.replace("fleet", "fleet/")
+                )
+            )
+            values[row_key] = 0
+
+        def ensure(row_key: str, index: int) -> None:
+            if values[row_key] == index:
+                return
+            operations.append(
+                "campaign/fleet-preparation/option/{0}".format(index)
+            )
+            values[row_key] = index
+
+        map_allows_submarine = initial.submarine_fleets[1] == 1
+        if submarine and not map_allows_submarine:
+            raise SemanticGateClosed(
+                "campaign submarine selection is not available on the proven panel"
+            )
+        if map_allows_submarine:
+            if submarine:
+                clear("fleet2")
+                ensure("submarine", submarine)
+            else:
+                clear("fleet2")
+                clear("submarine")
+        if fleet2:
+            clear("fleet2")
+            ensure("fleet1", fleet1)
+            ensure("fleet2", fleet2)
+        else:
+            clear("fleet2")
+            ensure("fleet1", fleet1)
+        if map_allows_submarine and not submarine:
+            clear("submarine")
+        if tuple(values[key] for key in ("fleet1", "fleet2", "submarine")) != (
+            fleet1,
+            fleet2,
+            submarine,
+        ):
+            raise SemanticGateClosed("campaign fleet preflight did not reach the request")
+        context.required_fleet_mutations = len(operations)
+        context.expected_fleet_mutations = tuple(operations)
+        if context.fleet_mutation_budget < len(operations):
+            raise SemanticGateClosed(
+                "campaign fleet mutation budget is below the preflight requirement: "
+                "{0} < {1}".format(context.fleet_mutation_budget, len(operations))
+            )
+        return True
+
+    def campaign_fleet_row_allowed(self, row_key: str) -> bool:
+        # ALAS FleetOperator.clear() exits only when the row remains available
+        # while in_use() becomes false.  The typed state proves all three exact
+        # row controls independently of whether a fleet is currently assigned.
+        self._campaign_fleet_row(row_key)
+        return True
+
+    def campaign_fleet_operator_is_hard(self, row_key: str) -> bool:
+        self._campaign_fleet_row(row_key)
+        return self._require_campaign_context().mode == "hard"
+
+    def campaign_fleet_operator_hard_satisfied(
+        self, row_key: str
+    ) -> Optional[bool]:
+        if not self.campaign_fleet_operator_is_hard(row_key):
+            return None
+        raise SemanticGateClosed(
+            "hard-mode campaign fleet restrictions are not typed"
+        )
+
+    def campaign_fleet_operator_in_use(self, row_key: str) -> bool:
+        return self._campaign_fleet_row(row_key).in_use
+
+    def campaign_fleet_dropdown_opened(self) -> bool:
+        return self.oracle.campaign_fleet_dropdown_state() is not None
+
+    def campaign_fleet_selected_indices(self, row_key: str) -> List[int]:
+        context = self._require_campaign_context()
+        if context.fleet_dropdown_row != row_key:
+            raise SemanticGateClosed("campaign fleet dropdown row identity changed")
+        state = self.oracle.campaign_fleet_dropdown_state()
+        if state is None:
+            raise SemanticGateClosed("campaign fleet dropdown is not open")
+        return list(state.active_indices)
+
+    def confirm_campaign_fleet_selection(self) -> CampaignFleetSelectionState:
+        context = self._require_campaign_context()
+        if context.initial_fleet_state is None or context.requested_fleets is None:
+            raise SemanticGateClosed("campaign fleet preparation was not authorized")
+        if context.fleet_dropdown_row is not None:
+            raise SemanticGateClosed("campaign fleet dropdown remains open")
+        prepared = self.oracle.campaign_fleet_selection_state(context.stage_code)
+        if self._campaign_fleet_tuple(prepared) != context.requested_fleets:
+            raise SemanticGateClosed("campaign fleet selection did not match the request")
+        if len(context.fleet_mutation_receipts) != context.required_fleet_mutations:
+            raise SemanticGateClosed("campaign fleet mutation count changed")
+        if tuple(
+            receipt.semantic_id for receipt in context.fleet_mutation_receipts
+        ) != context.expected_fleet_mutations:
+            raise SemanticGateClosed("campaign fleet mutation sequence changed")
+        if (
+            context.required_fleet_mutations > 0
+            and prepared.generation <= context.initial_fleet_state.generation
+        ):
+            raise SemanticGateClosed("campaign fleet selection generation did not advance")
+        context.prepared_fleet_state = prepared
+        return prepared
+
+    def close_campaign_fleet_dropdown_for_rollback(self) -> None:
+        context = self._require_campaign_context()
+        state = self.oracle.campaign_fleet_dropdown_state()
+        if state is None:
+            context.fleet_dropdown_row = None
+            context.fleet_dropdown_previous_index = None
+            return
+        close_index = context.fleet_dropdown_previous_index
+        if close_index not in state.active_indices:
+            close_index = state.active_indices[0] if state.active_indices else None
+        if context.fleet_dropdown_row is None or close_index not in range(1, 7):
+            raise SemanticGateClosed(
+                "campaign fleet dropdown rollback identity is absent"
+            )
+        self.oracle.click_campaign_fleet_option(close_index)
+        context.fleet_dropdown_row = None
+        context.fleet_dropdown_previous_index = None
+        context.passive_transition_until = time.monotonic() + 20.0
+
+    def confirm_campaign_fleet_preparation(
+        self,
+    ) -> CampaignFleetPreparationProof:
+        context = self._require_campaign_context()
+        if context.fleet_proof is not None:
+            return context.fleet_proof
+        if (
+            context.initial_fleet_state is None
+            or context.prepared_fleet_state is None
+            or context.requested_fleets is None
+        ):
+            raise SemanticGateClosed("campaign fleet selection proof is incomplete")
+        pre_sortie = self.confirm_campaign_pre_sortie()
+        context.fleet_proof = CampaignFleetPreparationProof(
+            stage_code=context.stage_code,
+            initial_fleets=self._campaign_fleet_tuple(context.initial_fleet_state),
+            requested_fleets=context.requested_fleets,
+            prepared_fleets=self._campaign_fleet_tuple(context.prepared_fleet_state),
+            initial_generation=context.initial_fleet_state.generation,
+            prepared_generation=context.prepared_fleet_state.generation,
+            mutation_semantic_ids=tuple(
+                receipt.semantic_id for receipt in context.fleet_mutation_receipts
+            ),
+            cancel_generation=pre_sortie.cancel_generation,
+            restored_generation=pre_sortie.restored_generation,
+        )
+        return context.fleet_proof
 
     def _campaign_preparation_kind(self) -> Optional[str]:
         context = self._require_campaign_context()
@@ -1410,6 +1672,16 @@ class AlasSemanticAdapter:
                 "TACTICAL_CHECK": "tactical/page/back",
             }[name]
             return self.oracle.exists(target)
+        if (
+            self._campaign_context is not None
+            and name in CAMPAIGN_FLEET_ROW_RESOURCES
+        ):
+            row_key, action = CAMPAIGN_FLEET_ROW_RESOURCES[name]
+            if action == "advice":
+                return self.campaign_fleet_operator_is_hard(row_key)
+            if action == "clear":
+                return self.campaign_fleet_row_allowed(row_key)
+            return not self.campaign_fleet_dropdown_opened()
         if self._campaign_context is not None and name == "EVENT_LIST_CHECK":
             return self.oracle.exists("event-list/page/back")
         if self._campaign_context is not None and name == "BACK_ARROW":
@@ -2358,6 +2630,7 @@ class AlasSemanticAdapter:
         commission_row_match = COMMISSION_ROW_PATTERN.fullmatch(name)
         build_side_navbar_match = BUILD_SIDE_NAVBAR_PATTERN.fullmatch(name)
         build_pool_navbar_match = BUILD_POOL_NAVBAR_PATTERN.fullmatch(name)
+        campaign_fleet_bar_match = CAMPAIGN_FLEET_BAR_PATTERN.fullmatch(name)
         if name == "BACK_ARROW" and all(
             context is None
             for context in (
@@ -2400,6 +2673,7 @@ class AlasSemanticAdapter:
                 and name in COMMISSION_CLICK_RESOURCES
             )
             and campaign_stage_code is None
+            and CAMPAIGN_FLEET_BAR_PATTERN.fullmatch(name) is None
             and navbar_match is None
             and commission_row_match is None
             and not (
@@ -2429,6 +2703,146 @@ class AlasSemanticAdapter:
             receipt = self.oracle.click_campaign_stage(campaign_stage_code)
             context.entry_budget -= 1
             context.entry_receipt = receipt
+            context.passive_transition_until = time.monotonic() + 20.0
+            return receipt
+        if (
+            self._campaign_context is not None
+            and name in CAMPAIGN_FLEET_ROW_RESOURCES
+        ):
+            context = self._require_campaign_context()
+            row_key, action = CAMPAIGN_FLEET_ROW_RESOURCES[name]
+            if action == "advice":
+                raise SemanticGateClosed(
+                    "campaign fleet advice is observation-only"
+                )
+            if action == "select":
+                if (
+                    context.initial_fleet_state is None
+                    or context.requested_fleets is None
+                ):
+                    raise SemanticGateClosed(
+                        "campaign fleet selection was not preflight-authorized"
+                    )
+                dropdown = self.oracle.campaign_fleet_dropdown_state()
+                if dropdown is None:
+                    row = self._campaign_fleet_row(row_key)
+                    receipt = self.oracle.click_campaign_fleet_row(
+                        row_key, "select"
+                    )
+                    context.fleet_dropdown_row = row_key
+                    context.fleet_dropdown_previous_index = row.selected_fleet
+                else:
+                    close_index = context.fleet_dropdown_previous_index
+                    if close_index not in dropdown.active_indices:
+                        close_index = (
+                            dropdown.active_indices[0]
+                            if dropdown.active_indices
+                            else None
+                        )
+                    if (
+                        context.fleet_dropdown_row != row_key
+                        or close_index not in range(1, 7)
+                    ):
+                        raise SemanticGateClosed(
+                            "campaign fleet dropdown close identity changed"
+                        )
+                    receipt = self.oracle.click_campaign_fleet_option(
+                        close_index
+                    )
+                    context.fleet_dropdown_row = None
+                    context.fleet_dropdown_previous_index = None
+                context.passive_transition_until = time.monotonic() + 20.0
+                return receipt
+            if (
+                context.initial_fleet_state is None
+                or context.requested_fleets is None
+            ):
+                raise SemanticGateClosed(
+                    "campaign fleet clear was not preflight-authorized"
+                )
+            row = self._campaign_fleet_row(row_key)
+            if not row.in_use:
+                observed = self.oracle.campaign_fleet_selection_state(
+                    context.stage_code
+                )
+                matches = tuple(
+                    candidate
+                    for candidate in observed.rows
+                    if candidate.row_key == row_key
+                )
+                if len(matches) != 1 or matches[0].in_use:
+                    raise SemanticGateClosed(
+                        "campaign fleet empty-row identity changed"
+                    )
+                row = matches[0]
+                clear_button = row.clear_button
+                if clear_button.point is None or clear_button.bounds is None:
+                    raise SemanticGateClosed(
+                        "campaign fleet empty-row clear identity is incomplete"
+                    )
+                # ALAS sometimes emits an idempotent clear while reconciling
+                # partially prepared rows. Preserve that state-machine edge as
+                # an observation-only success: no ADB input and no mutation
+                # budget are consumed.
+                return ActionReceipt(
+                    semantic_id={
+                        "fleet1": "campaign/fleet-preparation/fleet/1/clear",
+                        "fleet2": "campaign/fleet-preparation/fleet/2/clear",
+                        "submarine": (
+                            "campaign/fleet-preparation/submarine/1/clear"
+                        ),
+                    }[row_key],
+                    generation=observed.generation,
+                    point=clear_button.point,
+                    bounds=clear_button.bounds,
+                    path=clear_button.path,
+                )
+            if (
+                context.fleet_mutation_budget <= 0
+                or len(context.fleet_mutation_receipts)
+                >= context.required_fleet_mutations
+            ):
+                raise SemanticGateClosed(
+                    "campaign fleet clear requires a remaining mutation budget"
+                )
+            receipt = self.oracle.click_campaign_fleet_row(row_key, "clear")
+            context.fleet_mutation_budget -= 1
+            context.fleet_mutation_receipts.append(receipt)
+            context.passive_transition_until = time.monotonic() + 20.0
+            return receipt
+        if (
+            self._campaign_context is not None
+            and campaign_fleet_bar_match is not None
+        ):
+            context = self._require_campaign_context()
+            row_key = {
+                "FLEET_1": "fleet1",
+                "FLEET_2": "fleet2",
+                "SUBMARINE": "submarine",
+            }[campaign_fleet_bar_match.group(1)]
+            index = int(campaign_fleet_bar_match.group(2))
+            dropdown = self.oracle.campaign_fleet_dropdown_state()
+            if (
+                dropdown is None
+                or context.fleet_dropdown_row != row_key
+                or index in dropdown.active_indices
+            ):
+                raise SemanticGateClosed(
+                    "campaign fleet option is absent or already selected"
+                )
+            if (
+                context.fleet_mutation_budget <= 0
+                or len(context.fleet_mutation_receipts)
+                >= context.required_fleet_mutations
+            ):
+                raise SemanticGateClosed(
+                    "campaign fleet selection requires a remaining mutation budget"
+                )
+            receipt = self.oracle.click_campaign_fleet_option(index)
+            context.fleet_mutation_budget -= 1
+            context.fleet_mutation_receipts.append(receipt)
+            context.fleet_dropdown_row = None
+            context.fleet_dropdown_previous_index = None
             context.passive_transition_until = time.monotonic() + 20.0
             return receipt
         if self._campaign_context is not None and name == "MAP_PREPARATION":
@@ -3447,6 +3861,7 @@ class AlasSemanticSession:
         dorm_feed_budget: int = 0,
         build_submit_budget: int = 0,
         campaign_stage_entry_budget: int = 0,
+        campaign_fleet_mutation_budget: int = 0,
     ) -> None:
         if not serial:
             raise ValueError("semantic ALAS mode requires an ADB serial")
@@ -3469,6 +3884,7 @@ class AlasSemanticSession:
             ("dorm feed", dorm_feed_budget),
             ("build submit", build_submit_budget),
             ("campaign stage entry", campaign_stage_entry_budget),
+            ("campaign fleet mutation", campaign_fleet_mutation_budget),
         ):
             if (
                 isinstance(budget, bool)
@@ -3487,6 +3903,7 @@ class AlasSemanticSession:
         self.dorm_feed_budget = dorm_feed_budget
         self.build_submit_budget = build_submit_budget
         self.campaign_stage_entry_budget = campaign_stage_entry_budget
+        self.campaign_fleet_mutation_budget = campaign_fleet_mutation_budget
         self.bridge = AdbObserverBridge(serial, package, adb=adb)
         self.adapter: Optional[AlasSemanticAdapter] = None
 
@@ -3523,6 +3940,9 @@ class AlasSemanticSession:
         raw_campaign_stage_entry_budget = os.environ.get(
             "ALAS_SEMANTIC_CAMPAIGN_STAGE_ENTRY_BUDGET", "0"
         )
+        raw_campaign_fleet_mutation_budget = os.environ.get(
+            "ALAS_SEMANTIC_CAMPAIGN_FLEET_MUTATION_BUDGET", "0"
+        )
         for label, value in (
             ("tactical assign", raw_tactical_assign_budget),
             ("commission reward", raw_reward_budget),
@@ -3533,6 +3953,7 @@ class AlasSemanticSession:
             ("dorm feed", raw_dorm_feed_budget),
             ("build submit", raw_build_submit_budget),
             ("campaign stage entry", raw_campaign_stage_entry_budget),
+            ("campaign fleet mutation", raw_campaign_fleet_mutation_budget),
         ):
             if re.fullmatch(r"0|[1-9][0-9]*", value) is None:
                 raise SemanticGateClosed(
@@ -3566,6 +3987,9 @@ class AlasSemanticSession:
             dorm_feed_budget=int(raw_dorm_feed_budget),
             build_submit_budget=int(raw_build_submit_budget),
             campaign_stage_entry_budget=int(raw_campaign_stage_entry_budget),
+            campaign_fleet_mutation_budget=int(
+                raw_campaign_fleet_mutation_budget
+            ),
         )
 
     def open(self) -> AlasSemanticAdapter:
@@ -3602,6 +4026,9 @@ class AlasSemanticSession:
                 dorm_feed_budget=self.dorm_feed_budget,
                 build_submit_budget=self.build_submit_budget,
                 campaign_stage_entry_budget=self.campaign_stage_entry_budget,
+                campaign_fleet_mutation_budget=(
+                    self.campaign_fleet_mutation_budget
+                ),
             )
             return self.adapter
         except Exception:
@@ -3720,6 +4147,44 @@ class AlasSemanticSession:
     def confirm_campaign_pre_sortie(self) -> CampaignPreSortieProof:
         return self.open().confirm_campaign_pre_sortie()
 
+    def authorize_campaign_fleet_preparation(
+        self, fleet1: int, fleet2: int, submarine: int
+    ) -> bool:
+        return self.open().authorize_campaign_fleet_preparation(
+            fleet1, fleet2, submarine
+        )
+
+    def campaign_fleet_row_allowed(self, row_key: str) -> bool:
+        return self.open().campaign_fleet_row_allowed(row_key)
+
+    def campaign_fleet_operator_is_hard(self, row_key: str) -> bool:
+        return self.open().campaign_fleet_operator_is_hard(row_key)
+
+    def campaign_fleet_operator_hard_satisfied(
+        self, row_key: str
+    ) -> Optional[bool]:
+        return self.open().campaign_fleet_operator_hard_satisfied(row_key)
+
+    def campaign_fleet_operator_in_use(self, row_key: str) -> bool:
+        return self.open().campaign_fleet_operator_in_use(row_key)
+
+    def campaign_fleet_dropdown_opened(self) -> bool:
+        return self.open().campaign_fleet_dropdown_opened()
+
+    def campaign_fleet_selected_indices(self, row_key: str) -> List[int]:
+        return self.open().campaign_fleet_selected_indices(row_key)
+
+    def confirm_campaign_fleet_selection(self) -> CampaignFleetSelectionState:
+        return self.open().confirm_campaign_fleet_selection()
+
+    def close_campaign_fleet_dropdown_for_rollback(self) -> None:
+        self.open().close_campaign_fleet_dropdown_for_rollback()
+
+    def confirm_campaign_fleet_preparation(
+        self,
+    ) -> CampaignFleetPreparationProof:
+        return self.open().confirm_campaign_fleet_preparation()
+
     def research_series(self) -> List[int]:
         return self.open().research_series()
 
@@ -3835,6 +4300,7 @@ class AlasSemanticSession:
             and COMMISSION_ROW_PATTERN.fullmatch(name) is None
             and BUILD_SIDE_NAVBAR_PATTERN.fullmatch(name) is None
             and BUILD_POOL_NAVBAR_PATTERN.fullmatch(name) is None
+            and CAMPAIGN_FLEET_BAR_PATTERN.fullmatch(name) is None
             and campaign_stage_code is None
         ):
             raise AlasSemanticUnmapped(
@@ -3899,8 +4365,10 @@ class AlasSemanticSession:
         if self.adapter is not None:
             self.adapter.end_build()
 
-    def begin_campaign_pre_sortie(self, stage_code: str) -> None:
-        self.open().begin_campaign_pre_sortie(stage_code)
+    def begin_campaign_pre_sortie(
+        self, stage_code: str, mode: str = "normal"
+    ) -> None:
+        self.open().begin_campaign_pre_sortie(stage_code, mode=mode)
 
     def end_campaign_pre_sortie(self) -> None:
         if self.adapter is not None:

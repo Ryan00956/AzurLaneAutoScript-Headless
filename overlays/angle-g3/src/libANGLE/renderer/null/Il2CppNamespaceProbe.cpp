@@ -464,6 +464,18 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
                "LevelFleetSelectView(Clone)/panel/Fixed/btnBack")) {
     return true;
   }
+  if ((name == "btn_select" || name == "btn_clear") &&
+      (EndsWith(path,
+                "LevelFleetSelectView(Clone)/panel/ShipList/fleet/1/" +
+                    std::string(name)) ||
+       EndsWith(path,
+                "LevelFleetSelectView(Clone)/panel/ShipList/fleet/2/" +
+                    std::string(name)) ||
+       EndsWith(path,
+                "LevelFleetSelectView(Clone)/panel/ShipList/sub/1/" +
+                    std::string(name)))) {
+    return true;
+  }
   if (name == "back_btn" &&
       EndsWith(path, "Overlay/UIMain/blur_panel/adapt/top/back_btn")) {
     return true;
@@ -609,6 +621,13 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
 
 bool ShouldEvaluateToggleTopRaycast(std::string_view name,
                                     std::string_view path) {
+  if (name.size() == 5 && name.substr(0, 4) == "item" &&
+      name[4] >= '1' && name[4] <= '6' &&
+      EndsWith(path,
+               "LevelFleetSelectView(Clone)/mask/list/" +
+                   std::string(name))) {
+    return true;
+  }
   if ((name == "build_btn" || name == "queue_btn") &&
       EndsWith(path,
                "Overlay/UIMain/blur_panel/adapt/left_length/frame/tagRoot/" +
@@ -712,7 +731,10 @@ bool ShouldEvaluateImageTopRaycast(std::string_view name,
 }
 
 struct LivenessCollector {
-  std::array<void *, 512> objects = {};
+  // Repeated Unity overlays retain destroyed managed components until GC.
+  // Keep enough temporary identities to filter those objects without marking
+  // the final, much smaller active typed record set as truncated.
+  std::array<void *, 1024> objects = {};
   size_t count = 0;
   bool truncated = false;
   void *(*allocate)(size_t) = nullptr;
@@ -1624,6 +1646,8 @@ UiProbeResult ProbeUnityUi(const Il2CppDynamicProbe &probe,
                     "NewNavalTacticsStudentsPage(Clone)/") !=
               std::string_view::npos ||
           path.find("LevelStageInfoView(Clone)/panel/") !=
+              std::string_view::npos ||
+          path.find("LevelFleetSelectView(Clone)/panel/ShipList/") !=
               std::string_view::npos ||
           EndsWith(path,
                    "LevelFleetSelectView(Clone)/panel/Fixed/btnBack") ||

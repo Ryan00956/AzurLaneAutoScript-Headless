@@ -132,6 +132,13 @@ class FakeOracle:
         )
         self.campaign_preparation_value = None
         self.campaign_preparation_error = None
+        self.campaign_fleet_generation = 30
+        self.campaign_fleets = {
+            "fleet1": 1,
+            "fleet2": 2,
+            "submarine": 1,
+        }
+        self.campaign_fleet_dropdown_row = None
 
     def enabled(self, semantic_id):
         self.enabled_calls.append(semantic_id)
@@ -328,6 +335,92 @@ class FakeOracle:
         self.campaign_preparation_value = None
         return self.click_receipt(
             "campaign/fleet-preparation/cancel", generation=9
+        )
+
+    def campaign_fleet_selection_state(self, stage_code):
+        rows = tuple(
+            SimpleNamespace(
+                row_key=row_key,
+                selected_fleet=(selected or None),
+                in_use=bool(selected),
+                clear_button=SimpleNamespace(
+                    generation=self.campaign_fleet_generation,
+                    point=Point(2, 3),
+                    bounds=Bounds(1, 2, 3, 4),
+                    path="root/{0}/clear".format(row_key),
+                ),
+            )
+            for row_key, selected in self.campaign_fleets.items()
+        )
+        return SimpleNamespace(
+            generation=self.campaign_fleet_generation,
+            stage_code=stage_code,
+            surface_fleets=(
+                int(bool(self.campaign_fleets["fleet1"]))
+                + int(bool(self.campaign_fleets["fleet2"])),
+                2,
+            ),
+            submarine_fleets=(int(bool(self.campaign_fleets["submarine"])), 1),
+            rows=rows,
+        )
+
+    def campaign_fleet_dropdown_state(self):
+        if self.campaign_fleet_dropdown_row is None:
+            return None
+        if self.campaign_fleet_dropdown_row == "submarine":
+            selected = (self.campaign_fleets["submarine"],)
+        else:
+            selected = (
+                self.campaign_fleets["fleet1"],
+                self.campaign_fleets["fleet2"],
+            )
+        return SimpleNamespace(
+            generation=self.campaign_fleet_generation,
+            active_indices=tuple(
+                sorted(set(value for value in selected if value))
+            ),
+        )
+
+    def click_campaign_fleet_row(self, row_key, action):
+        if action == "select":
+            self.campaign_fleet_dropdown_row = row_key
+        elif action == "clear":
+            self.campaign_fleets[row_key] = 0
+        else:
+            raise AssertionError("unexpected fake campaign fleet action")
+        self.campaign_fleet_generation += 1
+        semantic_row = (
+            "submarine/1"
+            if row_key == "submarine"
+            else row_key.replace("fleet", "fleet/")
+        )
+        semantic_id = "campaign/fleet-preparation/{0}/{1}".format(
+            semantic_row, action
+        )
+        self.click_calls.append(semantic_id)
+        return self.click_receipt(
+            semantic_id, generation=self.campaign_fleet_generation
+        )
+
+    def click_campaign_fleet_option(self, index):
+        if self.campaign_fleet_dropdown_row is None:
+            raise AssertionError("fake campaign fleet dropdown is closed")
+        if self.campaign_fleet_dropdown_row == "submarine":
+            active = {self.campaign_fleets["submarine"]}
+        else:
+            active = {
+                self.campaign_fleets["fleet1"],
+                self.campaign_fleets["fleet2"],
+            }
+        active.discard(0)
+        if index not in active:
+            self.campaign_fleets[self.campaign_fleet_dropdown_row] = index
+        self.campaign_fleet_dropdown_row = None
+        self.campaign_fleet_generation += 1
+        semantic_id = "campaign/fleet-preparation/option/{0}".format(index)
+        self.click_calls.append(semantic_id)
+        return self.click_receipt(
+            semantic_id, generation=self.campaign_fleet_generation
         )
 
     def tactical_slots(self):
@@ -1236,6 +1329,142 @@ class AlasSemanticAdapterTests(unittest.TestCase):
                 "campaign/fleet-preparation/cancel",
             ],
         )
+
+    def test_campaign_fleet_preparation_defaults_closed_without_input(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.campaign_preparation_value = SimpleNamespace(kind="fleet")
+
+        adapter.begin_campaign_pre_sortie("12-4")
+        authorized = adapter.authorize_campaign_fleet_preparation(1, 2, 0)
+
+        self.assertFalse(authorized)
+        self.assertEqual(oracle.click_calls, [])
+        with self.assertRaisesRegex(SemanticGateClosed, "remaining mutation"):
+            adapter.click(NamedButton("FLEET_2_CLEAR"))
+        adapter.end_campaign_pre_sortie()
+
+    def test_campaign_fleet_preflight_rejects_insufficient_budget_before_input(self):
+        oracle = FakeOracle()
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            campaign_fleet_mutation_budget=2,
+        )
+        oracle.campaign_preparation_value = SimpleNamespace(kind="fleet")
+
+        adapter.begin_campaign_pre_sortie("12-4")
+        with self.assertRaisesRegex(SemanticGateClosed, "2 < 3"):
+            adapter.authorize_campaign_fleet_preparation(1, 2, 0)
+
+        self.assertEqual(oracle.click_calls, [])
+        adapter.end_campaign_pre_sortie()
+
+    def test_campaign_fleet_preflight_uses_submarine_capacity_not_occupancy(self):
+        oracle = FakeOracle()
+        oracle.campaign_fleets["fleet2"] = 0
+        oracle.campaign_fleets["submarine"] = 0
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            campaign_fleet_mutation_budget=2,
+        )
+        oracle.campaign_preparation_value = SimpleNamespace(kind="fleet")
+
+        adapter.begin_campaign_pre_sortie("12-4")
+
+        self.assertTrue(adapter.authorize_campaign_fleet_preparation(1, 2, 1))
+        receipt = adapter.click(NamedButton("FLEET_2_CLEAR"))
+        self.assertEqual(
+            receipt.semantic_id,
+            "campaign/fleet-preparation/fleet/2/clear",
+        )
+        self.assertEqual(oracle.click_calls, [])
+        adapter.end_campaign_pre_sortie()
+
+    def test_campaign_fleet_preparation_reuses_alas_sequence_and_cancels(self):
+        oracle = FakeOracle()
+        stage = SimpleNamespace(
+            stage_code="12-4",
+            button=SimpleNamespace(actionable=True),
+        )
+        oracle.campaign_state_value = SimpleNamespace(
+            generation=12,
+            chapter_name="马里亚纳风云上",
+            stages=(stage,),
+        )
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            campaign_stage_entry_budget=1,
+            campaign_fleet_mutation_budget=3,
+        )
+        entrance = NamedButton("12-4")
+        entrance.semantic_campaign_stage_code = "12-4"
+
+        adapter.begin_campaign_pre_sortie("12-4")
+        adapter.click(entrance)
+        adapter.click(NamedButton("MAP_PREPARATION"))
+        self.assertTrue(adapter.authorize_campaign_fleet_preparation(1, 2, 0))
+
+        # This is the input sequence emitted by ALAS FleetPreparation for the
+        # fake initial state (1, 2, 1). Dropdown open/close remains ALAS-owned;
+        # only the exact semantic endpoints replace screenshot coordinates.
+        adapter.click(NamedButton("FLEET_2_CLEAR"))
+        self.assertTrue(adapter.campaign_fleet_row_allowed("fleet2"))
+        self.assertFalse(adapter.campaign_fleet_operator_in_use("fleet2"))
+        adapter.click(NamedButton("SUBMARINE_CLEAR"))
+        adapter.click(NamedButton("FLEET_1_CHOOSE"))
+        self.assertEqual(adapter.campaign_fleet_selected_indices("fleet1"), [1])
+        adapter.click(NamedButton("FLEET_1_CHOOSE"))
+        adapter.click(NamedButton("FLEET_2_CHOOSE"))
+        adapter.click(NamedButton("FLEET_2_BAR_INDEX_2"))
+        prepared = adapter.confirm_campaign_fleet_selection()
+
+        self.assertEqual(
+            tuple(row.selected_fleet or 0 for row in prepared.rows),
+            (1, 2, 0),
+        )
+        adapter.click(NamedButton("MAP_PREPARATION_CANCEL"))
+        oracle.campaign_page_value = True
+        proof = adapter.confirm_campaign_fleet_preparation()
+        adapter.end_campaign_pre_sortie()
+
+        self.assertEqual(proof.initial_fleets, (1, 2, 1))
+        self.assertEqual(proof.requested_fleets, (1, 2, 0))
+        self.assertEqual(proof.prepared_fleets, (1, 2, 0))
+        self.assertEqual(
+            proof.mutation_semantic_ids,
+            (
+                "campaign/fleet-preparation/fleet/2/clear",
+                "campaign/fleet-preparation/submarine/1/clear",
+                "campaign/fleet-preparation/option/2",
+            ),
+        )
+        self.assertNotIn("campaign/fleet-preparation/sortie", oracle.click_calls)
+
+    def test_campaign_fleet_dropdown_rollback_closes_empty_row_without_mutation(self):
+        oracle = FakeOracle()
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            campaign_fleet_mutation_budget=3,
+        )
+        oracle.campaign_preparation_value = SimpleNamespace(kind="fleet")
+        adapter.begin_campaign_pre_sortie("12-4")
+        adapter.authorize_campaign_fleet_preparation(1, 2, 0)
+        adapter.click(NamedButton("FLEET_2_CLEAR"))
+        adapter.click(NamedButton("SUBMARINE_CLEAR"))
+        adapter.click(NamedButton("FLEET_2_CHOOSE"))
+
+        adapter.close_campaign_fleet_dropdown_for_rollback()
+
+        self.assertIsNone(oracle.campaign_fleet_dropdown_state())
+        self.assertEqual(oracle.campaign_fleets, {
+            "fleet1": 1,
+            "fleet2": 0,
+            "submarine": 0,
+        })
+        adapter.end_campaign_pre_sortie()
 
     def test_goto_main_from_mission_uses_exact_task_back(self):
         adapter, oracle, _ = self.make_adapter()
@@ -2369,6 +2598,7 @@ class AlasSemanticAdapterTests(unittest.TestCase):
             "ALAS_SEMANTIC_DORM_FEED_BUDGET": "5",
             "ALAS_SEMANTIC_BUILD_SUBMIT_BUDGET": "6",
             "ALAS_SEMANTIC_CAMPAIGN_STAGE_ENTRY_BUDGET": "7",
+            "ALAS_SEMANTIC_CAMPAIGN_FLEET_MUTATION_BUDGET": "8",
         }
         with patch.dict("os.environ", environment, clear=True):
             session = AlasSemanticSession.from_environment("emulator-test")
@@ -2380,6 +2610,7 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertEqual(session.dorm_feed_budget, 5)
         self.assertEqual(session.build_submit_budget, 6)
         self.assertEqual(session.campaign_stage_entry_budget, 7)
+        self.assertEqual(session.campaign_fleet_mutation_budget, 8)
 
         environment["ALAS_SEMANTIC_DORM_FEED_BUDGET"] = "05"
         with patch.dict("os.environ", environment, clear=True):

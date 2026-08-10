@@ -860,6 +860,118 @@ class SemanticOracleTests(unittest.TestCase):
         with self.assertRaisesRegex(SemanticGateClosed, "unexpectedly exposed"):
             make_oracle(backend).campaign_fleet_preparation_state("12-4")
 
+    def test_campaign_fleet_selection_reads_exact_rows_and_summary(self):
+        fleet = (
+            "root/OverlayCamera/Overlay/UIMain/"
+            "LevelFleetSelectView(Clone)/panel/"
+        )
+        stage = (
+            "root/UICamera/Canvas/UIMain/LevelMainScene(Clone)/float/levels/"
+            "items/Chapter_1204/main"
+        )
+        buttons = [
+            make_button("main", stage, raycast_top=False),
+            make_button("btnBack", fleet + "Fixed/btnBack", 1196, 97),
+            make_button(
+                "start_button", fleet + "Fixed/start_button", 1078, 585,
+                raycast_top=None,
+            ),
+        ]
+        for row in ("fleet/1", "fleet/2", "sub/1"):
+            buttons.extend(
+                [
+                    make_button("btn_select", fleet + "ShipList/" + row + "/btn_select"),
+                    make_button("btn_clear", fleet + "ShipList/" + row + "/btn_clear"),
+                ]
+            )
+        texts = [
+            make_text("舰队选择", fleet + "Fixed/title/Image/text"),
+            make_text("12–4", stage + "/info/bk/title_form/title_index"),
+            make_text("TF58，翱翔于天际", stage + "/info/bk/title_form/title"),
+            make_text("第一舰队", fleet + "ShipList/fleet/1/bg/name"),
+            make_text("第二舰队", fleet + "ShipList/fleet/2/bg/name"),
+            make_text("潜艇编队一", fleet + "ShipList/sub/1/bg/name"),
+            make_text("2/2", fleet + "Fixed/limit_list/limit/number"),
+            make_text("1/1", fleet + "Fixed/limit_list/limit/number_sub"),
+            make_text("道中(42)", fleet + "Fixed/limit_list/cost_limit/cost_noraml/Text"),
+            make_text("旗舰(55)", fleet + "Fixed/limit_list/cost_limit/cost_boss/Text"),
+            make_text("潜艇(17)", fleet + "Fixed/limit_list/cost_limit/cost_sub/Text"),
+        ]
+        images = []
+        for row, levels in (
+            ("fleet/1", (118, 109)),
+            ("fleet/2", (112, 106)),
+            ("sub/1", (125,)),
+        ):
+            for index, level in enumerate(levels):
+                ship = fleet + "ShipList/" + row + "/main/ship{0}/icon_bg/".format(index)
+                images.append(make_image(ship + "icon", "ship_{0}".format(index)))
+                texts.append(make_text(str(level), ship + "lv/Text"))
+        backend = FakeBackend(buttons)
+        backend.ui = make_ui(texts, images=images)
+        oracle = make_oracle(backend)
+
+        state = oracle.campaign_fleet_selection_state("12-4")
+
+        self.assertEqual(state.surface_fleets, (2, 2))
+        self.assertEqual(state.submarine_fleets, (1, 1))
+        self.assertEqual(
+            [(row.row_key, row.selected_fleet, row.in_use) for row in state.rows],
+            [("fleet1", 1, True), ("fleet2", 2, True), ("submarine", 1, True)],
+        )
+        self.assertEqual(
+            (state.mob_oil_cost, state.boss_oil_cost, state.submarine_oil_cost),
+            (42, 55, 17),
+        )
+        receipt = oracle.click_campaign_fleet_row("fleet2", "clear")
+        self.assertEqual(
+            receipt.semantic_id, "campaign/fleet-preparation/fleet/2/clear"
+        )
+        self.assertEqual(backend.taps, [(640, 360)])
+
+    def test_campaign_fleet_dropdown_requires_six_exact_toggle_options(self):
+        root = (
+            "root/OverlayCamera/Overlay/UIMain/"
+            "LevelFleetSelectView(Clone)/"
+        )
+        buttons = [
+            make_button("btnBack", root + "panel/Fixed/btnBack", raycast_top=False),
+            make_button(
+                "start_button", root + "panel/Fixed/start_button", raycast_top=None
+            ),
+            make_button("mask", root + "mask", raycast_top=None),
+        ]
+        toggles = []
+        texts = []
+        for index in range(1, 7):
+            path = root + "mask/list/item{0}".format(index)
+            toggles.append(make_toggle(path, raycast_top=True))
+            selected = "on" if index in (1, 2) else "off"
+            texts.append(
+                make_text(
+                    str(index), path + "/" + selected + "/mask/number"
+                )
+            )
+        backend = FakeBackend(buttons)
+        backend.ui = make_ui(texts, toggles=toggles)
+        oracle = make_oracle(backend)
+
+        state = oracle.campaign_fleet_dropdown_state()
+
+        self.assertIsNotNone(state)
+        assert state is not None
+        self.assertEqual(state.active_indices, (1, 2))
+        receipt = oracle.click_campaign_fleet_option(2)
+        self.assertEqual(
+            receipt.semantic_id, "campaign/fleet-preparation/option/2"
+        )
+        self.assertEqual(backend.taps, [(640, 360)])
+
+        backend.ui["toggles"].pop()
+        backend.ui["toggle_count"] -= 1
+        with self.assertRaisesRegex(SemanticGateClosed, "incomplete"):
+            make_oracle(backend).campaign_fleet_dropdown_state()
+
     def test_campaign_in_map_probe_only_admits_reviewed_non_map_surfaces(self):
         login = FakeBackend(
             [

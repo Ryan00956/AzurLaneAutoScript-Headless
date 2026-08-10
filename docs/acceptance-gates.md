@@ -191,6 +191,29 @@ See [G8 real ALAS validation](g8-alas-reward-commission-validation-report.md).
 
 See [G10 campaign pre-sortie validation](g10-campaign-pre-sortie-validation-report.md).
 
+## G11 - Campaign fleet preparation: bounded reversible pass
+
+- Keep ALAS's original `FleetPreparation` and `FleetOperator` state machines;
+  replace only their reviewed observation and exact input endpoints.
+- Type the three fleet rows, selected fleet identities, ship levels, capacity
+  counters, oil costs, and all six exact fleet-option Toggles.
+- Default the independent fleet-mutation budget to zero. Before any fleet
+  input, simulate ALAS's exact branch order and require enough budget for the
+  complete ordered mutation plan.
+- Count each real clear or fleet-option selection as one mutation. Dropdown
+  navigation and an idempotent clear of an already empty row consume no
+  mutation unit and inject no unnecessary input.
+- Require the prepared fleet selection to match configuration, then cancel
+  through ALAS's original loop and prove the original selection, chapter,
+  stage set, and `IN_MAP=False` were restored.
+- Keep hard-mode restriction lines, formation-layout changes, sortie, map
+  movement, battle, and rewards outside this gate.
+- Require budget-zero and exact positive-budget full ALAS commands, native
+  build guards, clean pinned-patch application, patched-file hash equality,
+  controller tests, and an independent post-cancel typed read.
+
+See [G11 campaign fleet-preparation validation](g11-campaign-fleet-preparation-validation-report.md).
+
 ## Stop or pivot conditions
 
 - A critical flow depends on rendered GPU results rather than completion signaling.

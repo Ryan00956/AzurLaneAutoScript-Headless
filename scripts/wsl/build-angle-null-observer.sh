@@ -85,6 +85,11 @@ if ! grep -Fq 'Unity liveness can retain a destroyed component' \
   echo "Destroyed Unity Button tolerance is missing" >&2
   exit 1
 fi
+if ! grep -Fq 'std::array<void *, 1024> objects' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Long-session Unity liveness capacity is missing" >&2
+  exit 1
+fi
 if ! grep -Fq 'kReviewedRaycastFractions' \
     "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
   echo "Dorm Button bounded raycast search is missing" >&2
@@ -143,6 +148,16 @@ fi
 if ! grep -Fq 'LevelFleetSelectView(Clone)/panel/Fixed/btnBack' \
     "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
   echo "Campaign fleet-preparation cancel allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'LevelFleetSelectView(Clone)/panel/ShipList/fleet/1/' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Campaign fleet-selection row allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'LevelFleetSelectView(Clone)/mask/list/' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Campaign fleet-selection option allowlist is missing" >&2
   exit 1
 fi
 if ! grep -Fq 'Overlay/UIMain/blur_panel/adapt/top/back_btn' \
