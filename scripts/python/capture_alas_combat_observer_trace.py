@@ -53,7 +53,17 @@ def write_trace(path: Path, value) -> None:
         json.dumps(value, ensure_ascii=False, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    os.replace(temporary, path)
+    for attempt in range(20):
+        try:
+            os.replace(temporary, path)
+            return
+        except PermissionError:
+            if attempt == 19:
+                raise
+            # Windows readers can briefly hold the destination across the
+            # atomic replace.  Keep the capture fail-closed but tolerate the
+            # bounded sharing violation instead of losing the live trace.
+            time.sleep(0.025)
 
 
 def main() -> int:

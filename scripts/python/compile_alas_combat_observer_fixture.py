@@ -1,4 +1,4 @@
-"""Select six trace generations, report candidates, and compile a G20 fixture."""
+"""Select a bounded trace sequence, report candidates, and compile a fixture."""
 
 import argparse
 import json
@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / "python"))
 
 from alas_headless import (  # noqa: E402
     analyze_alas_combat_observer_candidates,
+    alas_combat_replay_phase_sequence,
     compile_alas_combat_observer_fixture,
     load_alas_combat_observer_manifest,
     load_alas_combat_observer_trace,
@@ -30,6 +31,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--alas-root", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--candidates-output", type=Path)
+    parser.add_argument("--include-get-items", action="store_true")
+    parser.add_argument("--include-get-mission", action="store_true")
     parser.add_argument(
         "--manifest",
         type=Path,
@@ -53,11 +56,21 @@ def main() -> int:
     try:
         generations = tuple(int(item) for item in args.generations.split(","))
     except ValueError as exc:
-        raise SystemExit("generations must be six comma-separated integers") from exc
+        raise SystemExit("generations must be comma-separated integers") from exc
+    phase_sequence = alas_combat_replay_phase_sequence(
+        include_get_items=args.include_get_items,
+        include_get_mission=args.include_get_mission,
+    )
+    if len(generations) != len(phase_sequence):
+        raise SystemExit(
+            "generation count does not match the selected combat phase sequence"
+        )
     manifest = load_alas_combat_observer_manifest(args.manifest)
     trace = load_alas_combat_observer_trace(args.trace, manifest)
     selected = select_alas_combat_observer_trace_samples(trace, generations)
-    candidates = analyze_alas_combat_observer_candidates(selected)
+    candidates = analyze_alas_combat_observer_candidates(
+        selected, phase_sequence=phase_sequence
+    )
     candidates_output = args.candidates_output or args.output.with_suffix(
         ".candidates.json"
     )
@@ -88,6 +101,7 @@ def main() -> int:
         rows=8,
         land_cells=land,
         expected_fleet_count=2,
+        phase_sequence=phase_sequence,
     )
     write_json(args.output, fixture)
     print(
@@ -99,6 +113,7 @@ def main() -> int:
                 "fixture": str(args.output.resolve()),
                 "candidates": str(candidates_output.resolve()),
                 "generations": generations,
+                "phases": [phase.value for phase in phase_sequence],
                 "land_cells": len(land),
                 "input_injected": False,
             },

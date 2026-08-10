@@ -7,6 +7,8 @@ typed sequence of post-click combat observations drives the original ALAS
 recorded as a virtual action and no semantic adapter or Android input is used.
 """
 
+from __future__ import annotations
+
 import copy
 from dataclasses import dataclass
 from enum import Enum
@@ -37,7 +39,9 @@ class AlasCombatReplayPhase(str, Enum):
     BATTLE_PREPARATION = "battle_preparation"
     COMBAT_EXECUTING = "combat_executing"
     BATTLE_STATUS = "battle_status_s"
+    GET_ITEMS = "get_items_1"
     EXP_INFO = "exp_info_s"
+    GET_MISSION = "get_mission"
     MAP_SEARCHING = "map_enemy_searching"
     MAP_STABLE = "map_stable"
 
@@ -123,6 +127,46 @@ ALAS_COMBAT_REPLAY_PHASES = (
     AlasCombatReplayPhase.MAP_STABLE,
 )
 
+
+def alas_combat_replay_phase_sequence(
+    *,
+    include_get_items: bool = False,
+    include_get_mission: bool = False,
+) -> Tuple[AlasCombatReplayPhase, ...]:
+    """Return one bounded original-ALAS post-battle input sequence."""
+
+    if not isinstance(include_get_items, bool) or not isinstance(
+        include_get_mission, bool
+    ):
+        raise SemanticGateClosed("combat replay optional phase flags are invalid")
+    phases = [
+        AlasCombatReplayPhase.BATTLE_PREPARATION,
+        AlasCombatReplayPhase.COMBAT_EXECUTING,
+        AlasCombatReplayPhase.BATTLE_STATUS,
+    ]
+    if include_get_items:
+        phases.append(AlasCombatReplayPhase.GET_ITEMS)
+    phases.append(AlasCombatReplayPhase.EXP_INFO)
+    if include_get_mission:
+        phases.append(AlasCombatReplayPhase.GET_MISSION)
+    phases.extend(
+        (
+            AlasCombatReplayPhase.MAP_SEARCHING,
+            AlasCombatReplayPhase.MAP_STABLE,
+        )
+    )
+    return tuple(phases)
+
+
+ALAS_COMBAT_REPLAY_PHASE_SEQUENCES = tuple(
+    alas_combat_replay_phase_sequence(
+        include_get_items=include_get_items,
+        include_get_mission=include_get_mission,
+    )
+    for include_get_items in (False, True)
+    for include_get_mission in (False, True)
+)
+
 ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES: Mapping[
     AlasCombatReplayPhase, Tuple[str, ...]
 ] = MappingProxyType({
@@ -132,7 +176,9 @@ ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES: Mapping[
     ),
     AlasCombatReplayPhase.COMBAT_EXECUTING: ("PAUSE",),
     AlasCombatReplayPhase.BATTLE_STATUS: ("BATTLE_STATUS_S",),
+    AlasCombatReplayPhase.GET_ITEMS: ("GET_ITEMS_1",),
     AlasCombatReplayPhase.EXP_INFO: ("EXP_INFO_S",),
+    AlasCombatReplayPhase.GET_MISSION: ("GET_MISSION",),
     AlasCombatReplayPhase.MAP_SEARCHING: (
         "IN_MAP",
         "MAP_ENEMY_SEARCHING",
@@ -157,6 +203,8 @@ ALAS_COMBAT_REPLAY_RESOURCE_NAMES = (
     "BATTLE_STATUS_S",
     "CAMPAIGN_CHECK",
     "EVENT_CHECK",
+    "EXP_INFO_A",
+    "EXP_INFO_B",
     "EXP_INFO_S",
     "FLEET_PREPARATION",
     "GAME_TIPS",
@@ -262,95 +310,67 @@ _MUTABLE_TIMER_FIELDS = (
 )
 
 
+def _expected_resource_query_names(
+    replay: AlasCampaignCombatReplay,
+) -> frozenset[str]:
+    expected = set(ALAS_COMBAT_REPLAY_RESOURCE_NAMES)
+    if not any(
+        frame.phase is AlasCombatReplayPhase.GET_MISSION
+        for frame in replay.frames
+    ):
+        # These fallbacks are short-circuited by EXP_INFO_S on the base path.
+        expected.difference_update(("EXP_INFO_A", "EXP_INFO_B"))
+    return frozenset(expected)
+
+
 def canonical_alas_campaign_combat_replay(
     admission: AlasCampaignCombatAdmission,
+    *,
+    include_get_items: bool = False,
+    include_get_mission: bool = False,
 ) -> AlasCampaignCombatReplay:
-    """Build the one pinned ordinary-combat replay sequence."""
+    """Build one of the four bounded ordinary-combat replay sequences."""
 
     if not isinstance(admission, AlasCampaignCombatAdmission):
         raise SemanticGateClosed("combat replay requires an admission")
     base = admission.input_generation
-    frames = (
+    phases = alas_combat_replay_phase_sequence(
+        include_get_items=include_get_items,
+        include_get_mission=include_get_mission,
+    )
+    frames = tuple(
         AlasCombatReplayFrame(
-            base + 1,
-            AlasCombatReplayPhase.BATTLE_PREPARATION,
-            ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES[
-                AlasCombatReplayPhase.BATTLE_PREPARATION
-            ],
-            False,
-            True,
-            False,
-            False,
-            False,
-            False,
-        ),
-        AlasCombatReplayFrame(
-            base + 2,
-            AlasCombatReplayPhase.COMBAT_EXECUTING,
-            ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES[
-                AlasCombatReplayPhase.COMBAT_EXECUTING
-            ],
-            False,
-            False,
-            True,
-            False,
-            False,
-            False,
-        ),
-        AlasCombatReplayFrame(
-            base + 3,
-            AlasCombatReplayPhase.BATTLE_STATUS,
-            ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES[
-                AlasCombatReplayPhase.BATTLE_STATUS
-            ],
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-        ),
-        AlasCombatReplayFrame(
-            base + 4,
-            AlasCombatReplayPhase.EXP_INFO,
-            ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES[
-                AlasCombatReplayPhase.EXP_INFO
-            ],
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-        ),
-        AlasCombatReplayFrame(
-            base + 5,
-            AlasCombatReplayPhase.MAP_SEARCHING,
-            ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES[
-                AlasCombatReplayPhase.MAP_SEARCHING
-            ],
-            True,
-            False,
-            False,
-            True,
-            True,
-            True,
-        ),
-        AlasCombatReplayFrame(
-            base + 6,
-            AlasCombatReplayPhase.MAP_STABLE,
-            ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES[
-                AlasCombatReplayPhase.MAP_STABLE
-            ],
-            True,
-            False,
-            False,
-            False,
-            True,
-            True,
-            hp=(1.0, 1.0, 1.0, 1.0, 1.0, 1.0),
-            levels=(-1, -1, -1, -1, -1, -1),
-        ),
+            generation=base + offset,
+            phase=phase,
+            visible_resources=ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES[phase],
+            in_map=phase
+            in (
+                AlasCombatReplayPhase.MAP_SEARCHING,
+                AlasCombatReplayPhase.MAP_STABLE,
+            ),
+            combat_loading=phase
+            is AlasCombatReplayPhase.BATTLE_PREPARATION,
+            combat_executing=phase
+            is AlasCombatReplayPhase.COMBAT_EXECUTING,
+            enemy_searching=phase is AlasCombatReplayPhase.MAP_SEARCHING,
+            fleet_on_target=phase
+            in (
+                AlasCombatReplayPhase.MAP_SEARCHING,
+                AlasCombatReplayPhase.MAP_STABLE,
+            ),
+            current_fleet_on_target=phase
+            in (
+                AlasCombatReplayPhase.MAP_SEARCHING,
+                AlasCombatReplayPhase.MAP_STABLE,
+            ),
+            hp=(1.0,) * 6
+            if phase is AlasCombatReplayPhase.MAP_STABLE
+            else (),
+            levels=(-1,) * 6
+            if phase is AlasCombatReplayPhase.MAP_STABLE
+            else (),
+        )
+        for offset, phase in enumerate(phases, start=1)
     )
     return AlasCampaignCombatReplay(
         stage_code=admission.stage_code,
@@ -372,7 +392,8 @@ def _validate_replay(
         or replay.input_generation != admission.input_generation
     ):
         raise SemanticGateClosed("combat replay identity changed")
-    if tuple(frame.phase for frame in replay.frames) != ALAS_COMBAT_REPLAY_PHASES:
+    phase_order = tuple(frame.phase for frame in replay.frames)
+    if phase_order not in ALAS_COMBAT_REPLAY_PHASE_SEQUENCES:
         raise SemanticGateClosed("combat replay phase order changed")
     generations = tuple(frame.generation for frame in replay.frames)
     if (
@@ -415,7 +436,23 @@ def _validate_replay(
                 False,
                 False,
             ),
+            AlasCombatReplayPhase.GET_ITEMS: (
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+            ),
             AlasCombatReplayPhase.EXP_INFO: (
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+            ),
+            AlasCombatReplayPhase.GET_MISSION: (
                 False,
                 False,
                 False,
@@ -511,6 +548,12 @@ class _ReplayDriver:
             raise SemanticGateClosed("combat replay transition changed")
         self.index = next_index
 
+    def next_phase(self) -> AlasCombatReplayPhase:
+        next_index = self.index + 1
+        if next_index >= len(self.replay.frames):
+            raise SemanticGateClosed("combat replay has no next phase")
+        return self.replay.frames[next_index].phase
+
     def query(self, name: str) -> bool:
         self.resource_queries.append(name)
         return name in self.frame.visible_resources
@@ -539,23 +582,16 @@ class _ReplayDriver:
             return
         name = getattr(button, "name", None)
         transitions = {
-            AlasCombatReplayPhase.BATTLE_PREPARATION: (
-                "BATTLE_PREPARATION",
-                AlasCombatReplayPhase.COMBAT_EXECUTING,
-            ),
-            AlasCombatReplayPhase.BATTLE_STATUS: (
-                "BATTLE_STATUS_S",
-                AlasCombatReplayPhase.EXP_INFO,
-            ),
-            AlasCombatReplayPhase.EXP_INFO: (
-                "EXP_INFO_S",
-                AlasCombatReplayPhase.MAP_SEARCHING,
-            ),
+            AlasCombatReplayPhase.BATTLE_PREPARATION: "BATTLE_PREPARATION",
+            AlasCombatReplayPhase.BATTLE_STATUS: "BATTLE_STATUS_S",
+            AlasCombatReplayPhase.GET_ITEMS: "GET_ITEMS_1",
+            AlasCombatReplayPhase.EXP_INFO: "EXP_INFO_S",
+            AlasCombatReplayPhase.GET_MISSION: "GET_MISSION",
         }
         transition = transitions.get(self.frame.phase)
         if (
             transition is None
-            or name != transition[0]
+            or name != transition
             or name not in self.frame.visible_resources
         ):
             raise SemanticGateClosed(
@@ -564,7 +600,7 @@ class _ReplayDriver:
             )
         self.virtual_actions.append(name)
         self.call_order.append("device.click(" + name + ")")
-        self.advance(transition[1])
+        self.advance(self.next_phase())
 
     def screenshot(self) -> None:
         self.call_order.append("device.screenshot:" + self.section)
@@ -588,11 +624,20 @@ class _ReplayDriver:
     def validate_complete(self) -> None:
         if self.frame.phase is not AlasCombatReplayPhase.MAP_STABLE:
             raise SemanticGateClosed("combat replay did not reach the stable map")
+        action_by_phase = {
+            AlasCombatReplayPhase.BATTLE_PREPARATION: "BATTLE_PREPARATION",
+            AlasCombatReplayPhase.BATTLE_STATUS: "BATTLE_STATUS_S",
+            AlasCombatReplayPhase.GET_ITEMS: "GET_ITEMS_1",
+            AlasCombatReplayPhase.EXP_INFO: "EXP_INFO_S",
+            AlasCombatReplayPhase.GET_MISSION: "GET_MISSION",
+        }
         expected_actions = (
             "campaign_grid:" + self.admission.target_node,
-            "BATTLE_PREPARATION",
-            "BATTLE_STATUS_S",
-            "EXP_INFO_S",
+            *(
+                action_by_phase[frame.phase]
+                for frame in self.replay.frames
+                if frame.phase in action_by_phase
+            ),
         )
         if tuple(self.virtual_actions) != expected_actions:
             raise SemanticGateClosed("combat replay virtual action order changed")
@@ -605,8 +650,16 @@ class _ReplayDriver:
                 "combat replay queried unmapped resources: "
                 + ", ".join(sorted(unknown))
             )
-        if set(self.resource_queries) != set(ALAS_COMBAT_REPLAY_RESOURCE_NAMES):
-            raise SemanticGateClosed("combat replay resource query surface changed")
+        observed = set(self.resource_queries)
+        expected = set(_expected_resource_query_names(self.replay))
+        if observed != expected:
+            raise SemanticGateClosed(
+                "combat replay resource query surface changed; missing={0}; "
+                "unexpected={1}".format(
+                    ",".join(sorted(expected - observed)),
+                    ",".join(sorted(observed - expected)),
+                )
+            )
 
 
 class _ReplayDevice:
@@ -1035,8 +1088,16 @@ def replay_alas_campaign_combat_state_machine(
                 "combat replay queried unmapped resources: "
                 + ", ".join(sorted(unknown))
             )
-        if set(driver.resource_queries) != set(ALAS_COMBAT_REPLAY_RESOURCE_NAMES):
-            raise SemanticGateClosed("combat replay resource query surface changed")
+        observed = set(driver.resource_queries)
+        expected = set(_expected_resource_query_names(replay))
+        if observed != expected:
+            raise SemanticGateClosed(
+                "combat replay resource query surface changed; missing={0}; "
+                "unexpected={1}".format(
+                    ",".join(sorted(expected - observed)),
+                    ",".join(sorted(observed - expected)),
+                )
+            )
         expected_end = sandbox._expected_end(decision.expected)
         auto_mode = sandbox.config.Fleet_Fleet1Mode
         submarine_mode = "do_not_use"

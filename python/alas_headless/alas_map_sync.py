@@ -274,7 +274,12 @@ def synchronize_alas_campaign_map(
         raise SemanticGateClosed("ALAS map projection fleet identity is invalid")
     roster_matches = []
     for fleet in state.fleets:
-        marker_sprite = fleet.marker.removeprefix("cell_fleet_")
+        marker_prefix = "cell_fleet_"
+        marker_sprite = (
+            fleet.marker[len(marker_prefix) :]
+            if fleet.marker.startswith(marker_prefix)
+            else fleet.marker
+        )
         matches = sum(
             sprite == marker_sprite
             for sprite in state.current_fleet_roster_sprites

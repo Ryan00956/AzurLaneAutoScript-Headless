@@ -1511,9 +1511,14 @@ class AlasSemanticAdapter:
             except SemanticGateClosed:
                 pass
         try:
-            return not self.oracle.campaign_is_in_map()
+            # Either result is a positive proof that the observer recognizes
+            # the current campaign surface.  ``True`` means the exact map
+            # root is present; ``False`` means one of the reviewed non-map
+            # startup surfaces is present.  Only an exception is unknown.
+            self.oracle.campaign_is_in_map()
         except SemanticGateClosed:
             return False
+        return True
 
     def _active_flow_allows_passive_probe(self) -> bool:
         now = time.monotonic()

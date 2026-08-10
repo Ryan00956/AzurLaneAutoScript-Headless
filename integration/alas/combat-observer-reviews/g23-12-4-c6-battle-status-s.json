@@ -1,0 +1,55 @@
+{
+  "schema": "alas-headless.g22-combat-mapping-review/v1",
+  "review_id": "g23-12-4-c6-battle-status-s",
+  "trace_sha256": "54cfedfad38282a83cfa8564a14cde59ad04a62c3b1d997b67ad4fd54082f4b8",
+  "generations": [13054, 14039, 14655],
+  "resources": [
+    {
+      "resource_name": "BATTLE_STATUS_S",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultGradePage(Clone)",
+          "name": "NewBattleResultGradePage(Clone)",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultGradePage(Clone)/bg/grade/icon",
+          "name": "icon",
+          "sprite": "letter_S",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultGradePage(Clone)/bg/grade/Text",
+          "name": "Text",
+          "sprite": "label_S",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/Effect/bg03/Text",
+          "name": "Text",
+          "sprite": "",
+          "text": "VICTORY",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultGradePage(Clone)/bg/ResultEffect/Tips/dianjijixu/bg20",
+          "name": "bg20",
+          "sprite": "",
+          "text": "点击继续",
+          "require_top_raycast": false
+        }
+      ]
+    }
+  ],
+  "blockers": [],
+  "blocker_review_complete": false
+}

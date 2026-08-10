@@ -1,0 +1,63 @@
+{
+  "schema": "alas-headless.g22-combat-mapping-review/v1",
+  "review_id": "g23-12-4-e5-get-mission",
+  "trace_sha256": "69c03d1c2231f183f6fec263a5386636bb11dea8197469cc7638cfe3dfdf28bf",
+  "generations": [19972, 20196, 20714],
+  "resources": [
+    {
+      "resource_name": "GET_MISSION",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
+          "name": "custom_button_1(Clone)",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
+          "name": "custom_button_1(Clone)",
+          "sprite": "btn_big_blue",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/top/bg/infomation",
+          "name": "infomation",
+          "sprite": "title_print",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)/pic",
+          "name": "pic",
+          "sprite": "",
+          "text": "确 定",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/top/bg/infomation/title_en",
+          "name": "title_en",
+          "sprite": "",
+          "text": "INFORMATION",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/top/bg/infomation/title",
+          "name": "title",
+          "sprite": "",
+          "text": "信息",
+          "require_top_raycast": false
+        }
+      ]
+    }
+  ],
+  "blockers": [],
+  "blocker_review_complete": false
+}

@@ -453,6 +453,35 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
       }
     }
   }
+  constexpr std::string_view kCampaignCellPrefix = "chapter_cell_quad_";
+  if (name.rfind(kCampaignCellPrefix, 0) == 0 &&
+      EndsWith(path,
+               "LevelCamera/Canvas/UIMain/LevelGrid/DragLayer/plane/quads/" +
+                   std::string(name))) {
+    const std::string_view coordinate = name.substr(kCampaignCellPrefix.size());
+    const size_t separator = coordinate.find('_');
+    if (separator != std::string_view::npos && separator > 0 &&
+        separator + 1 < coordinate.size() &&
+        coordinate.find('_', separator + 1) == std::string_view::npos &&
+        std::all_of(coordinate.begin(), coordinate.begin() + separator,
+                    [](char value) { return value >= '0' && value <= '9'; }) &&
+        std::all_of(coordinate.begin() + separator + 1, coordinate.end(),
+                    [](char value) { return value >= '0' && value <= '9'; })) {
+      return true;
+    }
+  }
+  if (name == "NewBattleResultGradePage(Clone)" &&
+      EndsWith(path,
+               "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/"
+               "NewBattleResultGradePage(Clone)")) {
+    return true;
+  }
+  if (name == "confirmBtn" &&
+      EndsWith(path,
+               "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/"
+               "NewBattleResultStatisticsPage(Clone)/bottom/confirmBtn")) {
+    return true;
+  }
   if ((name == "start_button" &&
        EndsWith(path, "LevelStageInfoView(Clone)/panel/start_button")) ||
       (name == "btnBack" &&

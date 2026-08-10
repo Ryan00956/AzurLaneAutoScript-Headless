@@ -3,9 +3,10 @@
 G19 qualified ALAS's original state machine with synthetic phase frames.  This
 module is the boundary that may replace those frames: every ALAS presence
 query must have a reviewed exact Unity selector, every observer slice must be
-complete and hash-bound, and the six phases are inferred from records rather
-than accepted as fixture labels.  G22 promotes the first real map identity but
-keeps the incomplete resource, blocker, and fleet-stat surface fail-closed.
+complete and hash-bound, and the bounded phases are inferred from records
+rather than accepted as fixture labels. G22 promotes the first real map
+identity but keeps the incomplete resource, blocker, and fleet-stat surface
+fail-closed.
 """
 
 from __future__ import annotations
@@ -21,13 +22,14 @@ from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Tuple
 from .alas_combat_admission import AlasCampaignCombatAdmission
 from .alas_combat_state_replay import (
     ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES,
-    ALAS_COMBAT_REPLAY_PHASES,
+    ALAS_COMBAT_REPLAY_PHASE_SEQUENCES,
     ALAS_COMBAT_REPLAY_RESOURCE_NAMES,
     AlasCampaignCombatReplay,
     AlasCombatReplayFrame,
     AlasCombatReplayPhase,
 )
 from .semantic_oracle import (
+    ActionReceipt,
     BUTTON_SCHEMA,
     OBSERVER_SCHEMA,
     UI_SCHEMA,
@@ -57,7 +59,13 @@ ALAS_COMBAT_OBSERVER_MANIFEST_SCHEMA = (
 )
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _ACTION_RESOURCES = frozenset(
-    {"BATTLE_PREPARATION", "BATTLE_STATUS_S", "EXP_INFO_S"}
+    {
+        "BATTLE_PREPARATION",
+        "BATTLE_STATUS_S",
+        "EXP_INFO_S",
+        "GET_ITEMS_1",
+        "GET_MISSION",
+    }
 )
 
 
@@ -177,7 +185,7 @@ def unqualified_alas_combat_observer_manifest(
     driver_revision: str = "UNQUALIFIED",
     game_fingerprint: str = "UNQUALIFIED",
 ) -> AlasCombatObserverManifest:
-    """Return the honest checked-in G20 coverage baseline: 0/38 mapped."""
+    """Return an honest checked-in combat mapping coverage baseline."""
 
     return AlasCombatObserverManifest(
         package=package,
@@ -649,6 +657,82 @@ def alas_combat_unity_selector_present(
     return _selector_present(snapshot, selector)
 
 
+def prepare_alas_combat_resource_action(
+    snapshot: AlasCombatObserverSnapshot,
+    manifest: AlasCombatObserverManifest,
+    resource_name: str,
+) -> ActionReceipt:
+    """Resolve one reviewed combat action without injecting input.
+
+    The returned receipt is an intent bound to the exact observer generation.
+    A caller still has to perform its own package, PID, foreground, freshness,
+    and one-shot authorization checks immediately before using the point.
+    """
+
+    audit_alas_combat_observer_manifest(manifest)
+    _validate_snapshot(snapshot, manifest)
+    if resource_name not in _ACTION_RESOURCES:
+        raise SemanticGateClosed("combat resource is not an action resource")
+    mappings = tuple(
+        mapping
+        for mapping in manifest.resources
+        if mapping.resource_name == resource_name
+    )
+    if len(mappings) != 1 or not mappings[0].qualified:
+        raise SemanticGateClosed("combat action resource is not qualified")
+    mapping = mappings[0]
+    active_blockers = tuple(
+        blocker.blocker_name
+        for blocker in manifest.blockers
+        if blocker.qualified
+        and all(_selector_present(snapshot, item) for item in blocker.selectors)
+    )
+    if active_blockers:
+        raise SemanticGateClosed(
+            "combat action is blocked by: " + ", ".join(active_blockers)
+        )
+    if not _resource_visible(snapshot, mapping):
+        raise SemanticGateClosed("combat action resource is not visible")
+    competing_actions = tuple(
+        candidate.resource_name
+        for candidate in manifest.resources
+        if candidate.resource_name in _ACTION_RESOURCES
+        and candidate.resource_name != resource_name
+        and candidate.qualified
+        and _resource_visible(snapshot, candidate)
+    )
+    if competing_actions:
+        raise SemanticGateClosed(
+            "combat action resource is ambiguous with: "
+            + ", ".join(competing_actions)
+        )
+    button_selectors = tuple(
+        selector
+        for selector in mapping.selectors
+        if selector.kind is AlasCombatUnityRecordKind.BUTTON
+        and selector.require_top_raycast
+    )
+    if len(button_selectors) != 1:
+        raise SemanticGateClosed(
+            "combat action resource must have one exact top-raycast Button"
+        )
+    button = _record_for_selector(snapshot, button_selectors[0])
+    if (
+        not isinstance(button, ButtonState)
+        or not button.actionable
+        or button.point is None
+        or button.bounds is None
+    ):
+        raise SemanticGateClosed("combat action Button is not actionable")
+    return ActionReceipt(
+        semantic_id="combat/resource/" + resource_name,
+        generation=snapshot.generation,
+        point=button.point,
+        bounds=button.bounds,
+        path=button.path,
+    )
+
+
 def _resource_visible(
     snapshot: AlasCombatObserverSnapshot,
     mapping: AlasCombatResourceMapping,
@@ -735,24 +819,25 @@ def build_alas_campaign_combat_replay_from_observer(
     snapshots: Sequence[AlasCombatObserverSnapshot],
     manifest: AlasCombatObserverManifest,
 ) -> AlasCampaignCombatReplay:
-    """Infer the pinned six replay frames from complete exact Unity records."""
+    """Infer one bounded 6-8 frame replay from exact Unity records."""
 
     if not isinstance(admission, AlasCampaignCombatAdmission):
         raise SemanticGateClosed("combat observer replay requires an admission")
     coverage = audit_alas_combat_observer_manifest(manifest)
     if not coverage.production_ready:
         raise SemanticGateClosed(
-            "combat observer manifest is not production-ready: {0}/38 resources"
-            .format(coverage.qualified_resources)
+            "combat observer manifest is not production-ready: {0}/{1} resources"
+            .format(coverage.qualified_resources, coverage.total_resources)
         )
-    if len(snapshots) != len(ALAS_COMBAT_REPLAY_PHASES):
-        raise SemanticGateClosed("combat observer replay requires six snapshots")
+    allowed_lengths = {len(sequence) for sequence in ALAS_COMBAT_REPLAY_PHASE_SEQUENCES}
+    if len(snapshots) not in allowed_lengths:
+        raise SemanticGateClosed("combat observer replay requires 6 to 8 snapshots")
     mappings: Dict[str, AlasCombatResourceMapping] = {
         item.resource_name: item for item in manifest.resources
     }
-    frames = []
+    validated = []
     previous = admission.input_generation
-    for phase, snapshot in zip(ALAS_COMBAT_REPLAY_PHASES, snapshots):
+    for snapshot in snapshots:
         _validate_snapshot(snapshot, manifest)
         if snapshot.generation <= previous:
             raise SemanticGateClosed(
@@ -773,11 +858,22 @@ def build_alas_campaign_combat_replay_from_observer(
             for name in ALAS_COMBAT_REPLAY_RESOURCE_NAMES
             if _resource_visible(snapshot, mappings[name])
         )
-        expected = ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES[phase]
-        if set(visible) != set(expected):
-            raise SemanticGateClosed(
-                "combat observer records do not prove expected phase " + phase.value
-            )
+        validated.append((snapshot, visible))
+    matching_sequences = tuple(
+        sequence
+        for sequence in ALAS_COMBAT_REPLAY_PHASE_SEQUENCES
+        if len(sequence) == len(validated)
+        and all(
+            set(visible) == set(ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES[phase])
+            for phase, (_, visible) in zip(sequence, validated)
+        )
+    )
+    if len(matching_sequences) != 1:
+        raise SemanticGateClosed(
+            "combat observer records do not prove one bounded phase sequence"
+        )
+    frames = []
+    for phase, (snapshot, visible) in zip(matching_sequences[0], validated):
         in_map, fleet_on_target, current_on_target = _map_flags(
             phase, snapshot.campaign_map, admission
         )
@@ -1072,8 +1168,9 @@ def load_alas_combat_observer_fixture(
     if value.get("game_fingerprint") != manifest.game_fingerprint:
         raise SemanticGateClosed("combat fixture game fingerprint changed")
     frames = value.get("frames")
-    if not isinstance(frames, list) or len(frames) != 6:
-        raise SemanticGateClosed("combat observer fixture requires six frames")
+    allowed_lengths = {len(sequence) for sequence in ALAS_COMBAT_REPLAY_PHASE_SEQUENCES}
+    if not isinstance(frames, list) or len(frames) not in allowed_lengths:
+        raise SemanticGateClosed("combat observer fixture requires 6 to 8 frames")
     if any("phase" in frame for frame in frames if isinstance(frame, dict)):
         raise SemanticGateClosed("combat fixture must not provide phase tokens")
     return tuple(

@@ -35,6 +35,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--alas-root", required=True, type=Path)
     parser.add_argument("--config", default="semantic_e2e")
+    parser.add_argument("--include-get-items", action="store_true")
+    parser.add_argument("--include-get-mission", action="store_true")
     return parser.parse_args()
 
 
@@ -138,7 +140,11 @@ def main() -> int:
     admission = prepare_alas_campaign_combat_admission(
         decision, state, input_generation=state.generation
     )
-    replay = canonical_alas_campaign_combat_replay(admission)
+    replay = canonical_alas_campaign_combat_replay(
+        admission,
+        include_get_items=args.include_get_items,
+        include_get_mission=args.include_get_mission,
+    )
 
     source_map_dict = campaign.MAP.__dict__
     source_grid_dicts = {

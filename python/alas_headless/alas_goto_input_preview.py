@@ -1,11 +1,13 @@
 """Zero-input execution of ALAS's original campaign ``_goto()`` prefix.
 
-The semantic layer supplies a one-cell camera/view input for the already
-admitted zero-distance combat.  ALAS still owns the retreat check, fleet
-ensure, visibility, centering, global-to-local conversion, color-baseline
+The semantic layer supplies one exact target-cell input for the already
+admitted same-cell or bounded-route combat.  ALAS still owns the retreat check,
+fleet ensure, visibility, centering, global-to-local conversion, color-baseline
 ordering, and final ``device.click(grid)`` call.  The device boundary captures
 that exact call and aborts before any Android input or post-click state runs.
 """
+
+from __future__ import annotations
 
 import copy
 from dataclasses import dataclass
@@ -24,6 +26,7 @@ from .alas_decision_preview import (
 )
 from .alas_map_sync import AlasCampaignMapProjection
 from .semantic_oracle import (
+    ActionReceipt,
     Bounds,
     CampaignMapState,
     Point,
@@ -40,7 +43,9 @@ class AlasCampaignGotoInputPreview:
     branch_name: str
     fleet_index: int
     fleet_marker: str
+    origin_node: str
     target_node: str
+    route_nodes: Tuple[str, ...]
     expected: str
     retreat_triggered: bool
     sight: Tuple[int, int, int, int]
@@ -62,7 +67,9 @@ class AlasCampaignGotoInputPreview:
             self.branch_name,
             self.fleet_index,
             self.fleet_marker,
+            self.origin_node,
             self.target_node,
+            self.route_nodes,
             self.expected,
             self.retreat_triggered,
             self.sight,
@@ -76,10 +83,24 @@ class AlasCampaignGotoInputPreview:
         )
 
 
+@dataclass(frozen=True)
+class AlasCampaignGotoInputCommit:
+    """Qualification-only receipt from ALAS's exact grid-click statement."""
+
+    preview: AlasCampaignGotoInputPreview
+    receipt: ActionReceipt
+
+
 class _GridInputCaptured(Exception):
     def __init__(self, preview: AlasCampaignGotoInputPreview):
         super().__init__(preview.target_node)
         self.preview = preview
+
+
+class _GridInputCommitted(Exception):
+    def __init__(self, commit: AlasCampaignGotoInputCommit):
+        super().__init__(commit.preview.target_node)
+        self.commit = commit
 
 
 class _SemanticGotoGrid:
@@ -165,7 +186,7 @@ class _GotoCaptureDevice:
         self._call_order = call_order
         self._captured = False
 
-    def click(self, button: Any) -> None:
+    def _capture(self, button: Any) -> AlasCampaignGotoInputPreview:
         if self._captured:
             raise SemanticGateClosed("ALAS goto attempted more than one grid input")
         if button is not self._grid:
@@ -193,33 +214,71 @@ class _GotoCaptureDevice:
         if tuple(self._call_order) != expected_order:
             raise SemanticGateClosed("ALAS goto pre-click call order changed")
         self._captured = True
-        raise _GridInputCaptured(
-            AlasCampaignGotoInputPreview(
-                generation=self._admission.generation,
-                input_generation=self._admission.input_generation,
-                stage_code=self._admission.stage_code,
-                battle_count=self._admission.battle_count,
-                branch_name=self._admission.branch_name,
-                fleet_index=self._admission.fleet_index,
-                fleet_marker=self._admission.fleet_marker,
-                target_node=self._admission.target_node,
-                expected=self._decision.expected,
-                retreat_triggered=False,
-                sight=self._sight,
-                camera_node=self._admission.target_node,
-                local_location=self._grid.location,
-                center_offset=(0.5, 0.5),
-                cell_path=self._admission.cell_path,
-                point=self._admission.point,
-                bounds=self._admission.bounds,
-                call_order=tuple(self._call_order),
-            )
+        return AlasCampaignGotoInputPreview(
+            generation=self._admission.generation,
+            input_generation=self._admission.input_generation,
+            stage_code=self._admission.stage_code,
+            battle_count=self._admission.battle_count,
+            branch_name=self._admission.branch_name,
+            fleet_index=self._admission.fleet_index,
+            fleet_marker=self._admission.fleet_marker,
+            origin_node=self._admission.origin_node,
+            target_node=self._admission.target_node,
+            route_nodes=self._admission.route_nodes,
+            expected=self._decision.expected,
+            retreat_triggered=False,
+            sight=self._sight,
+            camera_node=self._admission.target_node,
+            local_location=self._grid.location,
+            center_offset=(0.5, 0.5),
+            cell_path=self._admission.cell_path,
+            point=self._admission.point,
+            bounds=self._admission.bounds,
+            call_order=tuple(self._call_order),
         )
+
+    def click(self, button: Any) -> None:
+        raise _GridInputCaptured(self._capture(button))
 
     def __getattr__(self, name: str) -> Any:
         raise SemanticGateClosed(
             "ALAS goto preview attempted Device access before input capture: "
             + name
+        )
+
+
+class _GotoCommitDevice(_GotoCaptureDevice):
+    """Spend one already-admitted grid lease, then stop the ALAS sandbox."""
+
+    def __init__(self, *, input_committer: Any, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._input_committer = input_committer
+
+    def click(self, button: Any) -> None:
+        preview = self._capture(button)
+        commit = getattr(self._input_committer, "click_campaign_combat_grid", None)
+        if not callable(commit):
+            # AlasSemanticSession intentionally exposes the adapter's dynamic
+            # grid port through its single click proxy.
+            commit = getattr(self._input_committer, "click", None)
+        committed = getattr(self._input_committer, "campaign_combat_committed", None)
+        if not callable(commit) or not callable(committed):
+            raise SemanticGateClosed("campaign evidence input committer is incomplete")
+        receipt = commit(button)
+        if not isinstance(receipt, ActionReceipt):
+            raise SemanticGateClosed("campaign evidence input receipt is not typed")
+        if (
+            receipt.semantic_id != "campaign/map/grid/" + preview.target_node
+            or receipt.path != preview.cell_path
+            or receipt.point != preview.point
+            or receipt.bounds != preview.bounds
+            or receipt.generation < preview.input_generation
+        ):
+            raise SemanticGateClosed("campaign evidence input receipt changed")
+        if not committed():
+            raise SemanticGateClosed("campaign evidence input lease was not committed")
+        raise _GridInputCommitted(
+            AlasCampaignGotoInputCommit(preview=preview, receipt=receipt)
         )
 
 
@@ -263,20 +322,28 @@ def _validate_inputs(
         or state.stage_code != admission.stage_code
     ):
         raise SemanticGateClosed("ALAS goto identity changed after admission")
+    same_cell = len(admission.route_nodes) == 1
     if (
         decision.battle_count != admission.battle_count
         or decision.branch_name != admission.branch_name
         or decision.fleet_index != admission.fleet_index
         or decision.fleet_marker != admission.fleet_marker
+        or decision.origin_node != admission.origin_node
         or decision.target_node != admission.target_node
+        or decision.route_nodes != admission.route_nodes
         or decision.expected != "combat"
-        or decision.origin_node != admission.target_node
-        or decision.route_nodes != (admission.target_node,)
         or decision.goto_nodes != (admission.target_node,)
-        or decision.cost != 0
         or decision.step_optimize
     ):
         raise SemanticGateClosed("ALAS goto decision is outside the admitted slice")
+    if not (
+        (same_cell and admission.origin_node == admission.target_node)
+        or (
+            2 <= len(admission.route_nodes) <= 4
+            and admission.origin_node != admission.target_node
+        )
+    ):
+        raise SemanticGateClosed("ALAS goto decision route changed")
     if getattr(campaign, "battle_count", None) != admission.battle_count:
         raise SemanticGateClosed("ALAS goto campaign battle count changed")
     if (
@@ -295,14 +362,14 @@ def _validate_inputs(
         if fleet.fleet_index == admission.fleet_index
         and fleet.marker == admission.fleet_marker
         and fleet.is_current
-        and fleet.origin_node == admission.target_node
+        and fleet.origin_node == decision.origin_node
         and fleet.ammo == admission.ammo_before
     )
     state_fleets = tuple(
         fleet
         for fleet in state.fleets
         if fleet.marker == admission.fleet_marker
-        and fleet.node == admission.target_node
+        and fleet.node == decision.origin_node
         and fleet.ammo == admission.ammo_before
     )
     enemies = tuple(
@@ -312,7 +379,7 @@ def _validate_inputs(
         and enemy.object_id == admission.enemy_object_id
         and enemy.sprite == admission.enemy_sprite
         and enemy.level == admission.enemy_level
-        and enemy.fighting
+        and enemy.fighting == same_cell
     )
     cells = tuple(
         cell
@@ -337,30 +404,25 @@ def _validate_inputs(
         ) from exc
     if not (
         bool(getattr(target_grid, "is_enemy", False))
-        and bool(getattr(target_grid, "is_fleet", False))
-        and bool(getattr(target_grid, "is_current_fleet", False))
+        and bool(getattr(target_grid, "is_fleet", False)) == same_cell
+        and bool(getattr(target_grid, "is_current_fleet", False)) == same_cell
         and _location_tuple(getattr(campaign, "fleet_current", ()))
-        == target_location
+        == _location_tuple(decision.origin_node)
     ):
         raise SemanticGateClosed("ALAS goto native target state changed")
     return target_location
 
 
-def preview_alas_campaign_goto_input(
+def _run_alas_campaign_goto_input(
     campaign: Any,
     projection: AlasCampaignMapProjection,
     decision: AlasCampaignDecisionPreview,
     admission: AlasCampaignCombatAdmission,
     state: CampaignMapState,
-) -> AlasCampaignGotoInputPreview:
-    """Run original ``_goto()`` through its exact, captured click boundary.
-
-    This function is deliberately not an execution API.  It creates an
-    isolated campaign shell and semantic camera view, then interrupts the
-    original method at ``device.click(grid)``.  No adapter input budget is
-    consumed and no screenshot, sleep, swipe, combat, or Android input is
-    allowed.
-    """
+    *,
+    input_committer: Any = None,
+) -> Any:
+    """Run the shared original ``_goto()`` prefix in an isolated shell."""
 
     target_location = _validate_inputs(
         campaign, projection, decision, admission, state
@@ -475,7 +537,10 @@ def preview_alas_campaign_goto_input(
         enemy_searching_color_initial, sandbox
     )
     sandbox.withdraw = MethodType(_blocked_method("withdraw"), sandbox)
-    sandbox.device = _GotoCaptureDevice(
+    device_type = (
+        _GotoCaptureDevice if input_committer is None else _GotoCommitDevice
+    )
+    device_kwargs = dict(
         grid=grid,
         target_location=target_location,
         admission=admission,
@@ -483,6 +548,9 @@ def preview_alas_campaign_goto_input(
         sight=expected_sight,
         call_order=call_order,
     )
+    if input_committer is not None:
+        device_kwargs["input_committer"] = input_committer
+    sandbox.device = device_type(**device_kwargs)
 
     projected_map = copy.deepcopy(campaign.map)
     with _DECISION_LOCK, _native_map_overlay(
@@ -492,7 +560,17 @@ def preview_alas_campaign_goto_input(
         try:
             sandbox._goto(target_location, expected=decision.expected)
         except _GridInputCaptured as captured:
+            if input_committer is not None:
+                raise SemanticGateClosed(
+                    "campaign evidence input stopped before commit"
+                )
             return captured.preview
+        except _GridInputCommitted as committed:
+            if input_committer is None:
+                raise SemanticGateClosed(
+                    "campaign preview unexpectedly committed input"
+                )
+            return committed.commit
         except SemanticGateClosed:
             raise
         except Exception as exc:
@@ -504,3 +582,47 @@ def preview_alas_campaign_goto_input(
             ) from exc
 
     raise SemanticGateClosed("ALAS goto returned without a grid input")
+
+
+def preview_alas_campaign_goto_input(
+    campaign: Any,
+    projection: AlasCampaignMapProjection,
+    decision: AlasCampaignDecisionPreview,
+    admission: AlasCampaignCombatAdmission,
+    state: CampaignMapState,
+) -> AlasCampaignGotoInputPreview:
+    """Capture ALAS's exact grid-click statement without performing input."""
+
+    return _run_alas_campaign_goto_input(
+        campaign, projection, decision, admission, state
+    )
+
+
+def commit_alas_campaign_goto_input_for_evidence(
+    campaign: Any,
+    projection: AlasCampaignMapProjection,
+    decision: AlasCampaignDecisionPreview,
+    admission: AlasCampaignCombatAdmission,
+    state: CampaignMapState,
+    *,
+    input_committer: Any,
+) -> AlasCampaignGotoInputCommit:
+    """Spend one exact combat lease for a controlled evidence acquisition.
+
+    This API is intentionally absent from the canonical ALAS patch.  It runs
+    the same isolated original ``_goto()`` prefix as the zero-input preview,
+    delegates only its final ``device.click(grid)`` statement to the current
+    semantic adapter, and aborts before post-click ALAS state-machine logic.
+    """
+
+    result = _run_alas_campaign_goto_input(
+        campaign,
+        projection,
+        decision,
+        admission,
+        state,
+        input_committer=input_committer,
+    )
+    if not isinstance(result, AlasCampaignGotoInputCommit):
+        raise SemanticGateClosed("campaign evidence input did not commit")
+    return result

@@ -1,9 +1,9 @@
 """Read-only raw observer traces for qualifying ALAS combat inputs.
 
 The trace contains no trusted phase labels and performs no input.  Reviewers
-select six exact generations only after capture; the compiler derives the two
-map projections from those frozen raw endpoint payloads and emits G20's
-hash-bound fixture format.
+select one bounded 6-8 generation sequence only after capture; the compiler
+derives the two map projections from those frozen raw endpoint payloads and
+emits G20's hash-bound fixture format.
 """
 
 from __future__ import annotations
@@ -21,7 +21,11 @@ from .alas_combat_observer import (
     canonical_alas_combat_observer_frame_sha256,
     parse_alas_combat_observer_fixture_frame,
 )
-from .alas_combat_state_replay import ALAS_COMBAT_REPLAY_PHASES
+from .alas_combat_state_replay import (
+    ALAS_COMBAT_REPLAY_PHASES,
+    ALAS_COMBAT_REPLAY_PHASE_SEQUENCES,
+    AlasCombatReplayPhase,
+)
 from .semantic_oracle import (
     CampaignMapState,
     OracleFingerprint,
@@ -219,11 +223,11 @@ def select_alas_combat_observer_trace_samples(
     if not isinstance(trace, AlasCombatObserverTrace):
         raise SemanticGateClosed("combat observer trace is not typed")
     if (
-        len(generations) != 6
+        len(generations) not in {len(item) for item in ALAS_COMBAT_REPLAY_PHASE_SEQUENCES}
         or any(isinstance(item, bool) or not isinstance(item, int) for item in generations)
         or any(right <= left for left, right in zip(generations, generations[1:]))
     ):
-        raise SemanticGateClosed("combat observer selection requires six generations")
+        raise SemanticGateClosed("combat observer selection requires 6 to 8 generations")
     indexed = {sample.snapshot.generation: sample for sample in trace.samples}
     if len(indexed) != len(trace.samples):
         raise SemanticGateClosed("combat observer trace generations are ambiguous")
@@ -278,11 +282,15 @@ def _active_records(snapshot: AlasCombatObserverSnapshot) -> Tuple[Mapping[str, 
 
 def _validate_selected_samples(
     selected: Sequence[AlasCombatObserverTraceSample],
+    phase_sequence: Sequence[AlasCombatReplayPhase],
 ) -> None:
-    if len(selected) != 6 or any(
+    phases = tuple(phase_sequence)
+    if phases not in ALAS_COMBAT_REPLAY_PHASE_SEQUENCES:
+        raise SemanticGateClosed("combat trace phase sequence is outside pinned paths")
+    if len(selected) != len(phases) or any(
         not isinstance(sample, AlasCombatObserverTraceSample) for sample in selected
     ):
-        raise SemanticGateClosed("combat trace selection requires six typed samples")
+        raise SemanticGateClosed("combat trace selection disagrees with phase sequence")
     generations = tuple(sample.snapshot.generation for sample in selected)
     if any(right <= left for left, right in zip(generations, generations[1:])):
         raise SemanticGateClosed("combat trace selected generations are not increasing")
@@ -300,10 +308,13 @@ def _validate_selected_samples(
 
 def analyze_alas_combat_observer_candidates(
     selected: Sequence[AlasCombatObserverTraceSample],
+    *,
+    phase_sequence: Sequence[AlasCombatReplayPhase] = ALAS_COMBAT_REPLAY_PHASES,
 ) -> Mapping[str, Any]:
     """Emit deterministic phase-local candidates; it never writes mappings."""
 
-    _validate_selected_samples(selected)
+    phases_expected = tuple(phase_sequence)
+    _validate_selected_samples(selected, phases_expected)
     active = tuple(_active_records(sample.snapshot) for sample in selected)
     keys = tuple(
         {
@@ -314,9 +325,15 @@ def analyze_alas_combat_observer_candidates(
     )
     phases = []
     for index, (phase, sample, records) in enumerate(
-        zip(ALAS_COMBAT_REPLAY_PHASES, selected, active)
+        zip(phases_expected, selected, active)
     ):
-        other = set().union(*(keys[position] for position in range(6) if position != index))
+        other = set().union(
+            *(
+                keys[position]
+                for position in range(len(keys))
+                if position != index
+            )
+        )
         unique = [
             item
             for item in records
@@ -335,7 +352,9 @@ def analyze_alas_combat_observer_candidates(
                 ],
             }
         )
-    map_common = keys[4] & keys[5]
+    searching_index = phases_expected.index(AlasCombatReplayPhase.MAP_SEARCHING)
+    stable_index = phases_expected.index(AlasCombatReplayPhase.MAP_STABLE)
+    map_common = keys[searching_index] & keys[stable_index]
     return {
         "schema": ALAS_COMBAT_OBSERVER_CANDIDATE_SCHEMA,
         "input_injected": False,
@@ -464,20 +483,25 @@ def compile_alas_combat_observer_fixture(
     rows: int,
     land_cells: Sequence[Tuple[int, int]],
     expected_fleet_count: int,
+    phase_sequence: Sequence[AlasCombatReplayPhase] = ALAS_COMBAT_REPLAY_PHASES,
 ) -> Mapping[str, Any]:
-    """Compile six selected raw frames into G20's phase-label-free fixture."""
+    """Compile one bounded raw sequence into G20's phase-label-free fixture."""
 
-    _validate_selected_samples(selected)
+    phases_expected = tuple(phase_sequence)
+    _validate_selected_samples(selected, phases_expected)
     if any(
         sample.snapshot.game_fingerprint != manifest.game_fingerprint
         for sample in selected
     ):
         raise SemanticGateClosed("combat fixture selection disagrees with manifest")
     frames = []
-    for index, sample in enumerate(selected):
+    for phase, sample in zip(phases_expected, selected):
         raw = sample.frame
         campaign_map = None
-        if index >= 4:
+        if phase in (
+            AlasCombatReplayPhase.MAP_SEARCHING,
+            AlasCombatReplayPhase.MAP_STABLE,
+        ):
             campaign_map = _serialize_campaign_map(
                 _offline_campaign_map(
                     raw,

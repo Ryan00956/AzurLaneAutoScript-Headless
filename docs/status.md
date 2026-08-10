@@ -4,6 +4,28 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G23 controlled combat acquisition: E5 closure pass, production still closed
+
+- Original ALAS selected and reached E5 over `C6,C5,D5,E5`; one exact
+  qualification-only grid input produced a 220-frame map/loading/combat/result
+  trace on stable PID `13448`.
+- Exact mappings were promoted for `BATTLE_STATUS_S`, `GET_ITEMS_1`,
+  `EXP_INFO_S`, `GET_MISSION`, and `PAUSE`. With G22 `IN_MAP`, current coverage
+  is `6/40`; blockers and fleet stats remain incomplete, so
+  `production_ready=false`.
+- Four result-chain actions each required two stable generations and one-use
+  authorization. A separate map read then proved fleet 1 at E5, ammo `3 -> 2`,
+  E5 cleared, fleet 2 unchanged at F8, and the original current-fleet marker.
+- The original ALAS replay now admits only four bounded 6-8 frame sequences,
+  allowing optional `GET_ITEMS_1` and `GET_MISSION` in their observed
+  positions. Base replay remains 104/38; the full branch passes 126/40. No ALAS
+  state-machine method was replaced.
+- The newly observed `qz1` destroyer maps into ALAS's existing `Light` genre.
+  The full suite passes `302/302`, Python 3.7 import passes, both original-ALAS
+  replay variants pass, and the canonical patch reverse-apply check passes.
+
+See [G23 controlled combat acquisition](g23-alas-controlled-combat-acquisition-validation-report.md).
+
 ### G22 combat mapping promotion: first real mapping, still fail-closed
 
 - Three complete G21 raw frames at generations `137332`, `137335`, and

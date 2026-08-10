@@ -197,6 +197,28 @@ if ! grep -Fq 'LevelFleetSelectView(Clone)/mask/list/' \
   echo "Campaign fleet-selection option allowlist is missing" >&2
   exit 1
 fi
+if ! grep -Fq 'LevelGrid/DragLayer/plane/quads/' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp" || \
+   ! grep -Fq 'kCampaignCellPrefix' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Campaign map-cell Button raycast allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'kMaxObserverTexts = 512' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.h"; then
+  echo "Complete combat-result Text capacity is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'NewBattleResultGradePage(Clone)' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Combat-result continue Button raycast allowlist is missing" >&2
+  exit 1
+fi
+if ! grep -Fq 'NewBattleResultStatisticsPage(Clone)/bottom/confirmBtn' \
+    "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
+  echo "Combat EXP confirm Button raycast allowlist is missing" >&2
+  exit 1
+fi
 if ! grep -Fq 'Overlay/UIMain/blur_panel/adapt/top/back_btn' \
     "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
   echo "Construction-page back-button allowlist is missing" >&2

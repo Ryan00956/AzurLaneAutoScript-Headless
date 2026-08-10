@@ -37,6 +37,14 @@ same compound `IN_MAP` identity and one exact three-selector `network_down`
 blocker. Current coverage is `1/38`; blocker review is explicitly incomplete,
 fleet stats are unqualified, and `production_ready=false`. D6 and all combat
 input remain closed at G18.
+G23 adds qualification-only controlled acquisition after the game recovered.
+Original ALAS selected E5 and owned the existing combat chain; exact observer
+inputs closed S-result, AwardInfo, experience, and urgent-commission pages, and
+a separate stable map read proved E5 cleared with ammo decrement. The replay
+now admits only the observed 6-8 phase variants and expands the union surface
+to 40 resources. Current mapping coverage is `6/40`; blockers and fleet stats
+remain incomplete, `production_ready=false`, and the production runner still
+stops at G18.
 G4 includes
 login/main reachability, sustained semantic state, RectTransform bounds, top
 EventSystem raycast identity for each action, and a settings-page return loop.

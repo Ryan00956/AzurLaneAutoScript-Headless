@@ -14,7 +14,9 @@ namespace rx::alas {
 constexpr size_t kIl2CppAllowlistSize = 32;
 constexpr size_t kMaxObserverButtons = 128;
 constexpr size_t kMaxObserverToggles = 64;
-constexpr size_t kMaxObserverTexts = 192;
+// Combat result pages keep the underlying damage-number Text objects active.
+// Preserve completeness instead of truncating the result overlay at 192.
+constexpr size_t kMaxObserverTexts = 512;
 constexpr size_t kMaxObserverImages = 512;
 constexpr size_t kObserverNameBytes = 96;
 constexpr size_t kObserverPathBytes = 384;

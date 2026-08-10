@@ -1,0 +1,55 @@
+{
+  "schema": "alas-headless.g22-combat-mapping-review/v1",
+  "review_id": "g23-12-4-e5-exp-info-s",
+  "trace_sha256": "a485bd617e934811c279f6aef1154fc105d3f51fb489fbf72b7bcb5c85f0668a",
+  "generations": [17375, 17864, 18547],
+  "resources": [
+    {
+      "resource_name": "EXP_INFO_S",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultStatisticsPage(Clone)/bottom/confirmBtn",
+          "name": "confirmBtn",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultStatisticsPage(Clone)/bottom/confirmBtn",
+          "name": "confirmBtn",
+          "sprite": "btn_big_yellow",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultStatisticsPage(Clone)/top/grade/icon",
+          "name": "icon",
+          "sprite": "letter_S",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultStatisticsPage(Clone)/top/grade/Text",
+          "name": "Text",
+          "sprite": "label_S",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultStatisticsPage(Clone)/bottom/confirmBtn/Text",
+          "name": "Text",
+          "sprite": "",
+          "text": "确 定",
+          "require_top_raycast": false
+        }
+      ]
+    }
+  ],
+  "blockers": [],
+  "blocker_review_complete": false
+}

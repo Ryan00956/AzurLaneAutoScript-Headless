@@ -1,0 +1,23 @@
+{
+  "schema": "alas-headless.g22-combat-mapping-review/v1",
+  "review_id": "g23-12-4-e5-pause",
+  "trace_sha256": "2eefa860bc949c70f6c42f8ec9d5e4287b6a4bae23846566753972c521cc5d22",
+  "generations": [13141, 13420, 13624],
+  "resources": [
+    {
+      "resource_name": "PAUSE",
+      "selectors": [
+        {
+          "kind": "image",
+          "path": "UICamera/Canvas/UIMain/CombatUIStandard(Clone)/PauseBtn",
+          "name": "PauseBtn",
+          "sprite": "pause_btn",
+          "text": "",
+          "require_top_raycast": false
+        }
+      ]
+    }
+  ],
+  "blockers": [],
+  "blocker_review_complete": false
+}

@@ -1,0 +1,47 @@
+{
+  "schema": "alas-headless.g22-combat-mapping-review/v1",
+  "review_id": "g23-12-4-c6-get-items-1",
+  "trace_sha256": "dcbf18ab5a2ac8e6592f11ba42fb2f9c56e2f7abf88f2e82b4138406c795e1f1",
+  "generations": [23849, 24216, 25029],
+  "resources": [
+    {
+      "resource_name": "GET_ITEMS_1",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/AwardInfoUI(Clone)/items/close",
+          "name": "close",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/AwardInfoUI(Clone)/items/close",
+          "name": "close",
+          "sprite": "touch_to_continue",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/AwardInfoUI(Clone)/items/titles/title_item",
+          "name": "title_item",
+          "sprite": "get_item",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/AwardInfoUI(Clone)/items",
+          "name": "items",
+          "sprite": "awardinfo_bg",
+          "text": "",
+          "require_top_raycast": false
+        }
+      ]
+    }
+  ],
+  "blockers": [],
+  "blocker_review_complete": false
+}

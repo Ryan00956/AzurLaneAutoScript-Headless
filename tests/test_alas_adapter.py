@@ -1409,6 +1409,30 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertFalse(adapter.appear(NamedButton("UNREVIEWED_PAGE_CHECK")))
         adapter.end_campaign_pre_sortie()
 
+    def test_campaign_map_proof_allows_only_passive_unknown_probes(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_campaign_pre_sortie("12-4")
+        adapter._campaign_context.passive_transition_until = time.monotonic() - 1
+        oracle.campaign_in_map_value = True
+
+        self.assertFalse(adapter.appear(NamedButton("EXERCISE_CHECK")))
+        with self.assertRaises(AlasSemanticUnmapped):
+            adapter.click(NamedButton("EXERCISE_CHECK"))
+        self.assertEqual(oracle.click_calls, [])
+
+    def test_campaign_unknown_surface_keeps_passive_probe_closed(self):
+        adapter, oracle, _ = self.make_adapter()
+        adapter.begin_campaign_pre_sortie("12-4")
+        adapter._campaign_context.passive_transition_until = time.monotonic() - 1
+
+        def unknown_surface():
+            raise SemanticGateClosed("campaign startup surface is not reviewed")
+
+        oracle.campaign_is_in_map = unknown_surface
+        with self.assertRaises(AlasSemanticUnmapped):
+            adapter.appear(NamedButton("EXERCISE_CHECK"))
+        self.assertEqual(oracle.click_calls, [])
+
     def test_campaign_event_list_back_uses_exact_typed_target(self):
         adapter, oracle, _ = self.make_adapter()
         oracle.exists_values["event-list/page/back"] = True
@@ -1870,7 +1894,7 @@ class AlasSemanticAdapterTests(unittest.TestCase):
             route_nodes=("D6", "D5"),
         )
 
-        with self.assertRaisesRegex(SemanticGateClosed, "zero-distance route"):
+        with self.assertRaisesRegex(SemanticGateClosed, "same-cell or three-step route"):
             adapter.authorize_campaign_combat(decision, current)
 
         self.assertEqual(oracle.click_calls, [])

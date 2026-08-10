@@ -13,18 +13,200 @@
     {"resource_name": "BATTLE_STATUS_B", "selectors": [], "evidence_sha256": ""},
     {"resource_name": "BATTLE_STATUS_C", "selectors": [], "evidence_sha256": ""},
     {"resource_name": "BATTLE_STATUS_D", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "BATTLE_STATUS_S", "selectors": [], "evidence_sha256": ""},
+    {
+      "resource_name": "BATTLE_STATUS_S",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultGradePage(Clone)",
+          "name": "NewBattleResultGradePage(Clone)",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultGradePage(Clone)/bg/grade/icon",
+          "name": "icon",
+          "sprite": "letter_S",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultGradePage(Clone)/bg/grade/Text",
+          "name": "Text",
+          "sprite": "label_S",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/Effect/bg03/Text",
+          "name": "Text",
+          "sprite": "",
+          "text": "VICTORY",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultGradePage(Clone)/bg/ResultEffect/Tips/dianjijixu/bg20",
+          "name": "bg20",
+          "sprite": "",
+          "text": "点击继续",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "c7637c4cc3cebf3765f226a58ffee83c3354a7344ddfe0f86965eb906828633d"
+    },
     {"resource_name": "CAMPAIGN_CHECK", "selectors": [], "evidence_sha256": ""},
     {"resource_name": "EVENT_CHECK", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "EXP_INFO_S", "selectors": [], "evidence_sha256": ""},
+    {"resource_name": "EXP_INFO_A", "selectors": [], "evidence_sha256": ""},
+    {"resource_name": "EXP_INFO_B", "selectors": [], "evidence_sha256": ""},
+    {
+      "resource_name": "EXP_INFO_S",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultStatisticsPage(Clone)/bottom/confirmBtn",
+          "name": "confirmBtn",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultStatisticsPage(Clone)/bottom/confirmBtn",
+          "name": "confirmBtn",
+          "sprite": "btn_big_yellow",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultStatisticsPage(Clone)/top/grade/icon",
+          "name": "icon",
+          "sprite": "letter_S",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultStatisticsPage(Clone)/top/grade/Text",
+          "name": "Text",
+          "sprite": "label_S",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/NewBattleResultEmptyUI(Clone)/NewBattleResultStatisticsPage(Clone)/bottom/confirmBtn/Text",
+          "name": "Text",
+          "sprite": "",
+          "text": "确 定",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "e6db62a249cfb05500feb2566d49f8751f3e3a2b0417e3550df3b82a2767ee5f"
+    },
     {"resource_name": "FLEET_PREPARATION", "selectors": [], "evidence_sha256": ""},
     {"resource_name": "GAME_TIPS", "selectors": [], "evidence_sha256": ""},
     {"resource_name": "GAME_TIPS3", "selectors": [], "evidence_sha256": ""},
     {"resource_name": "GAME_TIPS4", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "GET_ITEMS_1", "selectors": [], "evidence_sha256": ""},
+    {
+      "resource_name": "GET_ITEMS_1",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/AwardInfoUI(Clone)/items/close",
+          "name": "close",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/AwardInfoUI(Clone)/items/close",
+          "name": "close",
+          "sprite": "touch_to_continue",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/AwardInfoUI(Clone)/items/titles/title_item",
+          "name": "title_item",
+          "sprite": "get_item",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/AwardInfoUI(Clone)/items",
+          "name": "items",
+          "sprite": "awardinfo_bg",
+          "text": "",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "20330544a5f71922227467423586fabed77ba03df0d10ef9eba44afc1037b78b"
+    },
     {"resource_name": "GET_ITEMS_2", "selectors": [], "evidence_sha256": ""},
     {"resource_name": "GET_ITEMS_3", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "GET_MISSION", "selectors": [], "evidence_sha256": ""},
+    {
+      "resource_name": "GET_MISSION",
+      "selectors": [
+        {
+          "kind": "button",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
+          "name": "custom_button_1(Clone)",
+          "sprite": "",
+          "text": "",
+          "require_top_raycast": true
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
+          "name": "custom_button_1(Clone)",
+          "sprite": "btn_big_blue",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "image",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/top/bg/infomation",
+          "name": "infomation",
+          "sprite": "title_print",
+          "text": "",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/button_container/custom_button_1(Clone)/pic",
+          "name": "pic",
+          "sprite": "",
+          "text": "确 定",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/top/bg/infomation/title_en",
+          "name": "title_en",
+          "sprite": "",
+          "text": "INFORMATION",
+          "require_top_raycast": false
+        },
+        {
+          "kind": "text",
+          "path": "OverlayCamera/Overlay/UIMain/Msgbox(Clone)/window/top/bg/infomation/title",
+          "name": "title",
+          "sprite": "",
+          "text": "信息",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "53941f9135539e7d480e07c64214fce8068c961c8078e580335562703ee27664"
+    },
     {"resource_name": "GET_SHIP", "selectors": [], "evidence_sha256": ""},
     {"resource_name": "GUILD_POPUP_CONFIRM", "selectors": [], "evidence_sha256": ""},
     {
@@ -64,7 +246,20 @@
     {"resource_name": "MAP_ENEMY_SEARCHING", "selectors": [], "evidence_sha256": ""},
     {"resource_name": "MAP_PREPARATION", "selectors": [], "evidence_sha256": ""},
     {"resource_name": "MISSION_POPUP_GO", "selectors": [], "evidence_sha256": ""},
-    {"resource_name": "PAUSE", "selectors": [], "evidence_sha256": ""},
+    {
+      "resource_name": "PAUSE",
+      "selectors": [
+        {
+          "kind": "image",
+          "path": "UICamera/Canvas/UIMain/CombatUIStandard(Clone)/PauseBtn",
+          "name": "PauseBtn",
+          "sprite": "pause_btn",
+          "text": "",
+          "require_top_raycast": false
+        }
+      ],
+      "evidence_sha256": "6601a6cf9e5c4e30d8a348834f72aeaaa8e908223e3c95c631c8c952af6292b2"
+    },
     {"resource_name": "POPUP_CANCEL", "selectors": [], "evidence_sha256": ""},
     {"resource_name": "POPUP_CONFIRM_WHITE", "selectors": [], "evidence_sha256": ""},
     {"resource_name": "RETIRE_APPEAR_1", "selectors": [], "evidence_sha256": ""},

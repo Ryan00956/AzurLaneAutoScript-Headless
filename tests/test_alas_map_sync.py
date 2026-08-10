@@ -5,6 +5,7 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 from alas_headless import (
+    ActionReceipt,
     Bounds,
     CampaignMapCellState,
     CampaignMapEnemyState,
@@ -14,7 +15,9 @@ from alas_headless import (
     Point,
     SemanticGateClosed,
     AlasCombatReplayPhase,
+    alas_combat_replay_phase_sequence,
     canonical_alas_campaign_combat_replay,
+    commit_alas_campaign_goto_input_for_evidence,
     prepare_alas_campaign_combat_admission,
     preview_alas_campaign_decision,
     preview_alas_campaign_goto_input,
@@ -631,12 +634,58 @@ class AlasCampaignDecisionPreviewTests(unittest.TestCase):
 
 
 class AlasCampaignGotoInputPreviewTests(unittest.TestCase):
+    def test_runtime_annotations_stay_python37_compatible(self):
+        import __future__
+
+        from alas_headless.alas_combat_state_replay import _ReplayDriver
+        from alas_headless.alas_goto_input_preview import _GotoCaptureDevice
+
+        flag = __future__.annotations.compiler_flag
+        self.assertTrue(_GotoCaptureDevice.__init__.__code__.co_flags & flag)
+        self.assertTrue(_ReplayDriver.__init__.__code__.co_flags & flag)
+
     @staticmethod
     def prepare(campaign=None):
         campaign = campaign or FakeGotoCampaign()
         state = make_zero_distance_state()
         projection = synchronize_alas_campaign_map(campaign, state)
         decision = preview_alas_campaign_decision(campaign, projection)
+        admission = prepare_alas_campaign_combat_admission(
+            decision, state, input_generation=state.generation
+        )
+        return campaign, state, projection, decision, admission
+
+    @staticmethod
+    def prepare_adjacent():
+        campaign = FakeGotoCampaign()
+        state = make_state()
+        projection = synchronize_alas_campaign_map(campaign, state)
+        decision = preview_alas_campaign_decision(campaign, projection)
+        # The pinned ALAS clear-enemy branch invokes `_goto()` once for the
+        # adjacent target; the compact fake's generic goto records its whole
+        # path, so normalize this one field to the live branch contract.
+        decision = replace(decision, goto_nodes=(decision.target_node,))
+        admission = prepare_alas_campaign_combat_admission(
+            decision, state, input_generation=state.generation
+        )
+        return campaign, state, projection, decision, admission
+
+    @staticmethod
+    def prepare_bounded_route():
+        campaign = FakeGotoCampaign()
+        state = replace(
+            make_state(),
+            fleets=(
+                CampaignMapFleetState("alpha", "C2", 5, 5),
+                CampaignMapFleetState("beta", "C1", 4, 5),
+            ),
+            pickups=(),
+        )
+        projection = synchronize_alas_campaign_map(campaign, state)
+        decision = preview_alas_campaign_decision(campaign, projection)
+        # The live clear-enemy branch passes only the chosen target to goto;
+        # the compact fake exposes its computed path as positional calls.
+        decision = replace(decision, goto_nodes=(decision.target_node,))
         admission = prepare_alas_campaign_combat_admission(
             decision, state, input_generation=state.generation
         )
@@ -685,6 +734,168 @@ class AlasCampaignGotoInputPreviewTests(unittest.TestCase):
         self.assertIs(campaign.MAP.__dict__, source_map_dict)
         for location, grid_dict in source_grid_dicts.items():
             self.assertIs(campaign.MAP[location].__dict__, grid_dict)
+
+    def test_adjacent_enemy_reuses_original_goto_prefix_without_input(self):
+        campaign, state, projection, decision, admission = self.prepare_adjacent()
+
+        preview = preview_alas_campaign_goto_input(
+            campaign, projection, decision, admission, state
+        )
+
+        self.assertEqual(decision.origin_node, "A2")
+        self.assertEqual(decision.target_node, "A1")
+        self.assertEqual(decision.cost, 1)
+        self.assertEqual(decision.route_nodes, ("A2", "A1"))
+        self.assertEqual(preview.target_node, "A1")
+        self.assertEqual(preview.call_order[-1], "device.click")
+
+    def test_three_step_empty_route_reuses_original_goto_prefix_without_input(self):
+        campaign, state, projection, decision, admission = (
+            self.prepare_bounded_route()
+        )
+
+        preview = preview_alas_campaign_goto_input(
+            campaign, projection, decision, admission, state
+        )
+
+        self.assertEqual(decision.cost, 3)
+        self.assertEqual(
+            decision.route_nodes, ("C2", "B2", "A2", "A1")
+        )
+        self.assertEqual(preview.origin_node, "C2")
+        self.assertEqual(preview.target_node, "A1")
+        self.assertEqual(preview.route_nodes, decision.route_nodes)
+        self.assertEqual(preview.call_order[-1], "device.click")
+
+    def test_three_step_route_rejects_an_occupied_intermediate(self):
+        campaign = FakeGotoCampaign()
+        state = replace(
+            make_state(),
+            fleets=(
+                CampaignMapFleetState("alpha", "C2", 5, 5),
+                CampaignMapFleetState("beta", "B2", 4, 5),
+            ),
+            pickups=(),
+        )
+        projection = synchronize_alas_campaign_map(campaign, state)
+        decision = replace(
+            preview_alas_campaign_decision(campaign, projection),
+            goto_nodes=("A1",),
+        )
+
+        with self.assertRaisesRegex(SemanticGateClosed, "intermediate is occupied"):
+            prepare_alas_campaign_combat_admission(
+                decision, state, input_generation=state.generation
+            )
+
+    def test_combat_admission_rejects_malformed_cost_without_type_error(self):
+        _, state, _, decision, _ = self.prepare_adjacent()
+
+        with self.assertRaisesRegex(SemanticGateClosed, "fields are malformed"):
+            prepare_alas_campaign_combat_admission(
+                replace(decision, cost=True),
+                state,
+                input_generation=state.generation,
+            )
+
+    def test_combat_admission_allows_repeated_enemy_type_ids_on_other_cells(self):
+        campaign = FakeGotoCampaign()
+        campaign.MAP[(2, 1)].may_enemy = True
+        state = make_zero_distance_state()
+        state = replace(
+            state,
+            enemies=(
+                state.enemies[0],
+                replace(
+                    state.enemies[0],
+                    row=2,
+                    column=3,
+                    node="C2",
+                    fighting=False,
+                ),
+            ),
+        )
+        projection = synchronize_alas_campaign_map(campaign, state)
+        decision = preview_alas_campaign_decision(campaign, projection)
+
+        admission = prepare_alas_campaign_combat_admission(
+            decision, state, input_generation=state.generation
+        )
+
+        self.assertEqual(admission.target_node, "A1")
+        self.assertEqual(admission.enemy_object_id, 1001)
+
+    def test_evidence_commit_uses_same_original_goto_and_exact_one_input(self):
+        campaign, state, projection, decision, admission = self.prepare()
+
+        class Committer:
+            def __init__(self):
+                self.calls = []
+                self.committed = False
+
+            def click_campaign_combat_grid(self, button):
+                self.calls.append(button)
+                self.committed = True
+                return ActionReceipt(
+                    semantic_id="campaign/map/grid/A1",
+                    generation=admission.input_generation + 1,
+                    point=admission.point,
+                    bounds=admission.bounds,
+                    path=admission.cell_path,
+                )
+
+            def campaign_combat_committed(self):
+                return self.committed
+
+        committer = Committer()
+        commit = commit_alas_campaign_goto_input_for_evidence(
+            campaign,
+            projection,
+            decision,
+            admission,
+            state,
+            input_committer=committer,
+        )
+
+        self.assertEqual(commit.preview.target_node, "A1")
+        self.assertEqual(commit.receipt.semantic_id, "campaign/map/grid/A1")
+        self.assertEqual(commit.receipt.generation, state.generation + 1)
+        self.assertEqual(len(committer.calls), 1)
+        self.assertEqual(committer.calls[0].__str__, (0, 0))
+        self.assertEqual(commit.preview.call_order[-1], "device.click")
+
+    def test_evidence_commit_rejects_drifted_receipt_after_single_input(self):
+        campaign, state, projection, decision, admission = self.prepare()
+
+        class DriftedCommitter:
+            def __init__(self):
+                self.calls = 0
+
+            def click_campaign_combat_grid(self, button):
+                del button
+                self.calls += 1
+                return ActionReceipt(
+                    semantic_id="campaign/map/grid/A1",
+                    generation=admission.input_generation,
+                    point=admission.point,
+                    bounds=admission.bounds,
+                    path="wrong/path",
+                )
+
+            def campaign_combat_committed(self):
+                return True
+
+        committer = DriftedCommitter()
+        with self.assertRaisesRegex(SemanticGateClosed, "receipt changed"):
+            commit_alas_campaign_goto_input_for_evidence(
+                campaign,
+                projection,
+                decision,
+                admission,
+                state,
+                input_committer=committer,
+            )
+        self.assertEqual(committer.calls, 1)
 
     def test_rejects_stale_map_state_before_goto(self):
         campaign, state, projection, decision, admission = self.prepare()
@@ -799,6 +1010,26 @@ class AlasCampaignCombatReplayContractTests(unittest.TestCase):
         self.assertEqual(replay.input_generation, admission.input_generation)
         self.assertEqual(replay.frames[-1].hp, (1.0,) * 6)
         self.assertEqual(replay.frames[-1].levels, (-1,) * 6)
+
+    def test_builds_bounded_optional_reward_and_mission_replay(self):
+        _, state, _, _, admission, _ = self.prepare()
+        replay = canonical_alas_campaign_combat_replay(
+            admission,
+            include_get_items=True,
+            include_get_mission=True,
+        )
+
+        self.assertEqual(
+            tuple(frame.phase for frame in replay.frames),
+            alas_combat_replay_phase_sequence(
+                include_get_items=True,
+                include_get_mission=True,
+            ),
+        )
+        self.assertEqual(
+            tuple(frame.generation for frame in replay.frames),
+            tuple(range(state.generation + 1, state.generation + 9)),
+        )
 
     def test_rejects_reordered_phase_trace_before_campaign_interface(self):
         campaign, state, projection, decision, admission, replay = self.prepare()

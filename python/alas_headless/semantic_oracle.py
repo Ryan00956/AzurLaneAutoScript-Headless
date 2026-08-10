@@ -3900,14 +3900,24 @@ class SemanticOracle:
             re.escape(grid_root)
             + r"/DragLayer/plane/quads/chapter_cell_quad_[1-9][0-9]*_[1-9][0-9]*"
         )
-        retreat_button_path = grid_root + "/DragLayer/op1/retreat"
         stage_root = "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)"
         stage_back_button_path = stage_root + "/top_stage/back_button"
         required_images = {
-            grid_root + "/DragLayer/op1/retreat/retreat": "reteat_popo",
             grid_root + "/DragLayer/plane/display/mask/sea": "sea_day",
             stage_root + "/top_stage/back_button/mask/Image": "back_btn",
         }
+        retreat_variants = (
+            (
+                grid_root + "/DragLayer/op1/retreat",
+                grid_root + "/DragLayer/op1/retreat/retreat",
+                "reteat_popo",
+            ),
+            (
+                stage_root + "/bottom_stage/Normal/retreat_button",
+                stage_root + "/bottom_stage/Normal/retreat_button",
+                "chetui_butten",
+            ),
+        )
         preparation_markers = (
             "/LevelMainScene(Clone)/",
             "/LevelStageInfoView(Clone)/",
@@ -3925,10 +3935,8 @@ class SemanticOracle:
                 if grid_button.fullmatch(button.path)
             )
         )
-        fixed_button_paths = tuple(
-            path
-            for path in (retreat_button_path, stage_back_button_path)
-            if sum(button.path == path for button in active_buttons) == 1
+        stage_back_matches = sum(
+            button.path == stage_back_button_path for button in active_buttons
         )
         active_images = tuple(
             image
@@ -3945,8 +3953,18 @@ class SemanticOracle:
             )
             for path, sprite in required_images.items()
         )
+        retreat_variant_matches = tuple(
+            (button_path, image_path)
+            for button_path, image_path, sprite in retreat_variants
+            if sum(button.path == button_path for button in active_buttons) == 1
+            and sum(
+                image.path == image_path and image.sprite == sprite
+                for image in active_images
+            ) == 1
+        )
         if (
-            len(fixed_button_paths) != 2
+            stage_back_matches != 1
+            or len(retreat_variant_matches) != 1
             or not grid_button_paths
             or any(
                 len(matches) != 1 or matches[0].sprite != sprite
@@ -3954,6 +3972,8 @@ class SemanticOracle:
             )
         ):
             raise SemanticGateClosed("campaign map-scene identity is absent")
+        retreat_button_path, retreat_image_path = retreat_variant_matches[0]
+        fixed_button_paths = (retreat_button_path, stage_back_button_path)
         if any(
             marker in item.path
             for marker in preparation_markers
@@ -3967,7 +3987,7 @@ class SemanticOracle:
             generation=button_state.generation,
             root_path=grid_root,
             button_paths=tuple(sorted((*fixed_button_paths, *grid_button_paths))),
-            image_paths=required_image_paths,
+            image_paths=tuple(sorted((*required_image_paths, retreat_image_path))),
         )
 
     @staticmethod
@@ -4213,9 +4233,18 @@ class SemanticOracle:
             + r"chapter_cell_([1-9][0-9]*)_([1-9][0-9]*)/attachment/"
             + r"enemy_([1-9][0-9]*)/icon$"
         )
-        genre_names = {"qx": "Light", "zl": "Main", "hm": "Carrier"}
+        # The game exposes both light-cruiser (qx, 轻巡) and destroyer
+        # (qz, 驱逐) pieces.  ALAS intentionally groups both under its
+        # existing Light enemy genre.
+        genre_names = {
+            "qx": "Light",
+            "qz": "Light",
+            "zl": "Main",
+            "hm": "Carrier",
+        }
         enemies = []
         enemy_roots = set()
+        cleared_enemy_roots = set()
         for image in active_images:
             match = enemy_icon_pattern.fullmatch(image.path)
             if match is None:
@@ -4229,7 +4258,32 @@ class SemanticOracle:
                     row, column, root_name
                 )
             )
-            sprite_match = re.fullmatch(r"(qx|zl|hm)([123])", image.sprite)
+            sprite_match = re.fullmatch(r"(qx|qz|zl|hm)([123])", image.sprite)
+            cleared_sprite_match = re.fullmatch(
+                r"(qx|qz|zl|hm)([123])_d_blue", image.sprite
+            )
+            if cleared_sprite_match is not None:
+                cleared_details = tuple(
+                    item
+                    for item in (*active_images, *active_texts)
+                    if item.path.startswith(root + "/")
+                    and (
+                        item.path.startswith(root + "/lv/")
+                        or item.path == root + "/fighting"
+                        or item.path == root + "/fighting/Text"
+                    )
+                )
+                if (
+                    coordinate not in expected_cells
+                    or (row, column, root_name) in cleared_enemy_roots
+                    or image.bounds is None
+                    or cleared_details
+                ):
+                    raise SemanticGateClosed(
+                        "campaign map cleared-enemy identity is unsupported"
+                    )
+                cleared_enemy_roots.add((row, column, root_name))
+                continue
             if (
                 coordinate not in expected_cells
                 or (row, column, root_name) in enemy_roots
@@ -4311,7 +4365,7 @@ class SemanticOracle:
                 )
             )
             supply_roots.add((row, column, "supply"))
-        if attachment_roots != enemy_roots | supply_roots:
+        if attachment_roots != enemy_roots | cleared_enemy_roots | supply_roots:
             raise SemanticGateClosed("campaign map contains an unsupported attachment")
 
         fleet_marker_pattern = re.compile(
@@ -4385,8 +4439,11 @@ class SemanticOracle:
             )
             occupied_nodes.add(matched_cell.node)
 
+        # Fleet status belongs to the same reviewed stage hierarchy as the
+        # exact map back control.  Binding both views to one root avoids a
+        # stale camera/canvas alias after a Unity process restart.
         fleet_status_root = (
-            "LevelCamera/Canvas/LevelOrigin/top/LevelStageView(Clone)"
+            "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)"
         )
         fleet_number_path = (
             fleet_status_root + "/top_stage/msg_panel/fleet_info/number"
@@ -4429,7 +4486,12 @@ class SemanticOracle:
             )
         current_marker_candidates = []
         for marker in fleet_markers:
-            marker_sprite = marker.removeprefix("cell_fleet_")
+            marker_prefix = "cell_fleet_"
+            marker_sprite = (
+                marker[len(marker_prefix) :]
+                if marker.startswith(marker_prefix)
+                else marker
+            )
             matches = sum(sprite == marker_sprite for sprite in roster_sprites)
             if matches > 1:
                 raise SemanticGateClosed(

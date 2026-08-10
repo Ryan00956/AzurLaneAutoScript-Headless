@@ -11,6 +11,7 @@ from alas_headless import (
     ALAS_COMBAT_MAPPING_RECEIPT_SCHEMA,
     ALAS_COMBAT_OBSERVER_TRACE_SCHEMA,
     ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES,
+    ALAS_COMBAT_REPLAY_PHASES,
     ALAS_COMBAT_REPLAY_RESOURCE_NAMES,
     AlasCampaignCombatAdmission,
     AlasCombatBlockerMapping,
@@ -19,19 +20,23 @@ from alas_headless import (
     AlasCombatResourceMapping,
     AlasCombatUnityRecordKind,
     AlasCombatUnitySelector,
+    AlasCombatReplayPhase,
     Bounds,
     Point,
     SemanticGateClosed,
     audit_alas_combat_observer_manifest,
     analyze_alas_combat_observer_candidates,
+    alas_combat_replay_phase_sequence,
     build_alas_combat_observer_trace,
     build_alas_combat_trace_frame,
     build_alas_campaign_combat_replay_from_observer,
+    commit_alas_combat_resource_action_for_evidence,
     compile_alas_combat_observer_fixture,
     load_alas_combat_observer_fixture,
     load_alas_combat_observer_manifest,
     parse_alas_combat_observer_fixture_frame,
     parse_alas_combat_observer_trace,
+    prepare_alas_combat_resource_action,
     promote_alas_combat_mapping_review,
     select_alas_combat_observer_trace_samples,
     unqualified_alas_combat_observer_manifest,
@@ -43,7 +48,13 @@ PACKAGE = "com.bilibili.azurlane"
 DRIVER = "b" * 40
 GAME = "pinned-test-game"
 EVIDENCE = "a" * 64
-ACTION_RESOURCES = {"BATTLE_PREPARATION", "BATTLE_STATUS_S", "EXP_INFO_S"}
+ACTION_RESOURCES = {
+    "BATTLE_PREPARATION",
+    "BATTLE_STATUS_S",
+    "EXP_INFO_S",
+    "GET_ITEMS_1",
+    "GET_MISSION",
+}
 
 
 def selector_for(name):
@@ -118,7 +129,9 @@ def admission():
         branch_name="battle_0",
         fleet_index=1,
         fleet_marker="cell_fleet_test",
+        origin_node="D6",
         target_node="D6",
+        route_nodes=("D6",),
         enemy_object_id=1204090,
         enemy_sprite="hm1",
         enemy_level=113,
@@ -347,8 +360,8 @@ def frame(generation, resources, map_value=None, *, raycast_top=True):
     return {**payload, "sha256": digest}
 
 
-def fixture_value():
-    phases = tuple(ALAS_COMBAT_REPLAY_EXPECTED_RESOURCES)
+def fixture_value(phases=ALAS_COMBAT_REPLAY_PHASES):
+    phases = tuple(phases)
     frames = []
     for offset, phase in enumerate(phases, start=1):
         map_value = None
@@ -378,14 +391,14 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
         return path
 
-    def test_unqualified_manifest_is_honestly_zero_of_38(self):
+    def test_unqualified_manifest_is_honestly_zero_of_40(self):
         coverage = audit_alas_combat_observer_manifest(
             unqualified_alas_combat_observer_manifest(
                 driver_revision=DRIVER, game_fingerprint=GAME
             )
         )
 
-        self.assertEqual(coverage.total_resources, 38)
+        self.assertEqual(coverage.total_resources, 40)
         self.assertEqual(coverage.qualified_resources, 0)
         self.assertFalse(coverage.production_ready)
         self.assertEqual(
@@ -410,11 +423,30 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         self.assertEqual(replay.frames[-1].levels, (120, 121, 122, 123, 124, 125))
         self.assertTrue(replay.frames[-1].fleet_on_target)
 
+    def test_optional_reward_and_mission_frames_are_inferred_from_resources(self):
+        manifest = qualified_manifest()
+        phases = alas_combat_replay_phase_sequence(
+            include_get_items=True,
+            include_get_mission=True,
+        )
+        snapshots = load_alas_combat_observer_fixture(
+            self.write_fixture(fixture_value(phases)), manifest
+        )
+
+        replay = build_alas_campaign_combat_replay_from_observer(
+            admission(), snapshots, manifest
+        )
+
+        self.assertEqual(tuple(frame.phase for frame in replay.frames), phases)
+        self.assertEqual(replay.frames[3].phase, AlasCombatReplayPhase.GET_ITEMS)
+        self.assertEqual(replay.frames[5].phase, AlasCombatReplayPhase.GET_MISSION)
+        self.assertEqual(len(replay.frames), 8)
+
     def test_unqualified_manifest_cannot_build_replay(self):
         manifest = unqualified_alas_combat_observer_manifest(
             driver_revision=DRIVER, game_fingerprint=GAME
         )
-        with self.assertRaisesRegex(SemanticGateClosed, "0/38"):
+        with self.assertRaisesRegex(SemanticGateClosed, "0/40"):
             build_alas_campaign_combat_replay_from_observer(
                 admission(), (), manifest
             )
@@ -450,6 +482,192 @@ class AlasCombatObserverContractTests(unittest.TestCase):
             build_alas_campaign_combat_replay_from_observer(
                 admission(), snapshots, qualified_manifest()
             )
+
+    def test_reviewed_action_resolves_one_exact_button_without_input(self):
+        manifest = qualified_manifest()
+        snapshot = parse_alas_combat_observer_fixture_frame(
+            frame(20, ("BATTLE_STATUS_S",)), manifest
+        )
+
+        receipt = prepare_alas_combat_resource_action(
+            snapshot, manifest, "BATTLE_STATUS_S"
+        )
+
+        self.assertEqual(receipt.semantic_id, "combat/resource/BATTLE_STATUS_S")
+        self.assertEqual(receipt.generation, 20)
+        self.assertEqual(receipt.path, "Combat/Button/BATTLE_STATUS_S")
+        self.assertEqual(receipt.point, Point(100.0, 100.0))
+
+    def test_reviewed_action_rejects_active_blocker_and_competing_action(self):
+        blocked_manifest = qualified_manifest(
+            blockers=(selector_for("BATTLE_STATUS_S"),)
+        )
+        blocked = parse_alas_combat_observer_fixture_frame(
+            frame(20, ("BATTLE_STATUS_S",)), blocked_manifest
+        )
+        with self.assertRaisesRegex(SemanticGateClosed, "blocked by"):
+            prepare_alas_combat_resource_action(
+                blocked, blocked_manifest, "BATTLE_STATUS_S"
+            )
+
+        manifest = qualified_manifest()
+        ambiguous = parse_alas_combat_observer_fixture_frame(
+            frame(21, ("BATTLE_STATUS_S", "EXP_INFO_S")), manifest
+        )
+        with self.assertRaisesRegex(SemanticGateClosed, "ambiguous with"):
+            prepare_alas_combat_resource_action(
+                ambiguous, manifest, "BATTLE_STATUS_S"
+            )
+
+    def test_live_evidence_action_requires_two_stable_generations_then_taps_once(self):
+        manifest = qualified_manifest()
+        frames = (
+            frame(20, ("BATTLE_STATUS_S",)),
+            frame(21, ("BATTLE_STATUS_S",)),
+        )
+
+        class Bridge:
+            pid = 4242
+
+            def __init__(self):
+                self.request_count = 0
+                self.taps = []
+
+            def foreground_component(self):
+                return "com.bilibili.azurlane/com.manjuu.azurlane.MainActivity"
+
+            def request(self, request):
+                index = min(self.request_count // 3, 1)
+                endpoint = request.strip().split("/")[-1]
+                self.request_count += 1
+                return frames[index][
+                    {
+                        "snapshot": "snapshot",
+                        "buttons": "buttons",
+                        "ui": "ui",
+                    }[endpoint]
+                ]
+
+            def tap(self, x, y):
+                self.taps.append((x, y))
+
+        bridge = Bridge()
+        session = mock.Mock()
+        session.package = PACKAGE
+        session.driver_revision = DRIVER
+        session.component = (
+            "com.bilibili.azurlane/com.manjuu.azurlane.MainActivity"
+        )
+        session.bridge = bridge
+
+        commit = commit_alas_combat_resource_action_for_evidence(
+            session,
+            manifest,
+            "BATTLE_STATUS_S",
+            expected_pid=4242,
+            minimum_generation=19,
+            action_budget=1,
+            settle_interval_seconds=0.01,
+            sleep=lambda _: None,
+        )
+
+        session.open.assert_called_once_with()
+        self.assertEqual(bridge.taps, [(100, 100)])
+        self.assertEqual(commit.first_generation, 20)
+        self.assertEqual(commit.commit_generation, 21)
+        self.assertEqual(commit.receipt.semantic_id, "combat/resource/BATTLE_STATUS_S")
+
+    def test_live_evidence_action_rejects_wrong_pid_before_read_or_tap(self):
+        manifest = qualified_manifest()
+        session = mock.Mock()
+        session.package = PACKAGE
+        session.driver_revision = DRIVER
+        session.component = (
+            "com.bilibili.azurlane/com.manjuu.azurlane.MainActivity"
+        )
+        session.bridge.pid = 4243
+
+        with self.assertRaisesRegex(SemanticGateClosed, "process changed"):
+            commit_alas_combat_resource_action_for_evidence(
+                session,
+                manifest,
+                "BATTLE_STATUS_S",
+                expected_pid=4242,
+                minimum_generation=19,
+                action_budget=1,
+                sleep=lambda _: None,
+            )
+        session.bridge.request.assert_not_called()
+        session.bridge.tap.assert_not_called()
+
+    def test_live_evidence_action_rejects_endpoint_pid_drift(self):
+        manifest = qualified_manifest()
+        frames = [
+            frame(20, ("BATTLE_STATUS_S",)),
+            frame(21, ("BATTLE_STATUS_S",)),
+        ]
+        for payload in (
+            frames[1]["snapshot"],
+            frames[1]["buttons"],
+            frames[1]["ui"],
+        ):
+            payload["pid"] = 4243
+        frame_payload = {
+            key: frames[1][key]
+            for key in ("snapshot", "buttons", "ui", "campaign_map")
+        }
+        frames[1]["sha256"] = hashlib.sha256(
+            json.dumps(
+                frame_payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+
+        class Bridge:
+            pid = 4242
+
+            def __init__(self):
+                self.request_count = 0
+                self.taps = []
+
+            def foreground_component(self):
+                return "com.bilibili.azurlane/com.manjuu.azurlane.MainActivity"
+
+            def request(self, request):
+                index = min(self.request_count // 3, 1)
+                endpoint = request.strip().split("/")[-1]
+                self.request_count += 1
+                return frames[index][
+                    {"snapshot": "snapshot", "buttons": "buttons", "ui": "ui"}[
+                        endpoint
+                    ]
+                ]
+
+            def tap(self, x, y):
+                self.taps.append((x, y))
+
+        session = mock.Mock()
+        session.package = PACKAGE
+        session.driver_revision = DRIVER
+        session.component = (
+            "com.bilibili.azurlane/com.manjuu.azurlane.MainActivity"
+        )
+        session.bridge = Bridge()
+
+        with self.assertRaisesRegex(SemanticGateClosed, "snapshot process changed"):
+            commit_alas_combat_resource_action_for_evidence(
+                session,
+                manifest,
+                "BATTLE_STATUS_S",
+                expected_pid=4242,
+                minimum_generation=19,
+                action_budget=1,
+                settle_interval_seconds=0.01,
+                sleep=lambda _: None,
+            )
+        self.assertEqual(session.bridge.taps, [])
 
     def test_active_reviewed_blocker_closes_replay(self):
         blocker = AlasCombatUnitySelector(
@@ -515,17 +733,17 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         )
         coverage = audit_alas_combat_observer_manifest(manifest)
 
-        self.assertEqual(coverage.total_resources, 38)
-        self.assertEqual(coverage.qualified_resources, 1)
+        self.assertEqual(coverage.total_resources, 40)
+        self.assertEqual(coverage.qualified_resources, 6)
         self.assertEqual(coverage.qualified_blockers, 1)
         self.assertFalse(coverage.blocker_review_complete)
         self.assertFalse(coverage.blockers_qualified)
         self.assertFalse(coverage.production_ready)
 
     @staticmethod
-    def trace_frames():
+    def trace_frames(phases=ALAS_COMBAT_REPLAY_PHASES):
         manifest = qualified_manifest()
-        fixture = fixture_value()
+        fixture = fixture_value(phases)
         frames = []
         typed_maps = []
         for source in fixture["frames"]:
@@ -557,6 +775,54 @@ class AlasCombatObserverContractTests(unittest.TestCase):
                 raise AssertionError("test trace frame did not round-trip")
             frames.append(rebuilt)
         return manifest, tuple(frames), tuple(typed_maps)
+
+    def test_optional_trace_analysis_and_compiler_use_only_final_map_phases(self):
+        phases = alas_combat_replay_phase_sequence(
+            include_get_items=True,
+            include_get_mission=True,
+        )
+        manifest, frames, typed_maps = self.trace_frames(phases)
+        trace = parse_alas_combat_observer_trace(
+            build_alas_combat_observer_trace(
+                manifest,
+                tuple(
+                    ("2026-08-10T06:03:{0:02d}Z".format(index), frame_value)
+                    for index, frame_value in enumerate(frames, start=1)
+                ),
+            ),
+            manifest,
+        )
+        selected = select_alas_combat_observer_trace_samples(
+            trace, trace.generations
+        )
+        report = analyze_alas_combat_observer_candidates(
+            selected, phase_sequence=phases
+        )
+        with mock.patch(
+            "alas_headless.alas_combat_trace._offline_campaign_map",
+            side_effect=(typed_maps[-2], typed_maps[-1]),
+        ) as offline:
+            compiled = compile_alas_combat_observer_fixture(
+                selected,
+                manifest,
+                stage_code="12-4",
+                columns=11,
+                rows=8,
+                land_cells=((0, 0),),
+                expected_fleet_count=2,
+                phase_sequence=phases,
+            )
+
+        self.assertEqual(
+            tuple(item["phase"] for item in report["phases"]),
+            tuple(phase.value for phase in phases),
+        )
+        self.assertEqual(offline.call_count, 2)
+        self.assertTrue(
+            all(frame["campaign_map"] is None for frame in compiled["frames"][:-2])
+        )
+        self.assertIsNotNone(compiled["frames"][-2]["campaign_map"])
+        self.assertIsNotNone(compiled["frames"][-1]["campaign_map"])
 
     def test_raw_trace_round_trip_selects_generations_and_reports_candidates(self):
         manifest, frames, _ = self.trace_frames()
@@ -680,7 +946,7 @@ class AlasCombatObserverContractTests(unittest.TestCase):
         coverage = audit_alas_combat_observer_manifest(promoted)
 
         self.assertEqual(receipt["schema"], ALAS_COMBAT_MAPPING_RECEIPT_SCHEMA)
-        self.assertEqual(coverage.qualified_resources, 38)
+        self.assertEqual(coverage.qualified_resources, 40)
         self.assertEqual(coverage.qualified_blockers, 1)
         self.assertFalse(coverage.blockers_qualified)
         self.assertFalse(coverage.production_ready)

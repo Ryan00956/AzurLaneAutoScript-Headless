@@ -169,6 +169,25 @@ python scripts/python/verify_alas_combat_mapping_receipt.py `
 This is still an observer-input change only. The canonical ALAS patch, G19
 state machine, G18 production stop, D6 input, and combat budget are unchanged.
 
+G23 uses the same separation for a qualification-only live combat chain. The
+grid acquisition tool lets original `_goto()` spend one admitted exact map
+input while an independent recorder remains read-only. Result-page actions
+require two stable generations, exact foreground/PID/path/geometry continuity,
+and an explicit one-use action budget.
+
+The observed post-battle sequence may include AwardInfo and an urgent
+commission dialog. G19/G20 therefore accept only four bounded 6-8 phase
+sequences, with `GET_ITEMS_1` and `GET_MISSION` in fixed positions. Original
+`handle_get_items()` and `handle_urgent_commission()` still own those clicks.
+The union query surface is now 40 resources because the urgent-commission path
+also reaches `EXP_INFO_A` and `EXP_INFO_B` fallbacks.
+
+The checked-in manifest is currently `6/40`: `IN_MAP`, `PAUSE`,
+`BATTLE_STATUS_S`, `GET_ITEMS_1`, `EXP_INFO_S`, and `GET_MISSION`. Blocker
+review and fleet stats remain incomplete, so production replay and the G18
+runner stop remain fail-closed. See
+`docs/g23-alas-controlled-combat-acquisition-validation-report.md`.
+
 Commission start has a separate integer budget and remains closed by default:
 
 ```powershell

@@ -290,9 +290,7 @@ def make_oracle(backend):
 def make_campaign_map_backend(generations=(10, 11)):
     map_root = "LevelCamera/Canvas/UIMain/LevelGrid"
     stage_root = "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)"
-    fleet_status_root = (
-        "LevelCamera/Canvas/LevelOrigin/top/LevelStageView(Clone)"
-    )
+    fleet_status_root = stage_root
     cells = {
         (1, 1): (100.0, 100.0),
         (1, 3): (300.0, 100.0),
@@ -1193,6 +1191,60 @@ class SemanticOracleTests(unittest.TestCase):
         with self.assertRaisesRegex(SemanticGateClosed, "overlap"):
             make_oracle(in_map).campaign_map_entry_state()
 
+    def test_campaign_map_entry_accepts_exact_overlay_retreat_variant(self):
+        map_root = "LevelCamera/Canvas/UIMain/LevelGrid"
+        stage_root = "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)"
+        retreat = stage_root + "/bottom_stage/Normal/retreat_button"
+        backend = FakeBackend(
+            [
+                make_button("retreat_button", retreat, raycast_top=None),
+                make_button(
+                    "chapter_cell_quad_6_4",
+                    map_root + "/DragLayer/plane/quads/chapter_cell_quad_6_4",
+                    raycast_top=True,
+                ),
+                make_button(
+                    "back_button",
+                    stage_root + "/top_stage/back_button",
+                    raycast_top=None,
+                ),
+            ]
+        )
+        backend.ui = make_ui(
+            [],
+            images=[
+                make_image(retreat, "chetui_butten"),
+                make_image(
+                    map_root + "/DragLayer/plane/display/mask/sea", "sea_day"
+                ),
+                make_image(
+                    stage_root + "/top_stage/back_button/mask/Image", "back_btn"
+                ),
+            ],
+        )
+
+        state = make_oracle(backend).campaign_map_entry_state()
+
+        self.assertIn(retreat, state.button_paths)
+        self.assertIn(retreat, state.image_paths)
+
+        backend.buttons["buttons"].append(
+            make_button(
+                "retreat",
+                map_root + "/DragLayer/op1/retreat",
+                raycast_top=None,
+            )
+        )
+        backend.buttons["button_count"] += 1
+        backend.ui["images"].append(
+            make_image(
+                map_root + "/DragLayer/op1/retreat/retreat", "reteat_popo"
+            )
+        )
+        backend.ui["image_count"] += 1
+        with self.assertRaisesRegex(SemanticGateClosed, "identity is absent"):
+            make_oracle(backend).campaign_map_entry_state()
+
     def test_campaign_map_model_is_complete_stable_and_uses_alas_topology(self):
         backend = make_campaign_map_backend()
 
@@ -1224,11 +1276,92 @@ class SemanticOracleTests(unittest.TestCase):
         )
         self.assertEqual(state.displayed_fleet_index, 1)
         self.assertEqual(state.current_fleet_marker, "cell_fleet_one")
+
+    def test_campaign_map_ignores_exact_cleared_enemy_ghost(self):
+        backend = make_campaign_map_backend()
+        enemy_root = (
+            "LevelCamera/Canvas/UIMain/LevelGrid/DragLayer/plane/cells/"
+            "chapter_cell_1_1/attachment/enemy_1001"
+        )
+        for payload in (*backend.ui_sequence, backend.ui):
+            icon = next(
+                image
+                for image in payload["images"]
+                if image["path"] == enemy_root + "/icon"
+            )
+            icon["sprite"] = "qx2_d_blue"
+            payload["texts"] = [
+                item
+                for item in payload["texts"]
+                if not item["path"].startswith(enemy_root + "/lv/")
+            ]
+            payload["text_count"] = len(payload["texts"])
+
+        state = make_oracle(backend).campaign_map_state(
+            "12-4",
+            columns=3,
+            rows=2,
+            land_cells=((1, 0),),
+            expected_fleet_count=2,
+        )
+
+        self.assertEqual(state.enemies, ())
+
+        backend = make_campaign_map_backend()
+        for payload in (*backend.ui_sequence, backend.ui):
+            icon = next(
+                image
+                for image in payload["images"]
+                if image["path"] == enemy_root + "/icon"
+            )
+            icon["sprite"] = "qx2_d_blue"
+            payload["texts"] = [
+                item
+                for item in payload["texts"]
+                if not item["path"].startswith(enemy_root + "/lv/")
+            ]
+            payload["texts"].append(make_text("113", enemy_root + "/lv/Text"))
+            payload["text_count"] = len(payload["texts"])
+        with self.assertRaisesRegex(SemanticGateClosed, "cleared-enemy"):
+            make_oracle(backend)._campaign_map_state_once(
+                "12-4",
+                columns=3,
+                rows=2,
+                land=((1, 2),),
+                expected_fleet_count=2,
+            )
         self.assertEqual(
             state.current_fleet_roster_sprites,
             ("one", "support"),
         )
         self.assertEqual(backend.taps, [])
+
+    def test_campaign_map_groups_destroyer_piece_with_alas_light_genre(self):
+        backend = make_campaign_map_backend()
+        enemy_root = (
+            "LevelCamera/Canvas/UIMain/LevelGrid/DragLayer/plane/cells/"
+            "chapter_cell_1_1/attachment/enemy_1001"
+        )
+        for payload in (*backend.ui_sequence, backend.ui):
+            icon = next(
+                image
+                for image in payload["images"]
+                if image["path"] == enemy_root + "/icon"
+            )
+            icon["sprite"] = "qz2"
+
+        state = make_oracle(backend).campaign_map_state(
+            "12-4",
+            columns=3,
+            rows=2,
+            land_cells=((1, 0),),
+            expected_fleet_count=2,
+        )
+
+        self.assertEqual(
+            tuple((enemy.genre, enemy.scale) for enemy in state.enemies),
+            (("Light", 2),),
+        )
 
     def test_campaign_map_cell_click_revalidates_exact_top_raycast(self):
         backend = make_campaign_map_backend()
@@ -1290,7 +1423,7 @@ class SemanticOracleTests(unittest.TestCase):
     def test_campaign_map_model_rejects_ambiguous_current_fleet_marker(self):
         backend = make_campaign_map_backend(generations=(10,))
         roster_path = (
-            "LevelCamera/Canvas/LevelOrigin/top/LevelStageView(Clone)/"
+            "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/"
             "left_stage/fleet/main/shiptpl(Clone)/icon_bg/icon"
         )
         backend.ui["images"].append(make_image(roster_path, "two"))
@@ -1394,7 +1527,7 @@ class SemanticOracleTests(unittest.TestCase):
 
         second_backend = make_campaign_map_backend(generations=(11,))
         number_path = (
-            "LevelCamera/Canvas/LevelOrigin/top/LevelStageView(Clone)/"
+            "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)/"
             "top_stage/msg_panel/fleet_info/number"
         )
         number = next(
