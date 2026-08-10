@@ -4,6 +4,24 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-10
 
+### G30 passive result acquisition: six profiles ready; no live promotion
+
+- The G29 watcher now also supports A-D battle grades and A/B experience pages.
+  Their exact path structure is pinned to the already-qualified S resource and
+  action mappings; reference drift fails closed.
+- A candidate requires three adjacent complete frames, the exact grade sprites
+  and invariant page records, one top-raycast original-ALAS target, and stable
+  geometry. It produces a review draft only and never changes the manifest.
+- A fresh real map trace captured 11 samples at generations `107224..107246`
+  on PID `23161`, with zero endpoint rejects, duplicates, or ambiguities. All
+  six passive profiles correctly remained absent and unpromoted.
+- Coverage remains canonical `16/41`, defensive `18/54`, actions `12/38`, and
+  blockers `1/4`; `production_ready=false`.
+- The combined G29/G30 focused suite passes `12/12`.
+- The full Python suite passes `330/330`.
+
+See [G30 passive result-surface validation](g30-alas-passive-result-surface-validation-report.md).
+
 ### G29 rare-surface acquisition: watcher passed; live dialogs absent
 
 - A zero-input watcher now targets paired guild confirm/cancel and mission

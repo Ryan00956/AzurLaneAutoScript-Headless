@@ -135,7 +135,10 @@ virtual inputs and source-hash binding. It confirms control-flow ownership but
 does not promote live Unity mappings. G29 adds a zero-input, three-frame
 rare-dialog watcher for guild and mission button pairs. Its first real map run
 is a verified negative observation, so it emits no review draft and changes no
-mapping. Lua/game-state coverage,
+mapping. G30 extends the same non-applying acquisition boundary to passive A-D
+battle grades and A/B experience pages, with their structure bound to the
+qualified S mappings. Its fresh six-profile map scan is also negative, so
+coverage is unchanged. Lua/game-state coverage,
 formation-layout changes, campaign movement execution, battle state,
 weekly-only end-to-end
 coverage, repeated sorties, and full unattended ALAS task coverage remain

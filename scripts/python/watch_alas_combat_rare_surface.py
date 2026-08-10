@@ -14,22 +14,35 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python"))
 
 from alas_headless import (  # noqa: E402
+    ALAS_COMBAT_RARE_SURFACE_PROFILES,
+    ALAS_COMBAT_RESULT_SURFACE_PROFILES,
     AlasSemanticSession,
     PINNED_CN_GAME_FINGERPRINT,
     SemanticGateClosed,
     analyze_alas_combat_rare_surface_evidence,
+    analyze_alas_combat_result_surface_evidence,
     build_alas_combat_observer_trace,
     build_alas_combat_trace_frame,
     load_alas_combat_observer_manifest,
     parse_alas_combat_observer_trace,
     verify_alas_combat_rare_surface_evidence,
+    verify_alas_combat_result_surface_evidence,
 )
+
+
+DIALOG_PROFILE_IDS = tuple(
+    profile.profile_id for profile in ALAS_COMBAT_RARE_SURFACE_PROFILES
+)
+RESULT_PROFILE_IDS = tuple(
+    profile.profile_id for profile in ALAS_COMBAT_RESULT_SURFACE_PROFILES
+)
+PROFILE_IDS = DIALOG_PROFILE_IDS + RESULT_PROFILE_IDS
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--serial", required=True)
-    parser.add_argument("--profile", required=True, choices=("guild-popup", "mission-popup"))
+    parser.add_argument("--profile", required=True, choices=PROFILE_IDS)
     parser.add_argument("--trace-output", required=True, type=Path)
     parser.add_argument("--evidence-output", required=True, type=Path)
     parser.add_argument(
@@ -93,6 +106,16 @@ def validate_args(args: argparse.Namespace) -> None:
 def main() -> int:
     args = parse_args()
     validate_args(args)
+    analyzer = (
+        analyze_alas_combat_result_surface_evidence
+        if args.profile in RESULT_PROFILE_IDS
+        else analyze_alas_combat_rare_surface_evidence
+    )
+    verifier = (
+        verify_alas_combat_result_surface_evidence
+        if args.profile in RESULT_PROFILE_IDS
+        else verify_alas_combat_rare_surface_evidence
+    )
     manifest = load_alas_combat_observer_manifest(args.manifest)
     game = PINNED_CN_GAME_FINGERPRINT
     fingerprint = ":".join(
@@ -145,7 +168,7 @@ def main() -> int:
                     final_digest = hashlib.sha256(trace_payload).hexdigest()
                     write_bytes(args.trace_output, trace_payload)
                     trace = parse_alas_combat_observer_trace(trace_json, manifest)
-                    final_record = analyze_alas_combat_rare_surface_evidence(
+                    final_record = analyzer(
                         manifest,
                         trace,
                         profile_id=args.profile,
@@ -180,7 +203,7 @@ def main() -> int:
     trace = parse_alas_combat_observer_trace(
         build_alas_combat_observer_trace(manifest, samples), manifest
     )
-    verification = verify_alas_combat_rare_surface_evidence(
+    verification = verifier(
         manifest,
         trace,
         final_record,
@@ -189,7 +212,11 @@ def main() -> int:
     print(
         json.dumps(
             {
-                "schema": "alas-headless.g29-combat-rare-surface-watch-result/v1",
+                "schema": (
+                    "alas-headless.g30-combat-surface-watch-result/v2"
+                    if args.profile in RESULT_PROFILE_IDS
+                    else "alas-headless.g29-combat-rare-surface-watch-result/v1"
+                ),
                 "passed": True,
                 "profile_id": args.profile,
                 "evidence_complete": verification["evidence_complete"],

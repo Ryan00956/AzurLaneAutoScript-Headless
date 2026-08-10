@@ -89,6 +89,12 @@ actionability, and stable geometry. A result is a non-applying G27 review
 draft, never a manifest edit or input. The current 25-sample real map trace is
 a clean negative observation for both guild and mission profiles, so coverage
 does not change and production still stops at G18.
+G30 extends that same non-applying watcher to `BATTLE_STATUS_A..D` and
+`EXP_INFO_A..B`. Each profile is structurally bound to the checked qualified S
+mapping and requires three adjacent exact grade frames plus a stable
+top-raycast action target. The fresh 11-sample real map trace is a clean
+negative observation for all six profiles, so no mapping count changes and
+production still stops at G18.
 G4 includes
 login/main reachability, sustained semantic state, RectTransform bounds, top
 EventSystem raycast identity for each action, and a settings-page return loop.

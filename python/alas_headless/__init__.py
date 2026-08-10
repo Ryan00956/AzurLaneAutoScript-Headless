@@ -94,6 +94,15 @@ from .alas_combat_rare_evidence import (
     audit_alas_combat_rare_surface_mappings,
     verify_alas_combat_rare_surface_evidence,
 )
+from .alas_combat_result_evidence import (
+    ALAS_COMBAT_RESULT_SURFACE_EVIDENCE_SCHEMA,
+    ALAS_COMBAT_RESULT_SURFACE_PROFILES,
+    ALAS_COMBAT_RESULT_SURFACE_VERIFICATION_SCHEMA,
+    AlasCombatResultSurfaceProfile,
+    analyze_alas_combat_result_surface_evidence,
+    audit_alas_combat_result_surface_mappings,
+    verify_alas_combat_result_surface_evidence,
+)
 from .alas_combat_trace import (
     ALAS_COMBAT_OBSERVER_CANDIDATE_SCHEMA,
     ALAS_COMBAT_OBSERVER_TRACE_SCHEMA,
@@ -225,6 +234,9 @@ __all__ = (
     "ALAS_COMBAT_REPLAY_PHASES",
     "ALAS_COMBAT_REPLAY_PHASE_SEQUENCES",
     "ALAS_COMBAT_REPLAY_RESOURCE_NAMES",
+    "ALAS_COMBAT_RESULT_SURFACE_EVIDENCE_SCHEMA",
+    "ALAS_COMBAT_RESULT_SURFACE_PROFILES",
+    "ALAS_COMBAT_RESULT_SURFACE_VERIFICATION_SCHEMA",
     "ALAS_COMBAT_RESOURCE_ACTION_TARGETS",
     "ALAS_COMBAT_RESOURCE_ACTION_COMMIT_SCHEMA",
     "AlasCampaignFleetPlan",
@@ -246,6 +258,7 @@ __all__ = (
     "AlasCombatRareControlSpec",
     "AlasCombatRareSurfaceProfile",
     "AlasCombatResourceMapping",
+    "AlasCombatResultSurfaceProfile",
     "AlasCampaignDecisionPreview",
     "AlasCampaignGotoInputPreview",
     "AlasCampaignGotoInputCommit",
@@ -342,7 +355,9 @@ __all__ = (
     "audit_alas_combat_observer_manifest",
     "analyze_alas_combat_observer_candidates",
     "analyze_alas_combat_rare_surface_evidence",
+    "analyze_alas_combat_result_surface_evidence",
     "audit_alas_combat_rare_surface_mappings",
+    "audit_alas_combat_result_surface_mappings",
     "alas_combat_replay_phase_sequence",
     "build_alas_campaign_combat_replay_from_observer",
     "build_alas_combat_observer_trace",
@@ -375,5 +390,6 @@ __all__ = (
     "validate_alas_combat_observer_snapshot",
     "verify_alas_combat_mapping_receipt",
     "verify_alas_combat_rare_surface_evidence",
+    "verify_alas_combat_result_surface_evidence",
     "verify_alas_combat_branch_replay_record",
 )

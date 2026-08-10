@@ -281,6 +281,23 @@ The first restored-game run saw neither dialog in 25 complete map samples, so
 both rare profiles and all four resource/action pairs remain unqualified. See
 `docs/g29-alas-rare-surface-acquisition-validation-report.md`.
 
+G30 adds six passive result profiles to the same watcher:
+
+```powershell
+python scripts/python/watch_alas_combat_rare_surface.py `
+  --serial 127.0.0.1:5581 `
+  --profile battle-status-a `
+  --trace-output artifacts/g30-result.trace.json `
+  --evidence-output artifacts/g30-battle-status-a.evidence.json
+```
+
+Available profile names are `battle-status-a` through `battle-status-d` and
+`exp-info-a` / `exp-info-b`. Each one verifies the qualified S mapping has not
+changed, then requires three repeated exact grade pages and a stable
+top-raycast action Button. The current map trace is negative for all six, so
+none is promoted. See
+`docs/g30-alas-passive-result-surface-validation-report.md`.
+
 Commission start has a separate integer budget and remains closed by default:
 
 ```powershell

@@ -12,17 +12,30 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python"))
 
 from alas_headless import (  # noqa: E402
+    ALAS_COMBAT_RARE_SURFACE_PROFILES,
+    ALAS_COMBAT_RESULT_SURFACE_PROFILES,
     analyze_alas_combat_rare_surface_evidence,
+    analyze_alas_combat_result_surface_evidence,
     load_alas_combat_observer_manifest,
     load_alas_combat_observer_trace,
     verify_alas_combat_rare_surface_evidence,
+    verify_alas_combat_result_surface_evidence,
 )
+
+
+DIALOG_PROFILE_IDS = tuple(
+    profile.profile_id for profile in ALAS_COMBAT_RARE_SURFACE_PROFILES
+)
+RESULT_PROFILE_IDS = tuple(
+    profile.profile_id for profile in ALAS_COMBAT_RESULT_SURFACE_PROFILES
+)
+PROFILE_IDS = DIALOG_PROFILE_IDS + RESULT_PROFILE_IDS
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--trace", required=True, type=Path)
-    parser.add_argument("--profile", required=True, choices=("guild-popup", "mission-popup"))
+    parser.add_argument("--profile", required=True, choices=PROFILE_IDS)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument(
         "--manifest",
@@ -52,10 +65,15 @@ def main() -> int:
     digest = hashlib.sha256(args.trace.read_bytes()).hexdigest()
     if args.verify:
         record = json.loads(args.output.read_text(encoding="utf-8"))
-        if record.get("profile_id") != args.profile:
+        if not isinstance(record, dict) or record.get("profile_id") != args.profile:
             raise SystemExit("evidence profile does not match --profile")
     else:
-        record = analyze_alas_combat_rare_surface_evidence(
+        analyzer = (
+            analyze_alas_combat_result_surface_evidence
+            if args.profile in RESULT_PROFILE_IDS
+            else analyze_alas_combat_rare_surface_evidence
+        )
+        record = analyzer(
             manifest,
             trace,
             profile_id=args.profile,
@@ -64,7 +82,12 @@ def main() -> int:
             context_frames=args.context_frames,
         )
         write_json(args.output, record)
-    result = verify_alas_combat_rare_surface_evidence(
+    verifier = (
+        verify_alas_combat_result_surface_evidence
+        if args.profile in RESULT_PROFILE_IDS
+        else verify_alas_combat_rare_surface_evidence
+    )
+    result = verifier(
         manifest,
         trace,
         record,

@@ -17,6 +17,7 @@ from alas_headless import (  # noqa: E402
     ALAS_COMBAT_REPLAY_RESOURCE_NAMES,
     audit_alas_combat_observer_manifest,
     audit_alas_combat_rare_surface_mappings,
+    audit_alas_combat_result_surface_mappings,
     load_alas_combat_observer_manifest,
     verify_alas_combat_branch_replay_record,
 )
@@ -49,6 +50,7 @@ def main() -> int:
     manifest = load_alas_combat_observer_manifest(args.manifest)
     coverage = audit_alas_combat_observer_manifest(manifest)
     rare_surface_mappings = audit_alas_combat_rare_surface_mappings(manifest)
+    result_surface_mappings = audit_alas_combat_result_surface_mappings(manifest)
     try:
         branch_record = json.loads(
             args.branch_replay_record.read_text(encoding="utf-8")
@@ -59,7 +61,7 @@ def main() -> int:
     print(
         json.dumps(
             {
-                "schema": "alas-headless.g29-combat-observer-coverage/v5",
+                "schema": "alas-headless.g30-combat-observer-coverage/v6",
                 "contract_valid": (
                     coverage.total_resources
                     == len(ALAS_COMBAT_DEFENSIVE_RESOURCE_NAMES)
@@ -108,6 +110,10 @@ def main() -> int:
                 "rare_surface_mappings": rare_surface_mappings,
                 "rare_surface_live_mappings_qualified": all(
                     rare_surface_mappings.values()
+                ),
+                "result_surface_mappings": result_surface_mappings,
+                "result_surface_live_mappings_qualified": all(
+                    result_surface_mappings.values()
                 ),
                 "input_injected": False,
             },
