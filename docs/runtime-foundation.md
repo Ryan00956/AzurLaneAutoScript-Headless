@@ -26,6 +26,15 @@ The common contract owns lifecycle names and evidence identity. It does not own
 QEMU flags, cgroups, cpusets, Android service removal, governor settings, NULL
 refresh rate, or instance density. Those remain backend or workload decisions.
 
+The implementation keeps those ownership boundaries visible in the module
+layout. `runtime_backend_adb.py` owns the shared ADB lifecycle and external
+device adapter, `runtime_backend_kvm.py` owns only the Linux KVM emulator,
+and `runtime_backend_deferred.py` owns the fail-closed placeholders. The
+existing `runtime_backends.py` import path remains a compatibility facade and
+the strict configuration factory. A future executable backend should live in
+its own module and be registered through that facade instead of growing a new
+cross-backend monolith.
+
 | Concern | Common | Backend-specific |
 | --- | --- | --- |
 | Artifact hashes and ABI compatibility | Yes | Artifact resolution paths |
