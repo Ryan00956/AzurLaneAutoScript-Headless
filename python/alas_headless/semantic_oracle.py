@@ -1063,6 +1063,11 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
         "custom_button_1(Clone)",
         "Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
     ),
+    SemanticTarget(
+        "overlay/login-data-expired/confirm",
+        "custom_button_1(Clone)",
+        "Msgbox(Clone)/window/button_container/custom_button_1(Clone)",
+    ),
     *tuple(
         SemanticTarget(
             "research/project/" + str(slot),
@@ -1250,6 +1255,12 @@ DEFAULT_IMAGE_TARGETS: Tuple[SemanticImageTarget, ...] = tuple(
 
 
 DEFAULT_TOGGLE_TARGETS: Tuple[SemanticToggleTarget, ...] = (
+    SemanticToggleTarget(
+        "campaign/map-preparation/auto-search",
+        "AutoFight",
+        "OverlayCamera/Overlay/UIMain/LevelStageInfoView(Clone)/panel/"
+        "BottomExtra/LoopGroup/view/container/AutoFight",
+    ),
     SemanticToggleTarget(
         "campaign/fleet-preparation/option/1",
         "item1",
@@ -1515,6 +1526,7 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
         (
             "campaign-menu/page/back",
             "campaign-menu/normal",
+            "campaign/map-preparation/auto-search",
             "campaign/map-preparation/proceed",
             "campaign/map-preparation/cancel",
             "campaign/fleet-preparation/cancel",
@@ -1526,6 +1538,7 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
         "campaign-map-preparation",
         "/LevelStageInfoView(Clone)/",
         (
+            "campaign/map-preparation/auto-search",
             "campaign/map-preparation/proceed",
             "campaign/map-preparation/cancel",
         ),
@@ -1657,6 +1670,7 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
             "research/queue/confirm",
             "overlay/network-reconnect/cancel",
             "overlay/network-reconnect/confirm",
+            "overlay/login-data-expired/confirm",
             "build/warning/cancel",
             "build/warning/confirm",
         ),
@@ -4184,11 +4198,12 @@ class SemanticOracle:
         state: CampaignMapState,
         node: str,
     ) -> ButtonState:
-        """Revalidate exact cell geometry while allowing a covered center.
+        """Revalidate exact cell geometry for an ALAS-owned camera move.
 
         This read is only an input to the owning ALAS camera state machine.  A
-        false top-raycast result is preserved and can authorize one viewport
-        movement, but it can never authorize the eventual grid tap.
+        false top-raycast result is preserved, but neither a covered nor an
+        already-visible cell can authorize the eventual grid tap through this
+        read.  The separate one-use viewport lease controls movement.
         """
 
         return self._campaign_map_cell_target(
@@ -4220,6 +4235,146 @@ class SemanticOracle:
             return float(ordered[middle])
         return float((ordered[middle - 1] + ordered[middle]) / 2.0)
 
+    @staticmethod
+    def _solve_linear_system(
+        matrix: Sequence[Sequence[float]], values: Sequence[float]
+    ) -> Tuple[float, ...]:
+        size = len(values)
+        if len(matrix) != size or any(len(row) != size for row in matrix):
+            raise SemanticGateClosed("campaign map projective model is malformed")
+        augmented = [
+            [float(item) for item in row] + [float(value)]
+            for row, value in zip(matrix, values)
+        ]
+        for column in range(size):
+            pivot = max(
+                range(column, size),
+                key=lambda row: abs(augmented[row][column]),
+            )
+            if abs(augmented[pivot][column]) < 1e-10:
+                raise SemanticGateClosed(
+                    "campaign map projective model is singular"
+                )
+            augmented[column], augmented[pivot] = (
+                augmented[pivot],
+                augmented[column],
+            )
+            divisor = augmented[column][column]
+            augmented[column] = [item / divisor for item in augmented[column]]
+            for row in range(size):
+                if row == column:
+                    continue
+                factor = augmented[row][column]
+                if factor == 0.0:
+                    continue
+                augmented[row] = [
+                    item - factor * pivot_item
+                    for item, pivot_item in zip(
+                        augmented[row], augmented[column]
+                    )
+                ]
+        return tuple(row[-1] for row in augmented)
+
+    @classmethod
+    def _campaign_projective_residuals(
+        cls,
+        before_points: Sequence[Point],
+        after_points: Sequence[Point],
+    ) -> Tuple[Tuple[float, ...], float]:
+        """Fit one normalized planar homography and return pixel residuals."""
+
+        if len(before_points) != len(after_points) or len(before_points) < 4:
+            raise SemanticGateClosed(
+                "campaign map projective model needs at least four cells"
+            )
+
+        def normalize(points: Sequence[Point]):
+            center_x = sum(point.x for point in points) / len(points)
+            center_y = sum(point.y for point in points) / len(points)
+            scale = math.sqrt(
+                sum(
+                    (point.x - center_x) ** 2
+                    + (point.y - center_y) ** 2
+                    for point in points
+                )
+                / len(points)
+            )
+            if not math.isfinite(scale) or scale < 1.0:
+                raise SemanticGateClosed(
+                    "campaign map projective cell spread is degenerate"
+                )
+            normalized = tuple(
+                (
+                    (point.x - center_x) / scale,
+                    (point.y - center_y) / scale,
+                )
+                for point in points
+            )
+            return normalized, center_x, center_y, scale
+
+        before, _, _, _ = normalize(before_points)
+        after, after_center_x, after_center_y, after_scale = normalize(
+            after_points
+        )
+        rows: List[Tuple[float, ...]] = []
+        outputs: List[float] = []
+        for (x, y), (u, v) in zip(before, after):
+            rows.append((x, y, 1.0, 0.0, 0.0, 0.0, -u * x, -u * y))
+            outputs.append(u)
+            rows.append((0.0, 0.0, 0.0, x, y, 1.0, -v * x, -v * y))
+            outputs.append(v)
+
+        normal = [[0.0 for _ in range(8)] for _ in range(8)]
+        right = [0.0 for _ in range(8)]
+        for row, output in zip(rows, outputs):
+            for left_index in range(8):
+                right[left_index] += row[left_index] * output
+                for right_index in range(8):
+                    normal[left_index][right_index] += (
+                        row[left_index] * row[right_index]
+                    )
+        parameters = cls._solve_linear_system(normal, right)
+        a, b, c, d, e, f, g, h = parameters
+        determinant = (
+            a * (e - f * h)
+            - b * (d - f * g)
+            + c * (d * h - e * g)
+        )
+        if not math.isfinite(determinant) or abs(determinant) < 1e-4:
+            raise SemanticGateClosed(
+                "campaign map projective model collapses geometry"
+            )
+
+        denominators = tuple(g * x + h * y + 1.0 for x, y in before)
+        if (
+            any(not math.isfinite(value) or abs(value) < 0.10 for value in denominators)
+            or any(value * denominators[0] <= 0.0 for value in denominators)
+        ):
+            raise SemanticGateClosed(
+                "campaign map projective model crosses infinity"
+            )
+
+        residuals = []
+        for (x, y), denominator, actual in zip(
+            before, denominators, after_points
+        ):
+            predicted_x = (
+                (a * x + b * y + c) / denominator * after_scale
+                + after_center_x
+            )
+            predicted_y = (
+                (d * x + e * y + f) / denominator * after_scale
+                + after_center_y
+            )
+            residuals.append(
+                math.hypot(
+                    actual.x - predicted_x,
+                    actual.y - predicted_y,
+                )
+            )
+        rms = math.sqrt(sum(value * value for value in residuals) / len(residuals))
+        return tuple(residuals), rms
+
     def campaign_map_viewport_swipe(
         self,
         state: CampaignMapState,
@@ -4241,10 +4396,6 @@ class SemanticOracle:
         if not isinstance(intent, CampaignMapViewportSwipeIntent):
             raise SemanticGateClosed("campaign map viewport intent is not typed")
         before_target = self.campaign_map_cell_viewport_target(state, target_node)
-        if before_target.raycast_top is not False:
-            raise SemanticGateClosed(
-                "campaign map viewport movement requires a covered target"
-            )
         if self._foreground_component() != self.fingerprint.component:
             raise SemanticGateClosed("foreground changed immediately before input")
         input_generation = self._last_generation or state.generation
@@ -4273,12 +4424,13 @@ class SemanticOracle:
         after_cells = {cell.node: cell for cell in post_state.cells}
         if set(before_cells) != set(after_cells) or len(before_cells) < 4:
             raise SemanticGateClosed("campaign map viewport cell set changed")
+        ordered_nodes = sorted(before_cells)
         deltas = tuple(
             (
                 after_cells[node].point.x - before_cells[node].point.x,
                 after_cells[node].point.y - before_cells[node].point.y,
             )
-            for node in sorted(before_cells)
+            for node in ordered_nodes
         )
         median_dx = self._median(tuple(delta[0] for delta in deltas))
         median_dy = self._median(tuple(delta[1] for delta in deltas))
@@ -4295,13 +4447,34 @@ class SemanticOracle:
             raise SemanticGateClosed(
                 "campaign map viewport moved against the ALAS gesture"
             )
-        residuals = tuple(
-            math.hypot(dx - median_dx, dy - median_dy) for dx, dy in deltas
+        residuals, root_mean_square_residual = self._campaign_projective_residuals(
+            tuple(before_cells[node].point for node in ordered_nodes),
+            tuple(after_cells[node].point for node in ordered_nodes),
         )
         maximum_residual = max(residuals)
-        if maximum_residual > max(12.0, median_norm * 0.20):
+        residual_limit = max(12.0, median_norm * 0.10)
+        rms_limit = max(6.0, median_norm * 0.05)
+        if (
+            maximum_residual > residual_limit
+            or root_mean_square_residual > rms_limit
+        ):
+            worst_index = residuals.index(maximum_residual)
+            worst_node = ordered_nodes[worst_index]
             raise SemanticGateClosed(
-                "campaign map viewport cell displacement is incoherent"
+                "campaign map viewport projective displacement is incoherent: "
+                "median=({0:.3f},{1:.3f}), maximum_residual={2:.3f}, "
+                "rms={3:.3f}, limits=({4:.3f},{5:.3f}), "
+                "worst={6}:{7}, cells={8}".format(
+                    median_dx,
+                    median_dy,
+                    maximum_residual,
+                    root_mean_square_residual,
+                    residual_limit,
+                    rms_limit,
+                    worst_node,
+                    deltas[worst_index],
+                    len(deltas),
+                )
             )
         if any(
             dx * median_dx + dy * median_dy <= 0.0 for dx, dy in deltas
@@ -4764,7 +4937,13 @@ class SemanticOracle:
         """Prove an exact map root or one reviewed non-map startup surface."""
 
         try:
-            self._campaign_map_entry_state_once()
+            # Reuse the exact map-entry reader's bounded transition sampling.
+            # The observer can expose the LevelGrid Button tree one refresh
+            # before the independently collected Image anchors; a single read
+            # would incorrectly classify that reviewed map as an unknown
+            # startup surface.  This remains read-only and every successful
+            # attempt still satisfies the original exact identity checks.
+            self.campaign_map_entry_state()
         except SemanticGateClosed as exc:
             if str(exc) in (
                 "campaign map and blocking identities overlap",
@@ -7409,6 +7588,7 @@ class SemanticOracle:
         if semantic_id in (
             "overlay/network-reconnect/cancel",
             "overlay/network-reconnect/confirm",
+            "overlay/login-data-expired/confirm",
         ):
             # A proven topmost NetworkDown Msgbox intentionally crosses page
             # ownership. Its exact text/labels and top raycast are still
@@ -7424,12 +7604,7 @@ class SemanticOracle:
     def _msgbox_prompt_parts(
         self, state: OracleState
     ) -> Optional[Tuple[str, str, str]]:
-        ui_state = self.read_ui_state()
-        if (
-            ui_state.generation < state.generation
-            or ui_state.generation > state.generation + 2
-        ):
-            raise SemanticGateClosed("Msgbox snapshots are not coherent")
+        ui_state = self._stable_msgbox_ui_state(state)
 
         def exact_text(suffix: str) -> Optional[str]:
             matches = tuple(
@@ -7460,6 +7635,52 @@ class SemanticOracle:
             "".join(confirm.split()),
         )
 
+    @staticmethod
+    def _msgbox_button_signature(state: OracleState) -> Tuple[Any, ...]:
+        def point(value: Optional[Point]) -> Optional[Tuple[float, float]]:
+            return None if value is None else (value.x, value.y)
+
+        def bounds(
+            value: Optional[Bounds],
+        ) -> Optional[Tuple[float, float, float, float]]:
+            return (
+                None
+                if value is None
+                else (value.left, value.top, value.right, value.bottom)
+            )
+
+        return tuple(
+            sorted(
+                ((
+                    button.name,
+                    button.path,
+                    button.active_in_hierarchy,
+                    button.active_and_enabled,
+                    button.interactable,
+                    button.raycast_top,
+                    point(button.point),
+                    bounds(button.bounds),
+                )
+                for button in state.buttons
+                if "/Msgbox(Clone)/" in button.path),
+                key=repr,
+            )
+        )
+
+    def _stable_msgbox_ui_state(self, before: OracleState) -> UiState:
+        """Sandwich Msgbox text between two identical Button snapshots."""
+
+        ui_state = self.read_ui_state()
+        after = self.read_state()
+        if not (
+            before.generation <= ui_state.generation <= after.generation
+            and before.scene_handle == after.scene_handle
+            and self._msgbox_button_signature(before)
+            == self._msgbox_button_signature(after)
+        ):
+            raise SemanticGateClosed("Msgbox snapshots are not coherent")
+        return ui_state
+
     def _tactical_continue_prompt_text(
         self, state: OracleState
     ) -> Optional[str]:
@@ -7486,20 +7707,47 @@ class SemanticOracle:
         plain, cancel, confirm = parts
         return bool(
             re.fullmatch(
-                r"服务器连接失败，是否重新连接？\s*\[NetworkDown\]",
+                r"服务器连接失败，是否重新连接？\s*"
+                r"\[(?:NetworkDown|HostNotFound)\]",
                 plain,
             )
             and cancel == "取消"
             and confirm == "确定"
         )
 
+    def _login_data_expired_prompt_matches(self, state: OracleState) -> bool:
+        ui_state = self._stable_msgbox_ui_state(state)
+
+        def matches(suffix: str) -> Tuple[TextState, ...]:
+            return tuple(
+                text
+                for text in ui_state.texts
+                if text.path.endswith(suffix)
+                and text.active_in_hierarchy
+                and text.active_and_enabled
+                and not text.truncated
+                and text.bounds is not None
+            )
+
+        content = matches("Msgbox(Clone)/window/msg_panel/content")
+        confirm = matches(
+            "Msgbox(Clone)/window/button_container/custom_button_1(Clone)/pic"
+        )
+        cancel = matches(
+            "Msgbox(Clone)/window/button_container/custom_button_2(Clone)/pic"
+        )
+        buttons = self._matches(state, "overlay/login-data-expired/confirm")
+        return bool(
+            len(content) == 1
+            and content[0].text.strip() == "登录数据失效"
+            and len(confirm) == 1
+            and "".join(confirm[0].text.split()) == "确定"
+            and not cancel
+            and len(buttons) == 1
+        )
+
     def _dock_full_prompt_matches(self, state: OracleState) -> bool:
-        ui_state = self.read_ui_state()
-        if (
-            ui_state.generation < state.generation
-            or ui_state.generation > state.generation + 2
-        ):
-            raise SemanticGateClosed("dock-full Msgbox snapshots are not coherent")
+        ui_state = self._stable_msgbox_ui_state(state)
         content = tuple(
             text
             for text in ui_state.texts
@@ -7628,6 +7876,10 @@ class SemanticOracle:
             "overlay/network-reconnect/confirm",
         ):
             return bool(matches and self._network_reconnect_prompt_matches(state))
+        if semantic_id == "overlay/login-data-expired/confirm":
+            return bool(
+                matches and self._login_data_expired_prompt_matches(state)
+            )
         if semantic_id in ("build/warning/cancel", "build/warning/confirm"):
             return bool(matches and self._build_warning_prompt_matches(state))
         if semantic_id in ("tactical/course/cancel", "tactical/course/confirm"):
@@ -7649,6 +7901,11 @@ class SemanticOracle:
                 "overlay/network-reconnect/confirm",
             )
             and self._dock_full_prompt_matches(state)
+        ):
+            return False
+        if (
+            semantic_id == "overlay/login-data-expired/confirm"
+            and not self._login_data_expired_prompt_matches(state)
         ):
             return False
         matches = self._matches(state, semantic_id)
@@ -7855,6 +8112,13 @@ class SemanticOracle:
                 raise SemanticGateClosed(
                     "network reconnect prompt identity is not proven"
                 )
+        if (
+            semantic_id == "overlay/login-data-expired/confirm"
+            and not self._login_data_expired_prompt_matches(state)
+        ):
+            raise SemanticGateClosed(
+                "login-data-expired prompt identity is not proven"
+            )
         target = self._unique(state, semantic_id)
         dorm_back_delegated = (
             semantic_id == "dorm/page/back"

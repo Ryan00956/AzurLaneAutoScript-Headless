@@ -1114,7 +1114,7 @@ index c44e099..8c708f5 100644
  
          with self.stat.new(
                  genre=self.config.campaign_name, method=self.config.DropRecord_CombatRecord
-@@ -150,6 +151,105 @@ class MapOperation(MysteryHandler, FleetPreparation, Retirement, FastForwardHand
+@@ -150,6 +151,106 @@ class MapOperation(MysteryHandler, FleetPreparation, Retirement, FastForwardHand
                  else:
                      checked_in_map = True
  
@@ -1204,6 +1204,7 @@ index c44e099..8c708f5 100644
 +                            'Semantic campaign pre-sortie validation complete'
 +                        )
 +                    if self.appear(MAP_PREPARATION, offset=(20, 20)):
++                        self.handle_auto_search()
 +                        self.device.click(MAP_PREPARATION)
 +                        map_click += 1
 +                        map_timer.reset()

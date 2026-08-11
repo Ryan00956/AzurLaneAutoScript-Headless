@@ -891,6 +891,24 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertEqual(receipt.semantic_id, "overlay/network-reconnect/confirm")
         self.assertEqual(oracle.click_calls, ["overlay/network-reconnect/confirm"])
 
+    def test_original_login_popup_handler_uses_exact_expired_data_target(self):
+        adapter, oracle, _ = self.make_adapter()
+        oracle.enabled_values["overlay/login-data-expired/confirm"] = True
+        oracle.enabled_values["overlay/network-reconnect/confirm"] = False
+        adapter.begin_login()
+
+        self.assertTrue(adapter.appear(NamedButton("POPUP_CONFIRM_WHITE")))
+        receipt = adapter.click(NamedButton("POPUP_CONFIRM_WHITE_LOGIN"))
+
+        self.assertEqual(receipt.semantic_id, "overlay/login-data-expired/confirm")
+        self.assertEqual(
+            oracle.click_calls, ["overlay/login-data-expired/confirm"]
+        )
+        self.assertGreater(
+            adapter._login_context.passive_transition_until,
+            time.monotonic() + 50.0,
+        )
+
     def test_main_dorm_and_research_menus_use_distinct_typed_buttons(self):
         adapter, _, _ = self.make_adapter()
 
@@ -1639,6 +1657,62 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertEqual(adapter.campaign_oil(), 9504)
         adapter.end_campaign_pre_sortie()
 
+    def test_campaign_auto_search_resources_feed_original_alas_switch(self):
+        oracle = FakeOracle()
+        stage = SimpleNamespace(
+            stage_code="12-4",
+            button=SimpleNamespace(actionable=True),
+        )
+        oracle.campaign_state_value = SimpleNamespace(
+            generation=12,
+            chapter_name="马里亚纳风云上",
+            stages=(stage,),
+        )
+        oracle.toggle_selected_values[
+            "campaign/map-preparation/auto-search"
+        ] = True
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            campaign_stage_entry_budget=1,
+        )
+        entrance = NamedButton("12-4")
+        entrance.semantic_campaign_stage_code = "12-4"
+
+        adapter.begin_campaign_pre_sortie("12-4")
+        adapter.click(entrance)
+
+        for name in (
+            "AUTO_SEARCH_ON",
+            "AUTO_SEARCH_ON2",
+            "AUTO_SEARCH_ON3",
+            "AUTO_SEARCH_ON4",
+        ):
+            self.assertTrue(adapter.appear(NamedButton(name)))
+        for name in (
+            "AUTO_SEARCH_OFF",
+            "AUTO_SEARCH_OFF2",
+            "AUTO_SEARCH_OFF3",
+            "AUTO_SEARCH_OFF4",
+        ):
+            self.assertFalse(adapter.appear(NamedButton(name)))
+
+        receipt = adapter.click(NamedButton("AUTO_SEARCH_ON"))
+        self.assertEqual(
+            receipt.semantic_id, "campaign/map-preparation/auto-search"
+        )
+        oracle.toggle_selected_values[
+            "campaign/map-preparation/auto-search"
+        ] = False
+        self.assertTrue(adapter.appear(NamedButton("AUTO_SEARCH_OFF")))
+        with self.assertRaisesRegex(SemanticGateClosed, "single-use"):
+            adapter.click(NamedButton("AUTO_SEARCH_OFF"))
+
+        self.assertEqual(
+            oracle.click_calls,
+            ["campaign/stage/12-4", "campaign/map-preparation/auto-search"],
+        )
+
     def test_campaign_pre_sortie_reuses_prepare_and_cancel_states(self):
         oracle = FakeOracle()
         stage = SimpleNamespace(
@@ -2094,7 +2168,6 @@ class AlasSemanticAdapterTests(unittest.TestCase):
     def test_campaign_viewport_swipe_is_one_use_and_updates_exact_grid_geometry(self):
         oracle = FakeOracle()
         oracle.campaign_map_state_value = make_campaign_combat_state()
-        oracle.campaign_map_target_raycast_top = False
         adapter = AlasSemanticAdapter(
             oracle,
             lambda: None,
@@ -2994,6 +3067,8 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         adapter.begin_login()
         self.assertFalse(adapter.appear(NamedButton("LOGIN_CHECK")))
         adapter._observer_stale_since = time.monotonic() - 6.0
+        self.assertFalse(adapter.appear(NamedButton("LOGIN_CHECK")))
+        adapter._login_context.passive_transition_until = 0.0
         with self.assertRaisesRegex(
             SemanticGateClosed, "game activity is not top-resumed"
         ):

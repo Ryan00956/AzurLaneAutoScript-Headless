@@ -85,8 +85,9 @@ ALAS's existing retreat branch. A semantic marker is assigned to the displayed
 fleet only when its suffix uniquely matches one typed ship sprite in the exact
 top-stage roster across stable generations. The displayed `1|2` number is then
 translated with ALAS's existing reversed-fleet rule before native indexed
-locations are populated. No grid Button, movement, combat, retreat, or map
-reward input is mapped.
+locations are populated. G33 separately qualifies one ALAS-requested typed
+viewport swipe, but no grid Button, fleet movement, combat, retreat, or map
+reward input is production-enabled.
 
 The indexed projection is now also passed to a decision-only executor. It
 calls ALAS's original `find_path_initial()` and `battle_function()` on an
@@ -96,6 +97,22 @@ The runner logs ALAS's branch, logical fleet, target, expected result, cost,
 full route, and optimized goto nodes, then returns. Any Device access, fleet
 switch, `_goto()`, combat, retreat, timed emotion wait, unknown target, stale
 projection, or route disagreement fails closed.
+
+Campaign viewport movement has a separate canonical integer budget and remains
+closed by default:
+
+```powershell
+$env:ALAS_SEMANTIC_CAMPAIGN_VIEWPORT_SWIPE_BUDGET = '1'
+```
+
+G33 uses one unit only at ALAS's existing `device.swipe_vector()` boundary.
+The original `focus_to -> map_swipe -> _map_swipe` path owns the request; the
+adapter validates the requested target and turns only the final vector into a
+typed semantic gesture. A fresh same-PID map must preserve its logical
+signature and all visible cells under a coherent planar projective transform,
+with the requested target ending exact top-raycast. The qualification proof
+stops there: it does not click the grid, and both production enablement and the
+post-swipe original-ALAS view update remain false.
 
 Campaign combat has a separate canonical integer budget and remains closed by
 default:
@@ -438,8 +455,8 @@ reviewed popup chain, and passed a full dual-budget-zero replay. Reward budget
 list also passed exact-handle multipage scanning and stable row-index merging.
 Nonzero-oil rows, cancellation, repeated unattended starts, and multi-order
 construction are not live-qualified. Numeric-row claiming, campaign hard-mode
-fleet restrictions, formation-layout changes, a fresh unobstructed
-same-process campaign-decision replay, movement and battle input,
+fleet restrictions, formation-layout changes, original-ALAS post-swipe view
+update and grid recheck, fleet movement, and battle input,
 Lua/game-state access, other reward popups,
 gestures outside the exact commission handle, and full unattended task flows
 remain fail-closed.

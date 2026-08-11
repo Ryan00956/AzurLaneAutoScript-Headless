@@ -223,6 +223,10 @@ class AlasIntegrationPatchTests(unittest.TestCase):
             "semantic_adapter.campaign_map_preparation_committed()",
             self.patch_text,
         )
+        self.assertIn(
+            "+                        self.handle_auto_search()",
+            self.patch_text,
+        )
 
     def test_campaign_map_model_replaces_only_the_read_only_input_boundary(self):
         self.assertIn("semantic_adapter.campaign_map_state(", self.patch_text)

@@ -239,9 +239,22 @@ def main() -> int:
 
         sandbox = copy.copy(campaign)
         sandbox.__dict__ = campaign.__dict__.copy()
-        sandbox.config = copy.copy(campaign.config)
-        sandbox.config.DEVICE_CONTROL_METHOD = "ADB"
-        sandbox.config.MAP_SWIPE_OPTIMIZE = False
+        # The pinned ALAS exposes DEVICE_CONTROL_METHOD as a read-only
+        # property backed by Emulator_ControlMethod.  The preview sandbox only
+        # needs Camera._map_swipe's immutable calibration inputs, so provide a
+        # narrow detached view instead of mutating or persisting live config.
+        sandbox.config = SimpleNamespace(
+            DEVICE_CONTROL_METHOD="ADB",
+            MAP_SWIPE_DROP=campaign.config.MAP_SWIPE_DROP,
+            MAP_SWIPE_MULTIPLY=campaign.config.MAP_SWIPE_MULTIPLY,
+            MAP_SWIPE_MULTIPLY_MINITOUCH=(
+                campaign.config.MAP_SWIPE_MULTIPLY_MINITOUCH
+            ),
+            MAP_SWIPE_MULTIPLY_MAATOUCH=(
+                campaign.config.MAP_SWIPE_MULTIPLY_MAATOUCH
+            ),
+            MAP_SWIPE_OPTIMIZE=False,
+        )
         sandbox.camera = origin
         sandbox.view = SimpleNamespace(
             center_offset=np.array((0.5, 0.5), dtype=float),
@@ -384,7 +397,10 @@ def main() -> int:
             if login_handled:
                 return False
             try:
-                login_present = session.open().oracle.enabled("login/enter")
+                oracle = session.open().oracle
+                login_present = oracle.enabled("login/enter") or oracle.enabled(
+                    "overlay/login-data-expired/confirm"
+                )
             except (ObserverTransportError, SemanticGateClosed):
                 return False
             if not login_present:
@@ -545,6 +561,45 @@ def main() -> int:
                 startup_page_records.append(
                     {
                         "owner": "typed-g11-to-g33-map-handoff",
+                        "input_injected": False,
+                    }
+                )
+                campaign_map = runner.campaign.MAP
+                enemy_deadline = (
+                    time.monotonic() + args.startup_timeout_seconds
+                )
+                while True:
+                    try:
+                        ready_state = session.open().oracle.campaign_map_state(
+                            run_name.replace("campaign_", "").replace("_", "-"),
+                            columns=campaign_map.shape[0] + 1,
+                            rows=campaign_map.shape[1] + 1,
+                            land_cells=tuple(
+                                grid.location for grid in campaign_map if grid.is_land
+                            ),
+                            expected_fleet_count=sum(
+                                (
+                                    bool(runner.campaign.config.Fleet_Fleet1),
+                                    bool(runner.campaign.config.Fleet_Fleet2),
+                                )
+                            ),
+                        )
+                    except (ObserverTransportError, SemanticGateClosed):
+                        ready_state = None
+                    if ready_state is not None and ready_state.enemies:
+                        break
+                    if time.monotonic() >= enemy_deadline:
+                        raise SystemExit(
+                            "G33 map did not expose a stable enemy before decision"
+                        )
+                    time.sleep(0.25)
+                startup_page_records.append(
+                    {
+                        "owner": "typed-g33-enemy-ready",
+                        "generation": ready_state.generation,
+                        "enemy_nodes": [
+                            enemy.node for enemy in ready_state.enemies
+                        ],
                         "input_injected": False,
                     }
                 )

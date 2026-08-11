@@ -76,6 +76,7 @@ PINNED_CN_GAME_FINGERPRINT = AndroidPackageFingerprint(
 # mapped to settings/back because ALAS reuses that asset on many unrelated pages.
 DEFAULT_ALAS_BUTTON_TARGETS: Mapping[str, str] = {
     "LOGIN_CHECK": "login/enter",
+    "POPUP_CONFIRM_WHITE": "overlay/login-data-expired/confirm",
     "MAIN_GOTO_CAMPAIGN": "main/battle",
     "MAIN_GOTO_CAMPAIGN_WHITE": "main/battle",
     "MAIN_GOTO_FLEET": "main/formation",
@@ -268,6 +269,20 @@ CAMPAIGN_FLEET_ROW_RESOURCES: Mapping[str, Tuple[str, str]] = {
 CAMPAIGN_FLEET_BAR_PATTERN = re.compile(
     r"^(FLEET_1|FLEET_2|SUBMARINE)_BAR_INDEX_([1-6])$"
 )
+CAMPAIGN_AUTO_SEARCH_ON_RESOURCES = frozenset(
+    {"AUTO_SEARCH_ON", "AUTO_SEARCH_ON2", "AUTO_SEARCH_ON3", "AUTO_SEARCH_ON4"}
+)
+CAMPAIGN_AUTO_SEARCH_OFF_RESOURCES = frozenset(
+    {
+        "AUTO_SEARCH_OFF",
+        "AUTO_SEARCH_OFF2",
+        "AUTO_SEARCH_OFF3",
+        "AUTO_SEARCH_OFF4",
+    }
+)
+CAMPAIGN_AUTO_SEARCH_RESOURCES = (
+    CAMPAIGN_AUTO_SEARCH_ON_RESOURCES | CAMPAIGN_AUTO_SEARCH_OFF_RESOURCES
+)
 CAMPAIGN_VIRTUAL_RESOURCES = frozenset(
     {
         "CAMPAIGN_CHECK",
@@ -283,6 +298,7 @@ CAMPAIGN_VIRTUAL_RESOURCES = frozenset(
         "MAP_PREPARATION",
         "FLEET_PREPARATION",
         "MAP_PREPARATION_CANCEL",
+        *CAMPAIGN_AUTO_SEARCH_RESOURCES,
         *CAMPAIGN_FLEET_ROW_RESOURCES.keys(),
     }
 )
@@ -293,6 +309,7 @@ CAMPAIGN_CLICK_RESOURCES = frozenset(
         "MAP_PREPARATION",
         "MAP_PREPARATION_CANCEL",
         "FLEET_PREPARATION",
+        *CAMPAIGN_AUTO_SEARCH_RESOURCES,
         "FLEET_1_CHOOSE",
         "FLEET_1_CLEAR",
         "FLEET_2_CHOOSE",
@@ -575,6 +592,7 @@ class _CampaignFlowContext:
     menu_entry_receipt: Optional[ActionReceipt] = None
     entry_receipt: Optional[ActionReceipt] = None
     map_preparation_receipt: Optional[ActionReceipt] = None
+    auto_search_toggle_receipt: Optional[ActionReceipt] = None
     preparation_kind: Optional[str] = None
     cancel_receipt: Optional[ActionReceipt] = None
     proof: Optional[CampaignPreSortieProof] = None
@@ -731,8 +749,14 @@ class AlasSemanticAdapter:
         if name in (
             "POPUP_CONFIRM_RESEARCH_START",
             "POPUP_CONFIRM_RESEARCH_QUEUE",
+            "POPUP_CONFIRM_LOGIN",
+            "POPUP_CONFIRM_WHITE_LOGIN",
         ):
-            return "POPUP_CONFIRM"
+            return (
+                "POPUP_CONFIRM_WHITE"
+                if name == "POPUP_CONFIRM_WHITE_LOGIN"
+                else "POPUP_CONFIRM"
+            )
         return name
 
     def semantic_id_for(self, button: Any) -> str:
@@ -1446,9 +1470,23 @@ class AlasSemanticAdapter:
                 for target in (
                     "overlay/bulletin/close",
                     "overlay/network-reconnect/confirm",
+                    "overlay/login-data-expired/confirm",
                 )
             )
         return True
+
+    def _login_popup_target(self) -> Optional[str]:
+        targets = tuple(
+            semantic_id
+            for semantic_id in (
+                "overlay/login-data-expired/confirm",
+                "overlay/network-reconnect/confirm",
+            )
+            if self.oracle.enabled(semantic_id)
+        )
+        if len(targets) > 1:
+            raise SemanticGateClosed("login popup target is ambiguous")
+        return targets[0] if targets else None
 
     def _record_mission_transition(self, receipt: ActionReceipt) -> ActionReceipt:
         context = self._mission_context
@@ -1787,6 +1825,11 @@ class AlasSemanticAdapter:
             now = time.monotonic()
             if self._observer_stale_since is None:
                 self._observer_stale_since = now
+            if (
+                self._login_context is not None
+                and now <= self._login_context.passive_transition_until
+            ):
+                return False
             if now - self._observer_stale_since <= 5.0:
                 return False
             raise
@@ -1817,6 +1860,8 @@ class AlasSemanticAdapter:
                     return False
                 raise
         semantic_id = self._mappings.get(name)
+        if self._login_context is not None and name == "POPUP_CONFIRM":
+            return self._login_popup_target() is not None
         if (
             self._login_context is not None
             and semantic_id == "login/enter"
@@ -1988,6 +2033,23 @@ class AlasSemanticAdapter:
             # second switch belongs to event EX pages and is presence-only in
             # ALAS' generic ModeSwitch probe.
             return False
+        if (
+            self._campaign_context is not None
+            and name in CAMPAIGN_AUTO_SEARCH_RESOURCES
+        ):
+            context = self._require_campaign_context()
+            if context.map_preparation_receipt is not None:
+                return False
+            if self._campaign_preparation_kind() != "map":
+                return False
+            selected = self.oracle.toggle_selected(
+                "campaign/map-preparation/auto-search"
+            )
+            return (
+                selected
+                if name in CAMPAIGN_AUTO_SEARCH_ON_RESOURCES
+                else not selected
+            )
         if self._campaign_context is not None and name in (
             "MAP_PREPARATION",
             "FLEET_PREPARATION",
@@ -2697,8 +2759,13 @@ class AlasSemanticAdapter:
         target = self.oracle.campaign_map_cell_viewport_target(
             state, decision.target_node
         )
-        viewport_required = target.raycast_top is not True
-        if viewport_required and context.viewport_swipe_budget != 1:
+        # A one-unit viewport budget explicitly arms one ALAS-owned camera
+        # move for this admitted target.  This is independent of whether the
+        # cell is already top-raycast: original ALAS may still center a
+        # visible target before its grid click.  A covered target remains
+        # forbidden unless that separate capability was granted.
+        viewport_required = context.viewport_swipe_budget == 1
+        if target.raycast_top is not True and not viewport_required:
             raise SemanticGateClosed(
                 "campaign combat covered target requires one viewport swipe budget"
             )
@@ -3395,6 +3462,10 @@ class AlasSemanticAdapter:
             button, "semantic_campaign_stage_code", None
         )
         semantic_id = self._mappings.get(name)
+        if self._login_context is not None and name == "POPUP_CONFIRM":
+            semantic_id = self._login_popup_target()
+            if semantic_id is None:
+                raise SemanticGateClosed("login popup identity is not proven")
         navbar_match = MISSION_NAVBAR_PATTERN.fullmatch(name)
         commission_row_match = COMMISSION_ROW_PATTERN.fullmatch(name)
         build_side_navbar_match = BUILD_SIDE_NAVBAR_PATTERN.fullmatch(name)
@@ -3634,6 +3705,40 @@ class AlasSemanticAdapter:
             context.fleet_dropdown_row = None
             context.fleet_dropdown_previous_index = None
             context.passive_transition_until = time.monotonic() + 20.0
+            return receipt
+        if (
+            self._campaign_context is not None
+            and name in CAMPAIGN_AUTO_SEARCH_RESOURCES
+        ):
+            context = self._require_campaign_context()
+            if context.entry_receipt is None:
+                raise SemanticGateClosed(
+                    "campaign auto-search toggle requires proven stage entry"
+                )
+            if context.map_preparation_receipt is not None:
+                raise SemanticGateClosed(
+                    "campaign auto-search toggle is only valid before map preparation"
+                )
+            if context.auto_search_toggle_receipt is not None:
+                raise SemanticGateClosed(
+                    "campaign auto-search toggle transition is single-use"
+                )
+            if self._campaign_preparation_kind() != "map":
+                raise SemanticGateClosed(
+                    "campaign auto-search toggle requires the map-preparation layer"
+                )
+            selected = self.oracle.toggle_selected(
+                "campaign/map-preparation/auto-search"
+            )
+            if selected != (name in CAMPAIGN_AUTO_SEARCH_ON_RESOURCES):
+                raise SemanticGateClosed(
+                    "campaign auto-search resource state changed before input"
+                )
+            receipt = self.oracle.click_toggle(
+                "campaign/map-preparation/auto-search"
+            )
+            context.auto_search_toggle_receipt = receipt
+            context.passive_transition_until = time.monotonic() + 5.0
             return receipt
         if self._campaign_context is not None and name == "MAP_PREPARATION":
             context = self._require_campaign_context()
@@ -4178,12 +4283,13 @@ class AlasSemanticAdapter:
                     "overlay/bulletin/close",
                     "reward/award-info/close",
                     "reward/award-info1/close",
+                    "overlay/login-data-expired/confirm",
                 )
             ):
                 if semantic_id == "login/enter":
                     self._login_context.entry_receipt = receipt
                 self._login_context.passive_transition_until = (
-                    time.monotonic() + 20.0
+                    time.monotonic() + 60.0
                 )
             if semantic_id == "main/mail" and self._mail_context is not None:
                 self._mail_context.entry_clicked = True

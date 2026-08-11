@@ -145,10 +145,14 @@ same-PID process leases, checked S-result positive controls, and original-login
 bracketing. Its first live acquisition correctly remains incomplete: an ALAS
 selected B3 center was covered by the map HUD, and accepting its non-top
 raycast coordinate opened the air-supremacy information panel. Map cells now
-fail closed again. ALAS owns the decision and `_goto()` prefix, but the current
-post-click qualification harness is not the original live combat state machine;
-typed ALAS-requested viewport movement is the next gate. Lua/game-state coverage,
-formation-layout changes, campaign movement execution, battle state,
+fail closed again. G33 now qualifies one typed ALAS-requested viewport movement:
+the original camera path requested `(1, -2)`, the adapter translated only its
+final swipe, all 68 logical cells moved coherently under a projective model,
+and F6 ended exact top-raycast. The proof stops before the grid click and records
+both production and post-swipe ALAS view-update ownership as false. The next
+gate is continuing the original live `_goto()` loop through its post-swipe
+target recheck. Lua/game-state coverage, formation-layout changes, campaign
+movement execution, battle state,
 weekly-only end-to-end
 coverage, repeated sorties, and full unattended ALAS task coverage remain
 open.

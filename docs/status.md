@@ -2,6 +2,35 @@
 
 Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
+## 2026-08-11
+
+### G33 typed campaign viewport: qualification passed; production remains disabled
+
+- Original ALAS selected enemy F6 and owned the complete camera request path
+  through `focus_to -> map_swipe -> _map_swipe -> device.swipe_vector`; the
+  adapter translated only that final typed gesture.
+- The accepted same-PID proof moved `(603,331) -> (481,507)` over 390 ms at
+  generations `3002 -> 3004 -> 3020`, preserved all 68 logical cells, and
+  ended with F6 at an exact top-raycast Unity path.
+- A normalized planar homography validates the real perspective-projected map
+  movement. Its maximum residual was `0.001125` pixels; logical-map drift,
+  singular projection, inconsistent direction, covered target, and budget
+  reuse all fail closed.
+- The canonical patch restores original `handle_auto_search()` ownership
+  before map-preparation proceed. The live run proved the checked Toggle went
+  on -> off before map entry, preventing the game's auto-search from racing
+  the qualifier.
+- The viewport budget defaults to zero, the qualifier stops before any grid
+  click, and the proof explicitly records `production_enabled=false` and
+  `post_swipe_alas_view_update_owner=false`.
+- The next gate is the original live `_goto()` post-swipe view update and
+  target recheck. Fleet movement, combat, post-click map mutation, repeated
+  sorties, and the campaign-menu no-op transition race remain open.
+- The full Python suite passes `371/371`; the canonical patch applies cleanly
+  to pinned ALAS `81ccf63`.
+
+See [G33 campaign viewport validation](g33-campaign-viewport-validation-report.md).
+
 ## 2026-08-10
 
 ### G32 controlled episode contract: fail-closed; viewport input still open

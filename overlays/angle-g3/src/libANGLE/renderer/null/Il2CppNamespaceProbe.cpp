@@ -676,6 +676,12 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
 
 bool ShouldEvaluateToggleTopRaycast(std::string_view name,
                                     std::string_view path) {
+  if (name == "AutoFight" &&
+      EndsWith(path,
+               "OverlayCamera/Overlay/UIMain/LevelStageInfoView(Clone)/"
+               "panel/BottomExtra/LoopGroup/view/container/AutoFight")) {
+    return true;
+  }
   if (name == "auto_toggle" &&
       EndsWith(path,
                "ChapterPreCombatUI(Clone)/adapt/middle/auto_toggle")) {

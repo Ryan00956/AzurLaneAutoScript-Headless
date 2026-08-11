@@ -4,6 +4,7 @@ import unittest
 from alas_headless.semantic_oracle import (
     Bounds,
     BuildPool,
+    CampaignMapEntryState,
     CampaignMapViewportSwipeIntent,
     CommissionStatus,
     DormState,
@@ -467,6 +468,50 @@ class SemanticOracleTests(unittest.TestCase):
         with self.assertRaises(SemanticGateClosed):
             oracle.click_toggle("mail/filter/merit")
         self.assertEqual(backend.taps, [(640, 360)])
+
+    def test_campaign_auto_search_toggle_uses_exact_stage_info_identity(self):
+        path = (
+            "root/OverlayCamera/Overlay/UIMain/LevelStageInfoView(Clone)/panel/"
+            "BottomExtra/LoopGroup/view/container/AutoFight"
+        )
+        backend = FakeBackend(
+            [
+                make_button(
+                    "main",
+                    "root/UICamera/Canvas/UIMain/LevelMainScene(Clone)/"
+                    "float/levels/items/Chapter_1204/main",
+                ),
+                make_button(
+                    "start",
+                    "root/OverlayCamera/Overlay/UIMain/"
+                    "LevelStageInfoView(Clone)/panel/start",
+                ),
+            ]
+        )
+        backend.ui = make_ui(
+            [], toggles=[make_toggle(path, checked=True, x=838, y=596)]
+        )
+        oracle = make_oracle(backend)
+
+        self.assertTrue(
+            oracle.toggle_selected("campaign/map-preparation/auto-search")
+        )
+        receipt = oracle.click_toggle("campaign/map-preparation/auto-search")
+
+        self.assertEqual(receipt.path, path)
+        self.assertEqual(backend.taps, [(838, 596)])
+
+        backend.ui = make_ui(
+            [],
+            toggles=[
+                make_toggle(
+                    path, checked=True, raycast_top=None, x=838, y=596
+                )
+            ],
+        )
+        with self.assertRaisesRegex(SemanticGateClosed, "not actionable"):
+            oracle.click_toggle("campaign/map-preparation/auto-search")
+        self.assertEqual(backend.taps, [(838, 596)])
 
     def test_duplicate_mail_toggle_paths_are_disambiguated_by_child_sprite(self):
         path = (
@@ -1212,6 +1257,29 @@ class SemanticOracleTests(unittest.TestCase):
         self.assertFalse(event_oracle.campaign_is_in_map())
         self.assertTrue(event_oracle.enabled("event-list/page/back"))
 
+        settling_oracle = make_oracle(login)
+        settling_oracle._sleep = lambda _: None
+        entry_attempts = iter(
+            (
+                SemanticGateClosed("campaign map-scene identity is absent"),
+                CampaignMapEntryState(
+                    generation=12,
+                    root_path="LevelCamera/Canvas/UIMain/LevelGrid",
+                    button_paths=("map-button",),
+                    image_paths=("map-image",),
+                ),
+            )
+        )
+
+        def settling_entry_once():
+            result = next(entry_attempts)
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+        settling_oracle._campaign_map_entry_state_once = settling_entry_once
+        self.assertTrue(settling_oracle.campaign_is_in_map())
+
         map_root = "LevelCamera/Canvas/UIMain/LevelGrid"
         stage_root = "OverlayCamera/Overlay/UIMain/top/LevelStageView(Clone)"
         in_map = FakeBackend(
@@ -1575,7 +1643,9 @@ class SemanticOracleTests(unittest.TestCase):
         self.assertEqual(backend.taps, [])
 
     @staticmethod
-    def _arm_campaign_viewport_backend(backend, *, incoherent=False):
+    def _arm_campaign_viewport_backend(
+        backend, *, incoherent=False, covered=True, nonuniform=False
+    ):
         before_buttons = copy.deepcopy(backend.buttons["buttons"])
         before_ui = copy.deepcopy(backend.ui)
 
@@ -1589,11 +1659,22 @@ class SemanticOracleTests(unittest.TestCase):
             for button in shifted:
                 if "/quads/chapter_cell_quad_" not in button["path"]:
                     continue
-                delta = 280 if incoherent and cell_index == 0 else 200
+                x = button["adb_point"]["x"]
+                y = button["adb_point"]["y"]
+                delta_x = (
+                    150 + 0.25 * (y - 360) if nonuniform else 200
+                )
+                delta_y = 20 + 0.05 * (x - 640) if nonuniform else 0
+                if incoherent:
+                    delta_x += (80, -70, 100, -90, 45)[cell_index % 5]
+                    delta_y += (45, -35, 55, -50, 30)[cell_index % 5]
                 cell_index += 1
-                button["adb_point"]["x"] += delta
-                button["adb_bounds"]["left"] += delta
-                button["adb_bounds"]["right"] += delta
+                button["adb_point"]["x"] += delta_x
+                button["adb_point"]["y"] += delta_y
+                button["adb_bounds"]["left"] += delta_x
+                button["adb_bounds"]["right"] += delta_x
+                button["adb_bounds"]["top"] += delta_y
+                button["adb_bounds"]["bottom"] += delta_y
                 if button["path"].endswith("chapter_cell_quad_1_1"):
                     button["raycast_top"] = True
             backend.buttons_sequence = [
@@ -1613,7 +1694,7 @@ class SemanticOracleTests(unittest.TestCase):
             for button in backend.buttons["buttons"]
             if button["path"].endswith("chapter_cell_quad_1_1")
         )
-        target["raycast_top"] = False
+        target["raycast_top"] = not covered
         backend.snapshot = make_snapshot(generation=11)
         backend.on_swipe = on_swipe
 
@@ -1642,7 +1723,7 @@ class SemanticOracleTests(unittest.TestCase):
             land_cells=((1, 0),),
             expected_fleet_count=2,
         )
-        self._arm_campaign_viewport_backend(backend)
+        self._arm_campaign_viewport_backend(backend, covered=False)
 
         proof = oracle.campaign_map_viewport_swipe(
             state,
@@ -1677,7 +1758,7 @@ class SemanticOracleTests(unittest.TestCase):
         )
         self._arm_campaign_viewport_backend(backend, incoherent=True)
 
-        with self.assertRaisesRegex(SemanticGateClosed, "incoherent"):
+        with self.assertRaisesRegex(SemanticGateClosed, "projective"):
             oracle.campaign_map_viewport_swipe(
                 state,
                 "A1",
@@ -1692,6 +1773,36 @@ class SemanticOracleTests(unittest.TestCase):
             )
 
         self.assertEqual(backend.swipes, [(500, 400, 700, 400, 375)])
+
+    def test_campaign_map_viewport_accepts_coherent_nonuniform_projection(self):
+        backend = make_campaign_map_backend()
+        oracle = make_oracle(backend)
+        state = oracle.campaign_map_state(
+            "12-4",
+            columns=3,
+            rows=2,
+            land_cells=((1, 0),),
+            expected_fleet_count=2,
+        )
+        self._arm_campaign_viewport_backend(
+            backend, covered=False, nonuniform=True
+        )
+
+        proof = oracle.campaign_map_viewport_swipe(
+            state,
+            "A1",
+            self._campaign_viewport_intent(),
+            start=(500, 400),
+            end=(700, 400),
+            duration_ms=375,
+            columns=3,
+            rows=2,
+            land_cells=((1, 0),),
+            expected_fleet_count=2,
+        )
+
+        self.assertEqual(proof.coherent_cell_count, 5)
+        self.assertLess(proof.maximum_delta_residual, 1e-6)
 
     def test_campaign_map_model_rejects_ambiguous_current_fleet_marker(self):
         backend = make_campaign_map_backend(generations=(10,))
@@ -2598,7 +2709,7 @@ class SemanticOracleTests(unittest.TestCase):
         backend.ui["texts"][0]["text"] = "是否购买资源？"
         self.assertFalse(oracle.enabled("tactical/continue/cancel"))
 
-    def test_network_reconnect_confirm_requires_exact_networkdown_prompt(self):
+    def test_network_reconnect_confirm_requires_exact_reviewed_prompt(self):
         popup = "root/Overlay/UIMain/Msgbox(Clone)/window/"
         backend = FakeBackend(
             [
@@ -2642,8 +2753,85 @@ class SemanticOracleTests(unittest.TestCase):
         self.assertEqual(receipt.semantic_id, "overlay/network-reconnect/confirm")
         self.assertEqual(backend.taps, [(640, 360)])
 
+        backend.ui["texts"][0]["text"] = (
+            "服务器连接失败，是否重新连接？\n[HostNotFound]"
+        )
+        self.assertTrue(oracle.enabled("overlay/network-reconnect/confirm"))
+
+        backend.ui["texts"][0]["text"] = (
+            "服务器连接失败，是否重新连接？\n[UnknownNetworkError]"
+        )
+        self.assertFalse(oracle.enabled("overlay/network-reconnect/confirm"))
+
         backend.ui["texts"][0]["text"] = "是否购买资源？"
         self.assertFalse(oracle.enabled("overlay/network-reconnect/confirm"))
+
+    def test_msgbox_identity_uses_stable_button_sandwich_not_fixed_delta(self):
+        popup = "root/Overlay/UIMain/Msgbox(Clone)/window/"
+        buttons = [
+            make_button(
+                "custom_button_2(Clone)",
+                popup + "button_container/custom_button_2(Clone)",
+            ),
+            make_button(
+                "custom_button_1(Clone)",
+                popup + "button_container/custom_button_1(Clone)",
+            ),
+        ]
+        backend = FakeBackend(buttons)
+        backend.snapshot_sequence = [
+            make_snapshot(generation=generation) for generation in (10, 31, 33)
+        ]
+        backend.buttons_sequence = [
+            make_buttons(buttons, generation=generation)
+            for generation in (10, 31, 33)
+        ]
+        texts = [
+            make_text(
+                "服务器连接失败，是否重新连接？\n[NetworkDown]",
+                popup + "msg_panel/content",
+            ),
+            make_text(
+                "取 消", popup + "button_container/custom_button_2(Clone)/pic"
+            ),
+            make_text(
+                "确 定", popup + "button_container/custom_button_1(Clone)/pic"
+            ),
+        ]
+        backend.ui_sequence = [
+            make_ui(texts, generation=generation) for generation in (30, 32)
+        ]
+        oracle = make_oracle(backend)
+
+        self.assertTrue(oracle.enabled("overlay/network-reconnect/confirm"))
+
+    def test_login_data_expired_confirm_requires_exact_single_button_prompt(self):
+        popup = "root/Overlay/UIMain/Msgbox(Clone)/window/"
+        backend = FakeBackend(
+            [
+                make_button(
+                    "custom_button_1(Clone)",
+                    popup + "button_container/custom_button_1(Clone)",
+                )
+            ]
+        )
+        backend.ui = make_ui(
+            [
+                make_text("登录数据失效", popup + "msg_panel/content"),
+                make_text(
+                    "确 定",
+                    popup + "button_container/custom_button_1(Clone)/pic",
+                ),
+            ]
+        )
+        oracle = make_oracle(backend)
+
+        self.assertTrue(oracle.enabled("overlay/login-data-expired/confirm"))
+        receipt = oracle.click("overlay/login-data-expired/confirm")
+        self.assertEqual(receipt.semantic_id, "overlay/login-data-expired/confirm")
+
+        backend.ui["texts"][0]["text"] = "是否购买资源？"
+        self.assertFalse(oracle.enabled("overlay/login-data-expired/confirm"))
 
     def test_dock_full_prompt_cannot_alias_network_reconnect_input(self):
         popup = "root/Overlay/UIMain/Msgbox(Clone)/window/"
