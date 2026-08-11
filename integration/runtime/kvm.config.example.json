@@ -1,0 +1,20 @@
+{
+  "schema": "alas-headless.runtime-config/v1",
+  "backend": "kvm",
+  "serial": "emulator-5600",
+  "package": "com.bilibili.azurlane",
+  "component": "com.bilibili.azurlane/com.manjuu.azurlane.MainActivity",
+  "host_class": "linux-x86_64-kvm",
+  "emulator": "/opt/android-sdk/emulator/emulator",
+  "emulator_check": "/opt/android-sdk/emulator/emulator-check",
+  "adb": "/opt/android-sdk/platform-tools/adb",
+  "angle_package": "org.chromium.angle",
+  "unity_command_line": "-force-gfx-st",
+  "avd_name": "alas-headless-golden",
+  "avd_home": "/srv/alas-headless/avd",
+  "console_port": 5600,
+  "sdk_root": "/opt/android-sdk",
+  "launch_game": true,
+  "manage_angle_routing": false,
+  "poll_interval_seconds": 1.0
+}

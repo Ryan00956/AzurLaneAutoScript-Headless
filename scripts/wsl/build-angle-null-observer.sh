@@ -25,6 +25,11 @@ if ! grep -Fq 'GET /v1/ui' \
   echo "Typed UI observer endpoint is missing" >&2
   exit 1
 fi
+if ! grep -Fq 'GET /v1/state' \
+    "${angle_dir}/src/libANGLE/renderer/null/ObserverServer.cpp"; then
+  echo "Atomic state observer endpoint is missing" >&2
+  exit 1
+fi
 if ! grep -Fq 'TextMeshProUGUI' \
     "${angle_dir}/src/libANGLE/renderer/null/Il2CppNamespaceProbe.cpp"; then
   echo "Typed TextMeshPro observer is missing" >&2

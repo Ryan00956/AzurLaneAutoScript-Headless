@@ -447,6 +447,12 @@ def _offline_campaign_map(
     payloads = {
         "GET /v1/snapshot\n": frame["snapshot"],
         "GET /v1/buttons\n": frame["buttons"],
+        "GET /v1/state\n": {
+            "protocol_schema": "alas-headless.observer/v1",
+            "status": "ok",
+            "snapshot": frame["snapshot"],
+            "buttons": frame["buttons"],
+        },
         "GET /v1/ui\n": frame["ui"],
     }
     oracle = SemanticOracle(

@@ -111,19 +111,8 @@ std::string_view BoundedStringView(const std::array<char, Size> &value) {
       value.data(), ANGLE_UNSAFE_TODO(strnlen(value.data(), value.size())));
 }
 
-std::string SnapshotResponse(uid_t peerUid, const std::string &package) {
-  ObserverSnapshot snapshot;
-  if (!GetLatestObserverSnapshot(&snapshot)) {
-    char response[512];
-    const int count = ANGLE_UNSAFE_TODO(std::snprintf(
-        response, sizeof(response),
-        "{\"protocol_schema\":\"%s\",\"status\":\"unavailable\","
-        "\"package\":\"%s\",\"pid\":%d,\"uid\":%u,\"peer_uid\":%u}\n",
-        kProtocolSchema, package.c_str(), getpid(), getuid(), peerUid));
-    return count > 0 ? std::string(response, static_cast<size_t>(count))
-                     : std::string();
-  }
-
+std::string SnapshotResponseFor(uid_t peerUid, const std::string &package,
+                                const ObserverSnapshot &snapshot) {
   const uint64_t now = MonotonicNanos();
   const uint64_t ageMillis = now >= snapshot.monotonicNanos
                                  ? (now - snapshot.monotonicNanos) / 1000000u
@@ -158,21 +147,24 @@ std::string SnapshotResponse(uid_t peerUid, const std::string &package) {
              : std::string();
 }
 
-std::string SemanticResponse(uid_t peerUid, const std::string &package) {
-  ObserverSemanticSnapshot snapshot;
-  if (!GetLatestObserverSemanticSnapshot(&snapshot)) {
+std::string SnapshotResponse(uid_t peerUid, const std::string &package) {
+  ObserverSnapshot snapshot;
+  if (!GetLatestObserverSnapshot(&snapshot)) {
     char response[512];
     const int count = ANGLE_UNSAFE_TODO(std::snprintf(
         response, sizeof(response),
-        "{\"protocol_schema\":\"%s\",\"semantic_schema\":\"alas-headless."
-        "buttons/v1\","
-        "\"status\":\"unavailable\",\"package\":\"%s\",\"pid\":%d,\"uid\":%u,"
+        "{\"protocol_schema\":\"%s\",\"status\":\"unavailable\","
+        "\"package\":\"%s\",\"pid\":%d,\"uid\":%u,"
         "\"peer_uid\":%u}\n",
         kProtocolSchema, package.c_str(), getpid(), getuid(), peerUid));
     return count > 0 ? std::string(response, static_cast<size_t>(count))
                      : std::string();
   }
+  return SnapshotResponseFor(peerUid, package, snapshot);
+}
 
+std::string SemanticResponseFor(uid_t peerUid, const std::string &package,
+                                const ObserverSemanticSnapshot &snapshot) {
   const uint64_t now = MonotonicNanos();
   const uint64_t ageMillis = now >= snapshot.monotonicNanos
                                  ? (now - snapshot.monotonicNanos) / 1000000u
@@ -295,6 +287,23 @@ std::string SemanticResponse(uid_t peerUid, const std::string &package) {
   }
   response.append("]}\n");
   return response;
+}
+
+std::string SemanticResponse(uid_t peerUid, const std::string &package) {
+  ObserverSemanticSnapshot snapshot;
+  if (!GetLatestObserverSemanticSnapshot(&snapshot)) {
+    char response[512];
+    const int count = ANGLE_UNSAFE_TODO(std::snprintf(
+        response, sizeof(response),
+        "{\"protocol_schema\":\"%s\",\"semantic_schema\":\"alas-headless."
+        "buttons/v1\","
+        "\"status\":\"unavailable\",\"package\":\"%s\",\"pid\":%d,\"uid\":%u,"
+        "\"peer_uid\":%u}\n",
+        kProtocolSchema, package.c_str(), getpid(), getuid(), peerUid));
+    return count > 0 ? std::string(response, static_cast<size_t>(count))
+                     : std::string();
+  }
+  return SemanticResponseFor(peerUid, package, snapshot);
 }
 
 std::string UiResponse(uid_t peerUid, const std::string &package) {
@@ -528,6 +537,50 @@ std::string UiResponse(uid_t peerUid, const std::string &package) {
   return response;
 }
 
+std::string StateResponse(uid_t peerUid, const std::string &package) {
+  ObserverSnapshot observerSnapshot;
+  ObserverSemanticSnapshot semanticSnapshot;
+  bool coherent = false;
+  // Both snapshots are published under the same producer lock. A concurrent
+  // publish can occur between the two public getters, so retry and admit only
+  // an identical generation rather than claiming false atomicity.
+  for (int attempt = 0; attempt < 3 && !coherent; ++attempt) {
+    if (!GetLatestObserverSnapshot(&observerSnapshot) ||
+        !GetLatestObserverSemanticSnapshot(&semanticSnapshot)) {
+      break;
+    }
+    coherent = observerSnapshot.requestGeneration ==
+               semanticSnapshot.requestGeneration;
+  }
+  if (!coherent) {
+    return std::string("{\"protocol_schema\":\"") + kProtocolSchema +
+           "\",\"status\":\"unavailable\"}\n";
+  }
+
+  std::string snapshot =
+      SnapshotResponseFor(peerUid, package, observerSnapshot);
+  std::string buttons = SemanticResponseFor(peerUid, package, semanticSnapshot);
+  if (!snapshot.empty() && snapshot.back() == '\n') {
+    snapshot.pop_back();
+  }
+  if (!buttons.empty() && buttons.back() == '\n') {
+    buttons.pop_back();
+  }
+  if (snapshot.empty() || buttons.empty()) {
+    return {};
+  }
+  std::string response;
+  response.reserve(snapshot.size() + buttons.size() + 128u);
+  response.append("{\"protocol_schema\":\"");
+  response.append(kProtocolSchema);
+  response.append("\",\"status\":\"ok\",\"snapshot\":");
+  response.append(snapshot);
+  response.append(",\"buttons\":");
+  response.append(buttons);
+  response.append("}\n");
+  return response;
+}
+
 void ServeObserver() {
   const pid_t processId = getpid();
   const uid_t processUid = getuid();
@@ -601,13 +654,17 @@ void ServeObserver() {
         request == "GET /v1/buttons\n" || request == "GET /v1/buttons\r\n";
     const bool uiRequest =
         request == "GET /v1/ui\n" || request == "GET /v1/ui\r\n";
-    if (!snapshotRequest && !semanticRequest && !uiRequest) {
+    const bool stateRequest =
+        request == "GET /v1/state\n" || request == "GET /v1/state\r\n";
+    if (!snapshotRequest && !semanticRequest && !uiRequest && !stateRequest) {
       SendAll(client, "{\"protocol_schema\":\"alas-headless.observer/v1\","
                       "\"status\":\"bad-request\"}\n");
     } else if (snapshotRequest) {
       SendAll(client, SnapshotResponse(credentials.uid, package));
     } else if (semanticRequest) {
       SendAll(client, SemanticResponse(credentials.uid, package));
+    } else if (stateRequest) {
+      SendAll(client, StateResponse(credentials.uid, package));
     } else {
       SendAll(client, UiResponse(credentials.uid, package));
     }

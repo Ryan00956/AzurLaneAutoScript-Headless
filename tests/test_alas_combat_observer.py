@@ -963,9 +963,16 @@ class AlasCombatObserverContractTests(unittest.TestCase):
                 return "com.bilibili.azurlane/com.manjuu.azurlane.MainActivity"
 
             def request(self, request):
-                index = min(self.request_count // 3, 1)
+                index = min(self.request_count // 2, 1)
                 endpoint = request.strip().split("/")[-1]
                 self.request_count += 1
+                if endpoint == "state":
+                    return {
+                        "protocol_schema": "alas-headless.observer/v1",
+                        "status": "ok",
+                        "snapshot": frames[index]["snapshot"],
+                        "buttons": frames[index]["buttons"],
+                    }
                 return frames[index][
                     {
                         "snapshot": "snapshot",
@@ -1063,9 +1070,16 @@ class AlasCombatObserverContractTests(unittest.TestCase):
                 return "com.bilibili.azurlane/com.manjuu.azurlane.MainActivity"
 
             def request(self, request):
-                index = min(self.request_count // 3, 1)
+                index = min(self.request_count // 2, 1)
                 endpoint = request.strip().split("/")[-1]
                 self.request_count += 1
+                if endpoint == "state":
+                    return {
+                        "protocol_schema": "alas-headless.observer/v1",
+                        "status": "ok",
+                        "snapshot": frames[index]["snapshot"],
+                        "buttons": frames[index]["buttons"],
+                    }
                 return frames[index][
                     {"snapshot": "snapshot", "buttons": "buttons", "ui": "ui"}[
                         endpoint
