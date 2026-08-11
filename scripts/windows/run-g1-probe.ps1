@@ -116,7 +116,10 @@ try {
         $originalSettings[$name] = Get-GlobalSetting -Name $name
     }
 
-    Invoke-Adb -Arguments @('-s', $Serial, 'install', '-r', $angleApkPath) | Out-Null
+    # Android 11+ package visibility can otherwise make a successfully installed
+    # debug ANGLE package invisible to the target app's GraphicsEnvironment.
+    Invoke-Adb -Arguments @('-s', $Serial, 'install', '-r', '-d',
+        '--force-queryable', $angleApkPath) | Out-Null
     Invoke-Adb -Arguments @('-s', $Serial, 'install', '-r', $probeApkPath) | Out-Null
 
     $settingsChanged = $true

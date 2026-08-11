@@ -3,7 +3,20 @@ set -euo pipefail
 
 angle_dir="${ALAS_ANGLE_DIR:-${ALAS_ANGLE_WORKSPACE:-${HOME}/src/alas-headless-angle}/angle}"
 depot_tools_dir="${ALAS_DEPOT_TOOLS_DIR:-${HOME}/src/depot_tools}"
-out_dir="${ALAS_ANGLE_OBSERVER_OUT_DIR:-out/AndroidNullObserverX64}"
+target_cpu="${ALAS_ANGLE_TARGET_CPU:-x64}"
+case "${target_cpu}" in
+  x64)
+    default_out_dir="out/AndroidNullObserverX64"
+    ;;
+  arm64)
+    default_out_dir="out/AndroidNullObserverArm64"
+    ;;
+  *)
+    echo "Unsupported ALAS_ANGLE_TARGET_CPU: ${target_cpu} (expected x64 or arm64)" >&2
+    exit 2
+    ;;
+esac
+out_dir="${ALAS_ANGLE_OBSERVER_OUT_DIR:-${default_out_dir}}"
 
 if ! grep -Fq 'ALAS_G3_NAMESPACE' \
     "${angle_dir}/src/libANGLE/renderer/null/DisplayNULL.cpp"; then
@@ -305,8 +318,8 @@ fi
 export PATH="${depot_tools_dir}:${PATH}"
 cd "${angle_dir}"
 
-gn gen "${out_dir}" --args='target_os="android"
-target_cpu="x64"
+gn gen "${out_dir}" --args="target_os=\"android\"
+target_cpu=\"${target_cpu}\"
 is_component_build=false
 is_debug=false
 symbol_level=1
@@ -317,7 +330,7 @@ angle_enable_gl=false
 angle_enable_wgpu=false
 angle_enable_d3d11=false
 angle_enable_metal=false
-use_thin_lto=false'
+use_thin_lto=false"
 
 autoninja -C "${out_dir}" angle_chromium_apk
 
