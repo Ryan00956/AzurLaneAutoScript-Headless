@@ -5,6 +5,13 @@ from pathlib import Path
 
 from alas_headless.runtime_artifacts import RuntimeLock, resource_set_id
 from alas_headless.runtime_backend import BackendKind
+from alas_headless.runtime_backend_adb import (
+    ExternalAdbBackend as ExternalAdbBackendImplementation,
+)
+from alas_headless.runtime_backend_deferred import (
+    DeferredRuntimeBackend as DeferredRuntimeBackendImplementation,
+)
+from alas_headless.runtime_backend_kvm import KvmBackend as KvmBackendImplementation
 from alas_headless.runtime_backends import (
     DeferredRuntimeBackend,
     ExternalAdbBackend,
@@ -173,6 +180,11 @@ class StartingObserverBridge(FakeBridge):
 
 
 class RuntimeBackendsTests(unittest.TestCase):
+    def test_compatibility_facade_reexports_split_implementations(self):
+        self.assertIs(ExternalAdbBackend, ExternalAdbBackendImplementation)
+        self.assertIs(KvmBackend, KvmBackendImplementation)
+        self.assertIs(DeferredRuntimeBackend, DeferredRuntimeBackendImplementation)
+
     def test_external_adb_reference_backend_completes_read_only_identity_path(self):
         results = {
             "adb-version": (0, "Android Debug Bridge version 1", ""),
