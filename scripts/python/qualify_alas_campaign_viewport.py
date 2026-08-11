@@ -1,26 +1,23 @@
-"""Qualify one ALAS-owned campaign camera swipe on the live semantic map.
+"""Qualify ALAS's original camera update and `_goto()` target recheck.
 
 The pinned ALAS ``focus_to() -> map_swipe() -> _map_swipe() ->
 device.swipe_vector()`` chain owns the grid vector, pixel scaling, random safe
-path selection, duration conversion, and distance check.  The semantic adapter
-replaces only the final input dispatch and stops this qualification before any
-grid click or post-click combat logic.
+path selection, duration conversion, and distance check.  Its original
+``Camera.update()`` consumes a typed Unity View, then original ``_goto()``
+rechecks the target.  The qualifier stops at the exact grid-click statement
+without injecting that grid input or entering combat.
 """
 
 from __future__ import annotations
 
 import argparse
-import copy
 import json
 import os
-import statistics
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from types import MethodType, SimpleNamespace
-
-import numpy as np
+from types import MethodType
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -33,9 +30,9 @@ from alas_headless import (  # noqa: E402
     ObserverTransportError,
     SemanticGateClosed,
     alas_package_process_lease_from_trace,
-    current_semantic_session,
     load_alas_combat_observer_manifest,
     load_alas_combat_observer_trace,
+    preview_alas_campaign_viewport_continuation,
 )
 
 
@@ -65,39 +62,9 @@ def utc_now() -> str:
     )
 
 
-def node_location(node: str) -> tuple[int, int]:
-    column = ord(node[0]) - ord("A")
-    return column, int(node[1:]) - 1
-
-
-def semantic_swipe_base(state) -> tuple[float, float]:
-    cells = {(cell.row, cell.column): cell for cell in state.cells}
-    horizontal = []
-    vertical = []
-    for (row, column), cell in cells.items():
-        right = cells.get((row, column + 1))
-        below = cells.get((row + 1, column))
-        if right is not None:
-            horizontal.append(
-                ((right.point.x - cell.point.x) ** 2 +
-                 (right.point.y - cell.point.y) ** 2) ** 0.5
-            )
-        if below is not None:
-            vertical.append(
-                ((below.point.x - cell.point.x) ** 2 +
-                 (below.point.y - cell.point.y) ** 2) ** 0.5
-            )
-    if not horizontal or not vertical:
-        raise SemanticGateClosed("semantic map cannot derive ALAS swipe base")
-    values = statistics.median(horizontal), statistics.median(vertical)
-    if any(not 40.0 <= value <= 240.0 for value in values):
-        raise SemanticGateClosed("semantic ALAS swipe base is outside limits")
-    return values
-
-
 def proof_to_json(proof: CampaignMapViewportSwipeProof, *, pid: int) -> dict:
     return {
-        "schema": "alas-headless.g33-campaign-viewport-proof/v1",
+        "schema": "alas-headless.g34-campaign-viewport-continuation/v1",
         "captured_at_utc": utc_now(),
         "pid": pid,
         "semantic_id": proof.semantic_id,
@@ -133,7 +100,7 @@ def proof_to_json(proof: CampaignMapViewportSwipeProof, *, pid: int) -> dict:
         "target_after_top_raycast": True,
         "input_injected": True,
         "production_enabled": False,
-        "post_swipe_alas_view_update_owner": False,
+        "post_swipe_alas_view_update_owner": True,
     }
 
 
@@ -175,7 +142,7 @@ def main() -> int:
     original_factory = AlasSemanticSession.__dict__["from_environment"]
     original_preview = alas_headless.preview_alas_campaign_goto_input
     proofs = []
-    camera_records = []
+    continuations = []
     dismissed_overlays = []
     startup_page_records = []
 
@@ -224,73 +191,22 @@ def main() -> int:
     from module.exception import ScriptEnd  # noqa: E402
 
     def qualify_viewport(campaign, projection, decision, admission, state):
-        del projection
         if proofs:
-            raise SemanticGateClosed("G33 attempted a second viewport input")
-        adapter = current_semantic_session()
-        if adapter is None:
-            raise SemanticGateClosed("G33 semantic session is not bound")
-        swipe_base = semantic_swipe_base(state)
-        origin = node_location(admission.origin_node)
-        target = node_location(admission.target_node)
-        delta = target[0] - origin[0], target[1] - origin[1]
-        if delta == (0, 0) or abs(delta[0]) > 4 or abs(delta[1]) > 3:
-            raise SemanticGateClosed("G33 target does not require a bounded camera move")
-
-        sandbox = copy.copy(campaign)
-        sandbox.__dict__ = campaign.__dict__.copy()
-        # The pinned ALAS exposes DEVICE_CONTROL_METHOD as a read-only
-        # property backed by Emulator_ControlMethod.  The preview sandbox only
-        # needs Camera._map_swipe's immutable calibration inputs, so provide a
-        # narrow detached view instead of mutating or persisting live config.
-        sandbox.config = SimpleNamespace(
-            DEVICE_CONTROL_METHOD="ADB",
-            MAP_SWIPE_DROP=campaign.config.MAP_SWIPE_DROP,
-            MAP_SWIPE_MULTIPLY=campaign.config.MAP_SWIPE_MULTIPLY,
-            MAP_SWIPE_MULTIPLY_MINITOUCH=(
-                campaign.config.MAP_SWIPE_MULTIPLY_MINITOUCH
-            ),
-            MAP_SWIPE_MULTIPLY_MAATOUCH=(
-                campaign.config.MAP_SWIPE_MULTIPLY_MAATOUCH
-            ),
-            MAP_SWIPE_OPTIMIZE=False,
+            raise SemanticGateClosed("G34 attempted a second viewport input")
+        continuation = preview_alas_campaign_viewport_continuation(
+            campaign,
+            projection,
+            decision,
+            admission,
+            state,
+            semantic_session=session,
         )
-        sandbox.camera = origin
-        sandbox.view = SimpleNamespace(
-            center_offset=np.array((0.5, 0.5), dtype=float),
-            swipe_base=np.array(swipe_base, dtype=float),
-        )
-        sandbox.device = campaign.device
-
-        def update_after_proof(self, *unused_args, **unused_kwargs):
-            del unused_args, unused_kwargs
-            context = adapter.open()._campaign_context
-            proof = None if context is None else context.viewport_swipe_proof
-            if not isinstance(proof, CampaignMapViewportSwipeProof):
-                raise SemanticGateClosed("ALAS camera update preceded viewport proof")
-            self.camera = target
-            self._prev_view = None
-            self._prev_swipe = None
-            camera_records.append(
-                {
-                    "origin": admission.origin_node,
-                    "target": admission.target_node,
-                    "requested_delta": list(delta),
-                    "swipe_base": list(swipe_base),
-                    "map_swipe_multiply": list(self.config.MAP_SWIPE_MULTIPLY),
-                    "update_wait_swipe": True,
-                }
-            )
-            return True
-
-        sandbox.update = MethodType(update_after_proof, sandbox)
-        sandbox.focus_to(target)
-        context = adapter.open()._campaign_context
-        proof = None if context is None else context.viewport_swipe_proof
-        if not isinstance(proof, CampaignMapViewportSwipeProof):
-            raise SemanticGateClosed("ALAS focus_to returned without viewport proof")
+        proof = session.campaign_map_viewport_swipe_proof()
         proofs.append(proof)
-        raise ScriptEnd("Semantic ALAS viewport swipe validation complete")
+        continuations.append(continuation)
+        raise ScriptEnd(
+            "Semantic ALAS viewport continuation validation complete"
+        )
 
     AlasSemanticSession.from_environment = classmethod(leased_factory)
     alas_headless.preview_alas_campaign_goto_input = qualify_viewport
@@ -609,7 +525,9 @@ def main() -> int:
                     mode=run_mode,
                 )
         except ScriptEnd as exc:
-            if str(exc) != "Semantic ALAS viewport swipe validation complete":
+            if str(exc) != (
+                "Semantic ALAS viewport continuation validation complete"
+            ):
                 raise
     finally:
         os.chdir(str(previous_cwd))
@@ -620,10 +538,31 @@ def main() -> int:
         except ObserverTransportError:
             pass
 
-    if len(proofs) != 1 or len(camera_records) != 1:
-        raise SystemExit("pinned ALAS did not prove exactly one viewport swipe")
+    if len(proofs) != 1 or len(continuations) != 1:
+        raise SystemExit(
+            "pinned ALAS did not prove exactly one viewport continuation"
+        )
     record = proof_to_json(proofs[0], pid=session.bridge.pid or 0)
-    record["alas_camera_request"] = camera_records[0]
+    continuation = continuations[0]
+    record["alas_camera_continuation"] = {
+        "camera_before_node": continuation.camera_before_node,
+        "camera_after_node": continuation.camera_after_node,
+        "camera_before_offset": list(continuation.camera_before_offset),
+        "camera_after_offset": list(continuation.camera_after_offset),
+        "requested_grid_vector": list(continuation.requested_grid_vector),
+        "camera_state_generation": continuation.camera_state_generation,
+        "recheck_generation": continuation.recheck_generation,
+        "target_local_location": list(continuation.target_local_location),
+        "call_order": list(continuation.call_order),
+        "original_camera_update_owner": (
+            continuation.original_camera_update_owner
+        ),
+        "original_alas_goto_recheck_owner": (
+            continuation.original_alas_goto_recheck_owner
+        ),
+    }
+    record["grid_input_injected"] = continuation.grid_input_injected
+    record["production_enabled"] = continuation.production_enabled
     record["dismissed_overlays"] = dismissed_overlays
     record["startup_page_bootstrap"] = startup_page_records
     args.output.parent.mkdir(parents=True, exist_ok=True)

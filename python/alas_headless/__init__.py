@@ -6,6 +6,13 @@ from .alas_map_sync import (
     AlasCampaignRoutePlan,
     synchronize_alas_campaign_map,
 )
+from .alas_camera_view import (
+    AlasCampaignCameraViewObservation,
+    AlasSemanticCampaignGrid,
+    AlasSemanticCampaignView,
+    build_alas_campaign_camera_view,
+    install_alas_campaign_camera_view,
+)
 from .alas_decision_preview import (
     AlasCampaignDecisionPreview,
     preview_alas_campaign_decision,
@@ -21,6 +28,10 @@ from .alas_goto_input_preview import (
     AlasCampaignGotoInputPreview,
     commit_alas_campaign_goto_input_for_evidence,
     preview_alas_campaign_goto_input,
+)
+from .alas_viewport_continuation import (
+    AlasCampaignViewportContinuation,
+    preview_alas_campaign_viewport_continuation,
 )
 from .alas_combat_state_replay import (
     ALAS_COMBAT_ACTION_TARGET_NAMES,
@@ -153,6 +164,7 @@ from .alas_adapter import (
     AlasSemanticSession,
     AlasSemanticUnmapped,
     CampaignFleetPreparationProof,
+    CampaignMapTargetRecheckProof,
     CampaignSortieProof,
     CampaignPreSortieProof,
     DEFAULT_ALAS_BUTTON_TARGETS,
@@ -280,6 +292,7 @@ __all__ = (
     "ALAS_COMBAT_CONTROLLED_EPISODE_SCHEMA",
     "ALAS_COMBAT_CONTROLLED_EPISODE_VERIFICATION_SCHEMA",
     "ALAS_COMBAT_MAP_CHECKPOINT_SCHEMA",
+    "AlasCampaignCameraViewObservation",
     "AlasCampaignFleetPlan",
     "AlasCampaignCombatAdmission",
     "AlasCampaignCombatProof",
@@ -303,8 +316,11 @@ __all__ = (
     "AlasCampaignDecisionPreview",
     "AlasCampaignGotoInputPreview",
     "AlasCampaignGotoInputCommit",
+    "AlasCampaignViewportContinuation",
     "AlasCampaignMapProjection",
     "AlasCampaignRoutePlan",
+    "AlasSemanticCampaignGrid",
+    "AlasSemanticCampaignView",
     "AlasCombatReplayFrame",
     "AlasCombatReplayPhase",
     "AlasCombatResourceActionCommit",
@@ -336,6 +352,7 @@ __all__ = (
     "CampaignMapFleetState",
     "CampaignMapPickupState",
     "CampaignMapState",
+    "CampaignMapTargetRecheckProof",
     "CampaignMapViewportSwipeIntent",
     "CampaignMapViewportSwipeProof",
     "CampaignPreSortieProof",
@@ -412,6 +429,7 @@ __all__ = (
     "audit_alas_combat_result_surface_mappings",
     "alas_combat_replay_phase_sequence",
     "build_alas_campaign_combat_replay_from_observer",
+    "build_alas_campaign_camera_view",
     "build_alas_combat_observer_trace",
     "build_alas_combat_trace_frame",
     "build_alas_combat_map_checkpoint",
@@ -419,11 +437,13 @@ __all__ = (
     "compile_alas_combat_observer_fixture",
     "canonical_alas_campaign_combat_replay",
     "current_semantic_session",
+    "install_alas_campaign_camera_view",
     "reset_semantic_session",
     "preview_alas_campaign_decision",
     "commit_alas_campaign_goto_input_for_evidence",
     "commit_alas_combat_resource_action_for_evidence",
     "preview_alas_campaign_goto_input",
+    "preview_alas_campaign_viewport_continuation",
     "prepare_alas_campaign_combat_admission",
     "prepare_alas_combat_resource_action",
     "prove_alas_campaign_combat_transition",

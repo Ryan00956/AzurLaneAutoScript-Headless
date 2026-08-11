@@ -321,6 +321,37 @@ index 5703330..584a196 100644
                  self.campaign.run()
              except ScriptEnd as e:
                  logger.hr('Script end')
+diff --git a/module/map/camera.py b/module/map/camera.py
+index 9fa9cba..7474343 100644
+--- a/module/map/camera.py
++++ b/module/map/camera.py
+@@ -109,7 +109,26 @@ class Camera(MapOperation):
+     def _update_view(self):
+         """
+         Update map view
+         """
++        from alas_headless import (
++            current_semantic_session,
++            install_alas_campaign_camera_view,
++        )
++        semantic_session = current_semantic_session()
++        if semantic_session is not None:
++            state = semantic_session.campaign_camera_state()
++            observation = install_alas_campaign_camera_view(
++                self,
++                state,
++                target_node=semantic_session.campaign_camera_target_node(),
++            )
++            logger.info(
++                'Semantic ALAS camera view: '
++                f'camera={observation.camera_node}, '
++                f'center_offset={observation.center_offset}, '
++                f'generation={observation.generation}'
++            )
++            return True
+         self._view_init()
+         try:
+             if not self.is_in_map() \
 diff --git a/module/commission/commission.py b/module/commission/commission.py
 index 195d84a..fda74c4 100644
 --- a/module/commission/commission.py

@@ -4,6 +4,32 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-11
 
+### G34 original camera update and `_goto()` recheck: qualification passed
+
+- The canonical patch now replaces only `Camera._update_view()` input during a
+  semantic session. Original ALAS retains `Camera.update()`, its wait loop,
+  camera-coordinate prediction, centering, global-to-local conversion, and
+  `_goto()` control flow.
+- A typed projective `View` derived the live camera as F4, then ALAS's original
+  camera chain injected one `(539,497) -> (553,296)` gesture and observed F6
+  at generation `29110`. All 68 cells remained logically identical; maximum
+  projective residual was `0.000792` pixels.
+- Original `_goto()` rechecked the fresh exact top-raycast F6 grid and reached
+  its own `device.click(grid)` statement. That call was captured, not injected:
+  `grid_input_injected=false` and `production_enabled=false`.
+- The live proof used the original `focus_to(F6)` as a qualification prelude
+  because F6 was already within `_walk_sight`. It proves post-swipe camera and
+  `_goto()` ownership, but not a naturally out-of-sight `_goto()`-initiated
+  camera gesture.
+- The next gate remains input-only adaptation: qualify that natural branch or
+  authorize the rechecked grid click while leaving the original post-click
+  state machine intact. Edge correction, fleet movement, combat, repeated
+  sorties, and the campaign-menu no-op race remain open.
+- The full Python suite passes `379/379`; the canonical patch applies cleanly
+  to pinned ALAS `81ccf63`.
+
+See [G34 ALAS camera-view continuation](g34-alas-camera-view-continuation-validation-report.md).
+
 ### G33 typed campaign viewport: qualification passed; production remains disabled
 
 - Original ALAS selected enemy F6 and owned the complete camera request path

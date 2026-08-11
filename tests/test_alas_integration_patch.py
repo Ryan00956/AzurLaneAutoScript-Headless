@@ -63,6 +63,19 @@ class AlasIntegrationPatchTests(unittest.TestCase):
             self.patch_text,
         )
 
+    def test_campaign_camera_update_keeps_alas_loop_and_replaces_only_view_input(self):
+        self.assertIn("diff --git a/module/map/camera.py", self.patch_text)
+        self.assertIn(
+            "state = semantic_session.campaign_camera_state()",
+            self.patch_text,
+        )
+        self.assertIn(
+            "observation = install_alas_campaign_camera_view(",
+            self.patch_text,
+        )
+        self.assertIn("def _update_view(self):", self.patch_text)
+        self.assertNotIn("def update(self, camera=True", self.patch_text)
+
     def test_login_hook_brackets_original_handler_state_machine(self):
         self.assertIn(
             "diff --git a/module/handler/login.py",

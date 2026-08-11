@@ -86,8 +86,9 @@ fleet only when its suffix uniquely matches one typed ship sprite in the exact
 top-stage roster across stable generations. The displayed `1|2` number is then
 translated with ALAS's existing reversed-fleet rule before native indexed
 locations are populated. G33 separately qualifies one ALAS-requested typed
-viewport swipe, but no grid Button, fleet movement, combat, retreat, or map
-reward input is production-enabled.
+viewport swipe. G34 then lets original `Camera.update()` consume a typed Unity
+`View` and lets original `_goto()` recheck the target, but no grid Button,
+fleet movement, combat, retreat, or map reward input is production-enabled.
 
 The indexed projection is now also passed to a decision-only executor. It
 calls ALAS's original `find_path_initial()` and `battle_function()` on an
@@ -111,8 +112,17 @@ adapter validates the requested target and turns only the final vector into a
 typed semantic gesture. A fresh same-PID map must preserve its logical
 signature and all visible cells under a coherent planar projective transform,
 with the requested target ending exact top-raycast. The qualification proof
-stops there: it does not click the grid, and both production enablement and the
-post-swipe original-ALAS view update remain false.
+stops before any grid click and keeps production enablement false.
+
+G34 patches only ALAS's existing `Camera._update_view()` semantic-session
+input. A normalized projective model turns fresh Unity grid geometry into the
+`View` fields consumed by original `Camera.update()`; ALAS still owns its wait,
+swipe prediction, camera coordinate, centering, and global-to-local logic. The
+qualification continues through original `_goto()` and captures its final
+`device.click(grid)` statement without delegating it. On the live F6 case,
+`grid_input_injected=false`. Because that target was already within
+`_walk_sight`, the harness used original `focus_to(F6)` as a bounded prelude;
+an organically out-of-sight `_goto()`-initiated swipe remains a later gate.
 
 Campaign combat has a separate canonical integer budget and remains closed by
 default:

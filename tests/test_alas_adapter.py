@@ -493,6 +493,7 @@ class FakeOracle:
                 for cell in state.cells
             ),
         )
+        self.campaign_map_state_value = post_state
         self.campaign_map_target_raycast_top = True
         return CampaignMapViewportSwipeProof(
             semantic_id="campaign/map/viewport/" + target_node,
@@ -2209,6 +2210,16 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertTrue(adapter.campaign_map_viewport_swipe_committed())
         self.assertEqual(proof.target_before_point, Point(640, 360))
         self.assertEqual(proof.target_after_point, Point(840, 360))
+        camera_state = adapter.campaign_camera_state()
+        recheck = adapter.recheck_campaign_combat_target_after_camera_view(
+            camera_state
+        )
+        self.assertEqual(recheck.target_node, "D6")
+        self.assertEqual(recheck.camera_state_generation, 53)
+        with self.assertRaisesRegex(SemanticGateClosed, "token changed"):
+            adapter.recheck_campaign_combat_target_after_camera_view(
+                replace(camera_state, generation=54)
+            )
         receipt = adapter.click(CampaignGridButton((3, 5)))
         self.assertEqual(receipt.point, Point(840, 360))
         self.assertTrue(adapter.campaign_combat_committed())
@@ -2255,6 +2266,93 @@ class AlasSemanticAdapterTests(unittest.TestCase):
                 name="MAP_SWIPE_-2_0",
                 distance_check=True,
             )
+        self.assertEqual(oracle.campaign_map_swipe_calls, [])
+        adapter.end_campaign_pre_sortie()
+
+    def test_campaign_viewport_swipe_accepts_alas_whitelist_fallback_only_in_padded_domain(self):
+        oracle = FakeOracle()
+        oracle.campaign_map_state_value = make_campaign_combat_state()
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            campaign_combat_budget=1,
+            campaign_viewport_swipe_budget=1,
+        )
+        adapter.begin_campaign_pre_sortie("12-4")
+        state = adapter.campaign_map_state(
+            columns=11,
+            rows=8,
+            land_cells=((0, 0),),
+            expected_fleet_count=1,
+        )
+        adapter.authorize_campaign_combat(
+            make_campaign_combat_decision(), state
+        )
+
+        intent = adapter.begin_campaign_map_swipe_vector(
+            (14.0, -201.0),
+            box=(123, 159, 1175, 628),
+            random_range=(0, 0, 0, 0),
+            padding=15,
+            duration=(0.1, 0.2),
+            whitelist_area=((900, 600, 1000, 650),),
+            blacklist_area=None,
+            name="MAP_SWIPE_0_2",
+            distance_check=True,
+        )
+        proof = adapter.swipe(
+            (772, 482),
+            (786, 281),
+            duration=0.3375,
+            name="MAP_SWIPE_0_2",
+            distance_check=True,
+        )
+        adapter.end_campaign_map_swipe_vector(intent)
+
+        self.assertEqual(proof.end, (786, 281))
+        self.assertEqual(len(oracle.campaign_map_swipe_calls), 1)
+        adapter.end_campaign_pre_sortie()
+
+    def test_campaign_viewport_swipe_rejects_endpoint_outside_alas_padded_domain(self):
+        oracle = FakeOracle()
+        oracle.campaign_map_state_value = make_campaign_combat_state()
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            campaign_combat_budget=1,
+            campaign_viewport_swipe_budget=1,
+        )
+        adapter.begin_campaign_pre_sortie("12-4")
+        state = adapter.campaign_map_state(
+            columns=11,
+            rows=8,
+            land_cells=((0, 0),),
+            expected_fleet_count=1,
+        )
+        adapter.authorize_campaign_combat(
+            make_campaign_combat_decision(), state
+        )
+        intent = adapter.begin_campaign_map_swipe_vector(
+            (14.0, -201.0),
+            box=(123, 159, 1175, 628),
+            random_range=(0, 0, 0, 0),
+            padding=15,
+            duration=(0.1, 0.2),
+            whitelist_area=None,
+            blacklist_area=None,
+            name="MAP_SWIPE_0_2",
+            distance_check=True,
+        )
+
+        with self.assertRaisesRegex(SemanticGateClosed, "selection domain"):
+            adapter.swipe(
+                (126, 482),
+                (140, 281),
+                duration=0.3375,
+                name="MAP_SWIPE_0_2",
+                distance_check=True,
+            )
+        adapter.end_campaign_map_swipe_vector(intent)
         self.assertEqual(oracle.campaign_map_swipe_calls, [])
         adapter.end_campaign_pre_sortie()
 

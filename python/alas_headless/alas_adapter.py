@@ -12,6 +12,7 @@ import math
 import re
 import time
 from dataclasses import dataclass, field, replace
+from numbers import Real
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
 from .alas_combat_admission import (
@@ -582,6 +583,19 @@ class _BuildFlowContext:
     passive_transition_until: float = 0.0
 
 
+@dataclass(frozen=True)
+class CampaignMapTargetRecheckProof:
+    """Read-only post-camera proof before ALAS reaches its grid click."""
+
+    target_node: str
+    viewport_post_generation: int
+    camera_state_generation: int
+    recheck_generation: int
+    path: str
+    point: Point
+    bounds: Bounds
+
+
 @dataclass
 class _CampaignFlowContext:
     stage_code: str
@@ -621,6 +635,7 @@ class _CampaignFlowContext:
     viewport_swipe_required: bool = False
     viewport_swipe_intent: Optional[CampaignMapViewportSwipeIntent] = None
     viewport_swipe_proof: Optional[CampaignMapViewportSwipeProof] = None
+    target_recheck_proof: Optional[CampaignMapTargetRecheckProof] = None
     combat_receipt: Optional[ActionReceipt] = None
     combat_proof: Optional[AlasCampaignCombatProof] = None
     passive_transition_until: float = 0.0
@@ -2809,7 +2824,7 @@ class AlasSemanticAdapter:
             raise SemanticGateClosed(label + " is malformed") from exc
         if len(area) != 4 or any(
             isinstance(item, bool)
-            or not isinstance(item, (int, float))
+            or not isinstance(item, Real)
             or not math.isfinite(float(item))
             for item in area
         ):
@@ -2878,7 +2893,12 @@ class AlasSemanticAdapter:
         if not 10.0 <= math.hypot(*pixel_vector) <= 1200.0:
             raise SemanticGateClosed("campaign map viewport pixel vector is outside limits")
         for grid, pixel in zip(grid_vector, pixel_vector):
-            if (grid == 0 and abs(pixel) > 1.0) or (grid != 0 and grid * pixel >= 0.0):
+            # map_swipe() adds ALAS's fractional center correction before
+            # `_map_swipe()` rounds the semantic name.  A rounded zero axis may
+            # therefore retain less than half a calibrated grid of pixels.
+            if (grid == 0 and abs(pixel) > 120.0) or (
+                grid != 0 and grid * pixel >= 0.0
+            ):
                 raise SemanticGateClosed(
                     "campaign map viewport pixel vector disagrees with ALAS"
                 )
@@ -2945,6 +2965,23 @@ class AlasSemanticAdapter:
     ) -> bool:
         return area[0] <= point[0] <= area[2] and area[1] <= point[1] <= area[3]
 
+    @staticmethod
+    def _campaign_swipe_endpoint_area(
+        intent: CampaignMapViewportSwipeIntent,
+    ) -> Tuple[float, float, float, float]:
+        """Reproduce ALAS's padded end-point domain before random selection."""
+
+        half = tuple(int(round(value / 2.0)) for value in intent.pixel_vector)
+        left, top, right, bottom = intent.box
+        pad_x = abs(half[0]) + intent.padding
+        pad_y = abs(half[1]) + intent.padding
+        return (
+            left + pad_x + half[0],
+            top + pad_y + half[1],
+            right - pad_x + half[0],
+            bottom - pad_y + half[1],
+        )
+
     def swipe(
         self,
         p1: Any,
@@ -2979,11 +3016,20 @@ class AlasSemanticAdapter:
         expected_delta = tuple(int(round(value)) for value in intent.pixel_vector)
         if (end[0] - start[0], end[1] - start[1]) != expected_delta:
             raise SemanticGateClosed("campaign map viewport selected vector changed")
-        if intent.whitelist_areas and not any(
-            self._campaign_point_in_area(end, area)
-            for area in intent.whitelist_areas
+        # ``random_rectangle_vector_opted`` treats whitelist areas as preferred
+        # candidates, not as a mandatory final constraint: if no clipped area
+        # produces a blacklist-safe point it deliberately falls back to the
+        # padded box.  Validate that exact ALAS fallback domain here, then keep
+        # the original segment-wise blacklist check below.
+        endpoint_area = self._campaign_swipe_endpoint_area(intent)
+        if (
+            endpoint_area[0] > endpoint_area[2]
+            or endpoint_area[1] > endpoint_area[3]
+            or not self._campaign_point_in_area(end, endpoint_area)
         ):
-            raise SemanticGateClosed("campaign map viewport endpoint left its whitelist")
+            raise SemanticGateClosed(
+                "campaign map viewport endpoint left ALAS selection domain"
+            )
         segment_count = int(math.hypot(*expected_delta) // 70) + 1
         for index in range(segment_count + 1):
             point = (
@@ -3040,6 +3086,113 @@ class AlasSemanticAdapter:
         context = self._require_campaign_context()
         return context.viewport_swipe_proof is not None
 
+    def campaign_map_viewport_swipe_proof(
+        self,
+    ) -> CampaignMapViewportSwipeProof:
+        context = self._require_campaign_context()
+        proof = context.viewport_swipe_proof
+        if proof is None:
+            raise SemanticGateClosed("campaign map viewport swipe is not proven")
+        return proof
+
+    def campaign_camera_state(self) -> CampaignMapState:
+        """Return one fresh map observation to ALAS's original Camera.update."""
+
+        self._package_gate()
+        context = self._require_campaign_context()
+        if (
+            context.map_columns is None
+            or context.map_rows is None
+            or context.map_expected_fleet_count is None
+            or context.map_state is None
+        ):
+            raise SemanticGateClosed("campaign camera map topology is incomplete")
+        state = self.oracle.campaign_map_state(
+            context.stage_code,
+            columns=context.map_columns,
+            rows=context.map_rows,
+            land_cells=context.map_land_cells,
+            expected_fleet_count=context.map_expected_fleet_count,
+        )
+        if state.signature != context.map_state.signature:
+            raise SemanticGateClosed(
+                "campaign camera observation changed logical map state"
+            )
+        admission = context.combat_admission
+        if admission is not None and state.signature != admission.map_signature:
+            raise SemanticGateClosed(
+                "campaign camera observation changed admitted map state"
+            )
+        context.map_state = state
+        return state
+
+    def campaign_camera_target_node(self) -> Optional[str]:
+        context = self._require_campaign_context()
+        admission = context.combat_admission
+        return None if admission is None else admission.target_node
+
+    def recheck_campaign_combat_target_after_camera_view(
+        self, state: CampaignMapState
+    ) -> CampaignMapTargetRecheckProof:
+        """Bind ALAS's fresh typed View to the exact eventual target cell."""
+
+        self._package_gate()
+        context = self._require_campaign_context()
+        if context.target_recheck_proof is not None:
+            if (
+                context.map_state is not state
+                or state.generation
+                != context.target_recheck_proof.camera_state_generation
+            ):
+                raise SemanticGateClosed(
+                    "campaign target recheck token changed"
+                )
+            return context.target_recheck_proof
+        admission = context.combat_admission
+        viewport = context.viewport_swipe_proof
+        if (
+            admission is None
+            or viewport is None
+            or context.map_state is not state
+            or context.viewport_swipe_required
+            or context.combat_receipt is not None
+        ):
+            raise SemanticGateClosed(
+                "campaign target recheck requires a proven camera view"
+            )
+        if (
+            state.signature != admission.map_signature
+            or state.generation < viewport.post_generation
+            or viewport.target_node != admission.target_node
+            or viewport.target_path != admission.cell_path
+        ):
+            raise SemanticGateClosed(
+                "campaign target recheck changed viewport identity"
+            )
+        target = self.oracle.campaign_map_cell_input(
+            state, admission.target_node
+        )
+        if target.path != admission.cell_path:
+            raise SemanticGateClosed("campaign target recheck changed cell path")
+        assert target.point is not None and target.bounds is not None
+        context.combat_admission = replace(
+            admission,
+            input_generation=max(admission.input_generation, state.generation),
+            point=target.point,
+            bounds=target.bounds,
+        )
+        proof = CampaignMapTargetRecheckProof(
+            target_node=admission.target_node,
+            viewport_post_generation=viewport.post_generation,
+            camera_state_generation=state.generation,
+            recheck_generation=state.generation,
+            path=target.path,
+            point=target.point,
+            bounds=target.bounds,
+        )
+        context.target_recheck_proof = proof
+        return proof
+
     @staticmethod
     def _campaign_grid_location(button: Any) -> Optional[Tuple[int, int]]:
         """Read ALAS `_goto()`'s explicit global-location annotation only."""
@@ -3079,6 +3232,13 @@ class AlasSemanticAdapter:
         if context.viewport_swipe_required:
             raise SemanticGateClosed(
                 "campaign combat grid input requires proven viewport movement"
+            )
+        if (
+            context.viewport_swipe_proof is not None
+            and context.target_recheck_proof is None
+        ):
+            raise SemanticGateClosed(
+                "campaign combat grid input requires post-camera target recheck"
             )
         node = self._campaign_node(location)
         if node != admission.target_node:
@@ -5191,6 +5351,24 @@ class AlasSemanticSession:
 
     def campaign_map_viewport_swipe_committed(self) -> bool:
         return self.open().campaign_map_viewport_swipe_committed()
+
+    def campaign_map_viewport_swipe_proof(
+        self,
+    ) -> CampaignMapViewportSwipeProof:
+        return self.open().campaign_map_viewport_swipe_proof()
+
+    def campaign_camera_state(self) -> CampaignMapState:
+        return self.open().campaign_camera_state()
+
+    def campaign_camera_target_node(self) -> Optional[str]:
+        return self.open().campaign_camera_target_node()
+
+    def recheck_campaign_combat_target_after_camera_view(
+        self, state: CampaignMapState
+    ) -> CampaignMapTargetRecheckProof:
+        return self.open().recheck_campaign_combat_target_after_camera_view(
+            state
+        )
 
     def campaign_stage_entry_allowed(self) -> bool:
         return self.open().campaign_stage_entry_allowed()

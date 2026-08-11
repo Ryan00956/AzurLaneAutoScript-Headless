@@ -148,11 +148,15 @@ raycast coordinate opened the air-supremacy information panel. Map cells now
 fail closed again. G33 now qualifies one typed ALAS-requested viewport movement:
 the original camera path requested `(1, -2)`, the adapter translated only its
 final swipe, all 68 logical cells moved coherently under a projective model,
-and F6 ended exact top-raycast. The proof stops before the grid click and records
-both production and post-swipe ALAS view-update ownership as false. The next
-gate is continuing the original live `_goto()` loop through its post-swipe
-target recheck. Lua/game-state coverage, formation-layout changes, campaign
-movement execution, battle state,
+and F6 ended exact top-raycast. G34 now supplies a typed Unity `View` only at
+ALAS's existing `_update_view()` input boundary. The original `Camera.update()`
+then updates F4 to F6 and the original `_goto()` rechecks the fresh target,
+centers it, converts global to local, and reaches its own `device.click(grid)`
+statement. That final click is captured without injection, so production stays
+disabled. Because F6 was already within `_walk_sight`, the qualifying gesture
+was initiated by an original `focus_to(F6)` prelude; a natural out-of-sight
+`_goto()` camera branch remains unclaimed. Lua/game-state coverage,
+formation-layout changes, campaign movement execution, battle state,
 weekly-only end-to-end
 coverage, repeated sorties, and full unattended ALAS task coverage remain
 open.
