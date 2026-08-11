@@ -670,7 +670,7 @@ index cd88c16..efa9500 100644
          # area = area_offset((5, 5, 30, 30), self.area[0:2])
          # return color_similar(color1=get_color(self.image, area), color2=(239, 166, 231))
 diff --git a/module/device/control.py b/module/device/control.py
-index 1224c45..8a1cb41 100644
+index 1224c45..1d25a3b 100644
 --- a/module/device/control.py
 +++ b/module/device/control.py
 @@ -17,6 +17,14 @@ class Control(Hermit, Minitouch, Scrcpy, MaaTouch, NemuIpc):
@@ -720,17 +720,73 @@ index 1224c45..8a1cb41 100644
          self.handle_control_check(button)
          x, y = random_rectangle_point(button.button)
          x, y = ensure_int(x, y)
-@@ -86,6 +105,9 @@ class Control(Hermit, Minitouch, Scrcpy, MaaTouch, NemuIpc):
+@@ -86,6 +105,7 @@ class Control(Hermit, Minitouch, Scrcpy, MaaTouch, NemuIpc):
              self.swipe_adb((x, y), (x, y), duration)
  
      def swipe(self, p1, p2, duration=(0.1, 0.2), name='SWIPE', distance_check=True):
 +        semantic_adapter = getattr(self, 'semantic_adapter', None)
-+        if semantic_adapter is not None:
-+            semantic_adapter.reject_raw_input('swipe')
          self.handle_control_check(name)
          p1, p2 = ensure_int(p1, p2)
          duration = ensure_time(duration)
-@@ -149,6 +171,9 @@ class Control(Hermit, Minitouch, Scrcpy, MaaTouch, NemuIpc):
+@@ -106,6 +126,15 @@ class Control(Hermit, Minitouch, Scrcpy, MaaTouch, NemuIpc):
+                 logger.info('Swipe distance < 10px, dropped')
+                 return
+ 
++        if semantic_adapter is not None:
++            receipt = semantic_adapter.swipe(
++                p1, p2, duration=duration, name=name,
++                distance_check=distance_check)
++            logger.info(
++                f'Semantic swipe {receipt.semantic_id} '
++                f'{receipt.start} -> {receipt.end}')
++            return receipt
++
+         if method == 'minitouch':
+             self.swipe_minitouch(p1, p2)
+         elif method == 'uiautomator2':
+@@ -137,18 +166,42 @@ class Control(Hermit, Minitouch, Scrcpy, MaaTouch, NemuIpc):
+             name (str): Swipe name
+             distance_check: (bool):
+         """
+-        p1, p2 = random_rectangle_vector_opted(
+-            vector,
+-            box=box,
+-            random_range=random_range,
+-            padding=padding,
+-            whitelist_area=whitelist_area,
+-            blacklist_area=blacklist_area
+-        )
+-        self.swipe(p1, p2, duration=duration, name=name, distance_check=distance_check)
++        semantic_adapter = getattr(self, 'semantic_adapter', None)
++        semantic_intent = None
++        if semantic_adapter is not None:
++            semantic_intent = semantic_adapter.begin_campaign_map_swipe_vector(
++                vector,
++                box=box,
++                random_range=random_range,
++                padding=padding,
++                duration=duration,
++                whitelist_area=whitelist_area,
++                blacklist_area=blacklist_area,
++                name=name,
++                distance_check=distance_check,
++            )
++        try:
++            p1, p2 = random_rectangle_vector_opted(
++                vector,
++                box=box,
++                random_range=random_range,
++                padding=padding,
++                whitelist_area=whitelist_area,
++                blacklist_area=blacklist_area
++            )
++            return self.swipe(
++                p1, p2, duration=duration, name=name,
++                distance_check=distance_check)
++        finally:
++            if semantic_intent is not None:
++                semantic_adapter.end_campaign_map_swipe_vector(
++                    semantic_intent)
  
      def drag(self, p1, p2, segments=1, shake=(0, 15), point_random=(-10, -10, 10, 10), shake_random=(-5, -5, 5, 5),
               swipe_duration=0.25, shake_duration=0.1, name='DRAG'):

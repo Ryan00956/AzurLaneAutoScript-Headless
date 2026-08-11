@@ -40,6 +40,29 @@ class AlasIntegrationPatchTests(unittest.TestCase):
         ):
             self.assertIn(operation, self.patch_text)
 
+    def test_campaign_viewport_replaces_only_final_swipe_dispatch(self):
+        self.assertIn(
+            "semantic_adapter.begin_campaign_map_swipe_vector(",
+            self.patch_text,
+        )
+        self.assertIn(
+            "p1, p2 = random_rectangle_vector_opted(",
+            self.patch_text,
+        )
+        self.assertIn(
+            "receipt = semantic_adapter.swipe(",
+            self.patch_text,
+        )
+        self.assertIn(
+            "semantic_adapter.end_campaign_map_swipe_vector(",
+            self.patch_text,
+        )
+        self.assertIn("distance_check=distance_check", self.patch_text)
+        self.assertNotIn(
+            "+            semantic_adapter.reject_raw_input('swipe')",
+            self.patch_text,
+        )
+
     def test_login_hook_brackets_original_handler_state_machine(self):
         self.assertIn(
             "diff --git a/module/handler/login.py",

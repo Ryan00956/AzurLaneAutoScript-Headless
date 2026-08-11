@@ -371,6 +371,11 @@ bool ShouldEvaluateTopRaycast(std::string_view name, std::string_view path) {
       EndsWith(path, "ShipExpUI(Clone)/skipLayer")) {
     return true;
   }
+  if (name == "ButtonExit" &&
+      EndsWith(path,
+               "LevelStageTotalRewardPanel(Clone)/Window/Fixed/ButtonExit")) {
+    return true;
+  }
   if ((name == "get_btn" || name == "go_btn") &&
       path.find("TaskScene(Clone)/pages/TaskListPage(Clone)/right_panel/"
                 "content/") != std::string_view::npos &&

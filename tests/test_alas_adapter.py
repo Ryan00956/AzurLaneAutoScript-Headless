@@ -18,6 +18,7 @@ from alas_headless import (
     CampaignMapEnemyState,
     CampaignMapFleetState,
     CampaignMapState,
+    CampaignMapViewportSwipeProof,
     MissionDisposition,
     PINNED_CN_GAME_FINGERPRINT,
     PinnedPackageGate,
@@ -224,6 +225,8 @@ class FakeOracle:
         self.campaign_in_map_value = False
         self.campaign_map_generation = 50
         self.campaign_map_state_calls = []
+        self.campaign_map_target_raycast_top = True
+        self.campaign_map_swipe_calls = []
         self.campaign_map_state_value = SimpleNamespace(
             generation=51,
             stage_code="12-4",
@@ -437,6 +440,80 @@ class FakeOracle:
             point=cell.point,
             bounds=cell.bounds,
             raw={},
+        )
+
+    def campaign_map_cell_viewport_target(self, state, node):
+        return replace(
+            self.campaign_map_cell_input(state, node),
+            raycast_top=self.campaign_map_target_raycast_top,
+        )
+
+    def campaign_map_viewport_swipe(
+        self,
+        state,
+        target_node,
+        intent,
+        *,
+        start,
+        end,
+        duration_ms,
+        columns,
+        rows,
+        land_cells,
+        expected_fleet_count,
+    ):
+        self.campaign_map_swipe_calls.append(
+            (
+                target_node,
+                intent,
+                start,
+                end,
+                duration_ms,
+                columns,
+                rows,
+                tuple(land_cells),
+                expected_fleet_count,
+            )
+        )
+        target = next(cell for cell in state.cells if cell.node == target_node)
+        after_point = Point(target.point.x + 200, target.point.y)
+        after_bounds = Bounds(
+            target.bounds.left + 200,
+            target.bounds.top,
+            target.bounds.right + 200,
+            target.bounds.bottom,
+        )
+        post_state = replace(
+            state,
+            generation=state.generation + 2,
+            cells=tuple(
+                replace(cell, point=after_point, bounds=after_bounds)
+                if cell.node == target_node
+                else cell
+                for cell in state.cells
+            ),
+        )
+        self.campaign_map_target_raycast_top = True
+        return CampaignMapViewportSwipeProof(
+            semantic_id="campaign/map/viewport/" + target_node,
+            target_node=target_node,
+            pre_generation=state.generation,
+            input_generation=state.generation + 1,
+            post_generation=post_state.generation,
+            name=intent.name,
+            grid_vector=intent.grid_vector,
+            pixel_vector=intent.pixel_vector,
+            start=start,
+            end=end,
+            duration_ms=duration_ms,
+            coherent_cell_count=len(state.cells),
+            median_cell_delta=(200.0, 0.0),
+            maximum_delta_residual=0.0,
+            target_path=target.button_path,
+            target_before_point=target.point,
+            target_after_point=after_point,
+            target_after_bounds=after_bounds,
+            post_state=post_state,
         )
 
     def click_campaign_map_cell(self, state, node):
@@ -773,10 +850,24 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         adapter.begin_login()
         self.assertTrue(adapter.match_template_color(NamedButton("LOGIN_CHECK")))
         receipt = adapter.click(NamedButton("LOGIN_CHECK"))
+        original_enabled = oracle.enabled
+
+        def stale_login_probe(_semantic_id):
+            raise SemanticGateClosed("observer snapshot is stale")
+
+        oracle.enabled = stale_login_probe
+        self.assertFalse(adapter.match_template_color(NamedButton("LOGIN_CHECK")))
+        oracle.enabled = original_enabled
         self.assertFalse(adapter.appear(NamedButton("ANDROID_NO_RESPOND")))
+        adapter._login_context.passive_transition_until = 0.0
+        bulletin = adapter.click(NamedButton("LOGIN_ANNOUNCE"))
+        self.assertFalse(adapter.appear(NamedButton("LOGIN_RETURN_SIGN")))
 
         self.assertEqual(receipt.semantic_id, "login/enter")
-        self.assertEqual(oracle.click_calls, ["login/enter"])
+        self.assertEqual(bulletin.semantic_id, "overlay/bulletin/close")
+        self.assertEqual(
+            oracle.click_calls, ["login/enter", "overlay/bulletin/close"]
+        )
         with self.assertRaisesRegex(SemanticGateClosed, "nested semantic"):
             adapter.begin_campaign_pre_sortie("12-4")
 
@@ -1374,6 +1465,29 @@ class AlasSemanticAdapterTests(unittest.TestCase):
             adapter.click(NamedButton("BACK_ARROW"))
         self.assertEqual(oracle.click_calls, [])
 
+    def test_campaign_page_state_retries_only_generation_coherence(self):
+        adapter, oracle, _ = self.make_adapter()
+        expected = oracle.campaign_state_value
+        attempts = []
+
+        def transient_page_state():
+            attempts.append(True)
+            if len(attempts) < 3:
+                raise SemanticGateClosed("campaign snapshots are not coherent")
+            return expected
+
+        oracle.campaign_page_state = transient_page_state
+
+        self.assertIs(adapter.campaign_page_state(), expected)
+        self.assertEqual(len(attempts), 3)
+
+        def identity_failure():
+            raise SemanticGateClosed("campaign page identity is not proven")
+
+        oracle.campaign_page_state = identity_failure
+        with self.assertRaisesRegex(SemanticGateClosed, "identity is not proven"):
+            adapter.campaign_page_state()
+
     def test_campaign_stage_entry_is_exact_and_spends_one_independent_budget(self):
         oracle = FakeOracle()
         stage = SimpleNamespace(
@@ -1402,6 +1516,40 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertEqual(oracle.click_calls, ["campaign/stage/12-4"])
         with self.assertRaisesRegex(SemanticGateClosed, "remaining budget"):
             adapter.click(button)
+        adapter.end_campaign_pre_sortie()
+
+    def test_campaign_stage_entry_hides_only_bounded_duplicate_probe(self):
+        oracle = FakeOracle()
+        stage = SimpleNamespace(
+            stage_code="12-4",
+            button=SimpleNamespace(actionable=True),
+        )
+        oracle.campaign_state_value = SimpleNamespace(
+            chapter_name="马里亚纳风云上",
+            stages=(stage,),
+        )
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            campaign_stage_entry_budget=1,
+        )
+        button = NamedButton("12-4")
+        button.semantic_campaign_stage_code = "12-4"
+
+        with patch("alas_headless.alas_adapter.time.monotonic", return_value=10.0):
+            adapter.begin_campaign_pre_sortie("12-4")
+            adapter.click(button)
+
+            def identity_failure(_stage_code):
+                raise SemanticGateClosed("campaign page identity is not proven")
+
+            oracle.campaign_stage_actionable = identity_failure
+            self.assertFalse(adapter.appear(button))
+
+        with patch("alas_headless.alas_adapter.time.monotonic", return_value=31.0):
+            with self.assertRaisesRegex(SemanticGateClosed, "identity is not proven"):
+                adapter.appear(button)
+
         adapter.end_campaign_pre_sortie()
 
     def test_campaign_stage_entry_defaults_closed_and_rejects_identity_change(self):
@@ -1476,6 +1624,8 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         adapter.begin_campaign_pre_sortie("12-4")
         self.assertTrue(adapter.appear(NamedButton("SWITCH_1_HARD")))
         self.assertFalse(adapter.appear(NamedButton("SWITCH_1_NORMAL")))
+        self.assertFalse(adapter.appear(NamedButton("SWITCH_2_HARD")))
+        self.assertFalse(adapter.appear(NamedButton("SWITCH_2_EX")))
         adapter.end_campaign_pre_sortie()
 
         self.assertEqual(oracle.click_calls, [])
@@ -1512,9 +1662,20 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertFalse(adapter.campaign_map_preparation_committed())
         adapter.click(entrance)
         self.assertFalse(adapter.campaign_map_preparation_committed())
+        oracle.campaign_preparation_error = SemanticGateClosed(
+            "campaign map-preparation snapshots are not coherent"
+        )
+        self.assertFalse(adapter.appear(NamedButton("MAP_PREPARATION")))
+        oracle.campaign_preparation_error = None
         self.assertTrue(adapter.appear(NamedButton("MAP_PREPARATION")))
-        adapter.click(NamedButton("MAP_PREPARATION"))
+        with patch.object(
+            adapter, "_campaign_preparation_kind", return_value=None
+        ):
+            adapter.click(NamedButton("MAP_PREPARATION"))
         self.assertTrue(adapter.campaign_map_preparation_committed())
+        oracle.campaign_preparation_error = SemanticGateClosed(
+            "campaign map-preparation controls are not proven"
+        )
         self.assertFalse(adapter.appear(NamedButton("MAP_PREPARATION")))
         oracle.campaign_preparation_error = SemanticGateClosed(
             "campaign map preparation is transitioning away"
@@ -1551,6 +1712,41 @@ class AlasSemanticAdapterTests(unittest.TestCase):
                 "campaign/fleet-preparation/cancel",
             ],
         )
+
+    def test_campaign_map_to_fleet_transition_has_bounded_slow_adb_grace(self):
+        oracle = FakeOracle()
+        stage = SimpleNamespace(
+            stage_code="12-4",
+            button=SimpleNamespace(actionable=True),
+        )
+        oracle.campaign_state_value = SimpleNamespace(
+            generation=12,
+            chapter_name="马里亚纳风云上",
+            stages=(stage,),
+        )
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            campaign_stage_entry_budget=1,
+        )
+        entrance = NamedButton("12-4")
+        entrance.semantic_campaign_stage_code = "12-4"
+
+        with patch("alas_headless.alas_adapter.time.monotonic", return_value=10.0):
+            adapter.begin_campaign_pre_sortie("12-4")
+            adapter.click(entrance)
+            adapter.click(NamedButton("MAP_PREPARATION"))
+
+        oracle.campaign_preparation_error = SemanticGateClosed(
+            "campaign map-preparation controls are not proven"
+        )
+        with patch("alas_headless.alas_adapter.time.monotonic", return_value=69.0):
+            self.assertFalse(adapter.appear(NamedButton("FLEET_PREPARATION")))
+        with patch("alas_headless.alas_adapter.time.monotonic", return_value=71.0):
+            with self.assertRaisesRegex(SemanticGateClosed, "controls are not proven"):
+                adapter.appear(NamedButton("FLEET_PREPARATION"))
+
+        adapter.end_campaign_pre_sortie()
 
     def test_campaign_fleet_preparation_defaults_closed_without_input(self):
         adapter, oracle, _ = self.make_adapter()
@@ -1895,6 +2091,100 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertEqual((proof.battle_count_before, proof.battle_count_after), (0, 1))
         self.assertEqual(oracle.click_calls, ["campaign/map/grid/D6"])
 
+    def test_campaign_viewport_swipe_is_one_use_and_updates_exact_grid_geometry(self):
+        oracle = FakeOracle()
+        oracle.campaign_map_state_value = make_campaign_combat_state()
+        oracle.campaign_map_target_raycast_top = False
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            campaign_combat_budget=1,
+            campaign_viewport_swipe_budget=1,
+        )
+        adapter.begin_campaign_pre_sortie("12-4")
+        state = adapter.campaign_map_state(
+            columns=11,
+            rows=8,
+            land_cells=((0, 0),),
+            expected_fleet_count=1,
+        )
+        admission = adapter.authorize_campaign_combat(
+            make_campaign_combat_decision(), state
+        )
+        self.assertIsNotNone(admission)
+
+        intent = adapter.begin_campaign_map_swipe_vector(
+            (200.0, 0.0),
+            box=(123, 159, 1175, 628),
+            random_range=(0, 0, 0, 0),
+            padding=15,
+            duration=(0.1, 0.2),
+            whitelist_area=None,
+            blacklist_area=None,
+            name="MAP_SWIPE_-2_0",
+            distance_check=True,
+        )
+        proof = adapter.swipe(
+            (500, 400),
+            (700, 400),
+            duration=0.375,
+            name="MAP_SWIPE_-2_0",
+            distance_check=True,
+        )
+        adapter.end_campaign_map_swipe_vector(intent)
+
+        self.assertTrue(adapter.campaign_map_viewport_swipe_committed())
+        self.assertEqual(proof.target_before_point, Point(640, 360))
+        self.assertEqual(proof.target_after_point, Point(840, 360))
+        receipt = adapter.click(CampaignGridButton((3, 5)))
+        self.assertEqual(receipt.point, Point(840, 360))
+        self.assertTrue(adapter.campaign_combat_committed())
+        with self.assertRaisesRegex(SemanticGateClosed, "not authorized"):
+            adapter.begin_campaign_map_swipe_vector(
+                (200.0, 0.0),
+                box=(123, 159, 1175, 628),
+                random_range=(0, 0, 0, 0),
+                padding=15,
+                duration=(0.1, 0.2),
+                whitelist_area=None,
+                blacklist_area=None,
+                name="MAP_SWIPE_-2_0",
+                distance_check=True,
+            )
+        adapter.end_campaign_pre_sortie()
+
+    def test_campaign_viewport_swipe_defaults_closed_and_raw_swipe_stays_rejected(self):
+        oracle = FakeOracle()
+        oracle.campaign_map_state_value = make_campaign_combat_state()
+        oracle.campaign_map_target_raycast_top = False
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            campaign_combat_budget=1,
+        )
+        adapter.begin_campaign_pre_sortie("12-4")
+        state = adapter.campaign_map_state(
+            columns=11,
+            rows=8,
+            land_cells=((0, 0),),
+            expected_fleet_count=1,
+        )
+
+        with self.assertRaisesRegex(SemanticGateClosed, "viewport swipe budget"):
+            adapter.authorize_campaign_combat(
+                make_campaign_combat_decision(), state
+            )
+        with self.assertRaisesRegex(SemanticGateClosed, "raw ALAS input"):
+            adapter.swipe(
+                (500, 400),
+                (700, 400),
+                duration=0.375,
+                name="MAP_SWIPE_-2_0",
+                distance_check=True,
+            )
+        self.assertEqual(oracle.campaign_map_swipe_calls, [])
+        adapter.end_campaign_pre_sortie()
+
     def test_campaign_combat_rejects_route_drift_before_input(self):
         oracle = FakeOracle()
         state = make_campaign_combat_state()
@@ -2155,6 +2445,10 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertEqual(
             adapter.semantic_id_for("REWARD_GOTO_COMMISSION"),
             "reward/commission/go",
+        )
+        self.assertEqual(
+            adapter.semantic_id_for("AUTO_SEARCH_MENU_EXIT"),
+            "reward/campaign-total/exit",
         )
         self.assertTrue(adapter.appear(NamedButton("REWARD_1")))
         with self.assertRaises(SemanticGateClosed):
@@ -2673,15 +2967,48 @@ class AlasSemanticAdapterTests(unittest.TestCase):
             adapter.appear(NamedButton("FLEET_CHECK"))
 
     def test_render_transition_staleness_has_bounded_presence_grace(self):
+        for message in (
+            "observer snapshot is stale",
+            "observer endpoints are not generation-coherent",
+            "Msgbox snapshots are not coherent",
+        ):
+            with self.subTest(message=message):
+                adapter, oracle, _ = self.make_adapter()
+
+                def stale(_semantic_id):
+                    raise SemanticGateClosed(message)
+
+                oracle.enabled = stale
+                self.assertFalse(adapter.appear(NamedButton("REWARD_CHECK")))
+                adapter._observer_stale_since = time.monotonic() - 6.0
+                with self.assertRaisesRegex(SemanticGateClosed, message):
+                    adapter.appear(NamedButton("REWARD_CHECK"))
+
+    def test_login_activity_handoff_has_bounded_presence_grace(self):
         adapter, oracle, _ = self.make_adapter()
 
-        def stale(_semantic_id):
-            raise SemanticGateClosed("observer snapshot is stale")
+        def not_resumed(_semantic_id):
+            raise SemanticGateClosed("game activity is not top-resumed")
 
-        oracle.enabled = stale
-        self.assertFalse(adapter.appear(NamedButton("REWARD_CHECK")))
+        oracle.enabled = not_resumed
+        adapter.begin_login()
+        self.assertFalse(adapter.appear(NamedButton("LOGIN_CHECK")))
         adapter._observer_stale_since = time.monotonic() - 6.0
-        with self.assertRaisesRegex(SemanticGateClosed, "snapshot is stale"):
+        with self.assertRaisesRegex(
+            SemanticGateClosed, "game activity is not top-resumed"
+        ):
+            adapter.appear(NamedButton("LOGIN_CHECK"))
+
+    def test_activity_handoff_outside_login_remains_fail_closed(self):
+        adapter, oracle, _ = self.make_adapter()
+
+        def not_resumed(_semantic_id):
+            raise SemanticGateClosed("game activity is not top-resumed")
+
+        oracle.enabled = not_resumed
+        with self.assertRaisesRegex(
+            SemanticGateClosed, "game activity is not top-resumed"
+        ):
             adapter.appear(NamedButton("REWARD_CHECK"))
 
     def test_reviewed_mission_transition_has_bounded_passive_scan_grace(self):
@@ -3162,6 +3489,7 @@ class AlasSemanticAdapterTests(unittest.TestCase):
             "ALAS_SEMANTIC_CAMPAIGN_FLEET_MUTATION_BUDGET": "8",
             "ALAS_SEMANTIC_CAMPAIGN_SORTIE_BUDGET": "9",
             "ALAS_SEMANTIC_CAMPAIGN_COMBAT_BUDGET": "10",
+            "ALAS_SEMANTIC_CAMPAIGN_VIEWPORT_SWIPE_BUDGET": "11",
         }
         with patch.dict("os.environ", environment, clear=True):
             session = AlasSemanticSession.from_environment("emulator-test")
@@ -3176,6 +3504,7 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertEqual(session.campaign_fleet_mutation_budget, 8)
         self.assertEqual(session.campaign_sortie_budget, 9)
         self.assertEqual(session.campaign_combat_budget, 10)
+        self.assertEqual(session.campaign_viewport_swipe_budget, 11)
 
         environment["ALAS_SEMANTIC_DORM_FEED_BUDGET"] = "05"
         with patch.dict("os.environ", environment, clear=True):

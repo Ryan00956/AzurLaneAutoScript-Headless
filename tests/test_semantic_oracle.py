@@ -4,6 +4,7 @@ import unittest
 from alas_headless.semantic_oracle import (
     Bounds,
     BuildPool,
+    CampaignMapViewportSwipeIntent,
     CommissionStatus,
     DormState,
     MissionDisposition,
@@ -234,6 +235,7 @@ def set_commission_scroll_view(
 class FakeBackend:
     def __init__(self, buttons):
         self.snapshot = make_snapshot()
+        self.snapshot_sequence = []
         self.buttons = make_buttons(buttons)
         self.buttons_sequence = []
         self.ui = make_ui([])
@@ -246,6 +248,8 @@ class FakeBackend:
 
     def request(self, request_line):
         if request_line == "GET /v1/snapshot\n":
+            if self.snapshot_sequence:
+                return copy.deepcopy(self.snapshot_sequence.pop(0))
             return copy.deepcopy(self.snapshot)
         if request_line == "GET /v1/buttons\n":
             if self.buttons_sequence:
@@ -787,6 +791,30 @@ class SemanticOracleTests(unittest.TestCase):
             ]
         )
         self.assertTrue(make_oracle(menu_backend).campaign_menu_is_entry())
+        self.assertFalse(make_oracle(menu_backend).campaign_page_is_normal())
+
+        transition_backend = FakeBackend([back])
+        transition_backend.buttons_sequence = [
+            make_buttons([back], generation=10),
+            make_buttons(
+                [
+                    back,
+                    make_button(
+                        "enter_main",
+                        root + "entrance/enters/enter_main",
+                        339,
+                        336,
+                    ),
+                ],
+                generation=10,
+            ),
+        ]
+        transition_backend.buttons = copy.deepcopy(
+            transition_backend.buttons_sequence[-1]
+        )
+        self.assertFalse(
+            make_oracle(transition_backend).campaign_page_is_normal()
+        )
 
         stage_buttons = [
             make_button(
@@ -1129,6 +1157,25 @@ class SemanticOracleTests(unittest.TestCase):
         )
         self.assertEqual(backend.taps, [(640, 360)])
 
+        backend.taps.clear()
+        backend.snapshot_sequence = [
+            make_snapshot(generation=10),
+            make_snapshot(generation=14),
+        ]
+        backend.buttons_sequence = [
+            make_buttons(buttons, generation=10),
+            make_buttons(buttons, generation=14),
+        ]
+        backend.ui_sequence = [
+            make_ui(texts, toggles=toggles, generation=13),
+            make_ui(texts, toggles=toggles, generation=15),
+        ]
+        retried = oracle.click_toggle("campaign/fleet-preparation/option/2")
+        self.assertEqual(
+            retried.semantic_id, "campaign/fleet-preparation/option/2"
+        )
+        self.assertEqual(backend.taps, [(640, 360)])
+
         backend.ui["toggles"].pop()
         backend.ui["toggle_count"] -= 1
         with self.assertRaisesRegex(SemanticGateClosed, "incomplete"):
@@ -1206,6 +1253,20 @@ class SemanticOracleTests(unittest.TestCase):
         map_state = map_oracle.campaign_map_entry_state()
         self.assertEqual(map_state.root_path, map_root)
         self.assertTrue(map_oracle.campaign_is_in_map())
+
+        in_map.ui["texts"].append(
+            make_text(
+                "-127",
+                "root/UICamera/Canvas/UIMain/CombatUIStandard(Clone)/"
+                "HPTextCharacterContainer/container(Clone)/common(Clone)/text",
+            )
+        )
+        in_map.ui["text_count"] += 1
+        with self.assertRaisesRegex(SemanticGateClosed, "blocking identities"):
+            make_oracle(in_map).campaign_map_entry_state()
+        self.assertFalse(make_oracle(in_map).campaign_is_in_map())
+        in_map.ui["texts"].pop()
+        in_map.ui["text_count"] -= 1
 
         in_map.ui["images"].append(
             make_image(
@@ -1322,6 +1383,35 @@ class SemanticOracleTests(unittest.TestCase):
         )
         self.assertEqual(state.displayed_fleet_index, 1)
         self.assertEqual(state.current_fleet_marker, "cell_fleet_one")
+
+    def test_campaign_map_model_retries_transient_second_snapshot(self):
+        backend = make_campaign_map_backend(generations=(10, 11, 12))
+        backend.snapshot_sequence = [
+            make_snapshot(generation=generation)
+            for generation in (10, 11, 12)
+        ]
+        backend.snapshot = make_snapshot(generation=12)
+        backend.ui_sequence[1] = copy.deepcopy(backend.ui_sequence[1])
+        fleet_anchor = next(
+            image
+            for image in backend.ui_sequence[1]["images"]
+            if image["path"].endswith("cell_fleet_two/ammo/bg")
+        )
+        fleet_anchor["anchor_world_position"] = {
+            "x": 99.0,
+            "y": 99.0,
+            "z": -178.0,
+        }
+
+        state = make_oracle(backend).campaign_map_state(
+            "12-4",
+            columns=3,
+            rows=2,
+            land_cells=((1, 0),),
+            expected_fleet_count=2,
+        )
+
+        self.assertEqual(state.generation, 12)
 
     def test_campaign_map_ignores_exact_cleared_enemy_ghost(self):
         backend = make_campaign_map_backend()
@@ -1483,6 +1573,125 @@ class SemanticOracleTests(unittest.TestCase):
         with self.assertRaisesRegex(SemanticGateClosed, "blocked"):
             oracle.click_campaign_map_cell(state, "A1")
         self.assertEqual(backend.taps, [])
+
+    @staticmethod
+    def _arm_campaign_viewport_backend(backend, *, incoherent=False):
+        before_buttons = copy.deepcopy(backend.buttons["buttons"])
+        before_ui = copy.deepcopy(backend.ui)
+
+        def on_swipe():
+            shifted = copy.deepcopy(before_buttons)
+            backend.snapshot_sequence = [
+                make_snapshot(generation=generation)
+                for generation in (12, 13)
+            ]
+            cell_index = 0
+            for button in shifted:
+                if "/quads/chapter_cell_quad_" not in button["path"]:
+                    continue
+                delta = 280 if incoherent and cell_index == 0 else 200
+                cell_index += 1
+                button["adb_point"]["x"] += delta
+                button["adb_bounds"]["left"] += delta
+                button["adb_bounds"]["right"] += delta
+                if button["path"].endswith("chapter_cell_quad_1_1"):
+                    button["raycast_top"] = True
+            backend.buttons_sequence = [
+                make_buttons(copy.deepcopy(shifted), generation=generation)
+                for generation in (12, 13)
+            ]
+            backend.ui_sequence = [
+                dict(copy.deepcopy(before_ui), generation=generation)
+                for generation in (12, 13)
+            ]
+            backend.buttons = make_buttons(shifted, generation=13)
+            backend.ui = dict(copy.deepcopy(before_ui), generation=13)
+            backend.snapshot = make_snapshot(generation=13)
+
+        target = next(
+            button
+            for button in backend.buttons["buttons"]
+            if button["path"].endswith("chapter_cell_quad_1_1")
+        )
+        target["raycast_top"] = False
+        backend.snapshot = make_snapshot(generation=11)
+        backend.on_swipe = on_swipe
+
+    @staticmethod
+    def _campaign_viewport_intent():
+        return CampaignMapViewportSwipeIntent(
+            name="MAP_SWIPE_-2_0",
+            grid_vector=(-2, 0),
+            pixel_vector=(200.0, 0.0),
+            box=(123, 159, 1175, 628),
+            random_range=(0, 0, 0, 0),
+            padding=15,
+            duration_range=(0.1, 0.2),
+            whitelist_areas=(),
+            blacklist_areas=(),
+            distance_check=True,
+        )
+
+    def test_campaign_map_viewport_swipe_proves_same_map_coherent_shift(self):
+        backend = make_campaign_map_backend()
+        oracle = make_oracle(backend)
+        state = oracle.campaign_map_state(
+            "12-4",
+            columns=3,
+            rows=2,
+            land_cells=((1, 0),),
+            expected_fleet_count=2,
+        )
+        self._arm_campaign_viewport_backend(backend)
+
+        proof = oracle.campaign_map_viewport_swipe(
+            state,
+            "A1",
+            self._campaign_viewport_intent(),
+            start=(500, 400),
+            end=(700, 400),
+            duration_ms=375,
+            columns=3,
+            rows=2,
+            land_cells=((1, 0),),
+            expected_fleet_count=2,
+        )
+
+        self.assertEqual(backend.swipes, [(500, 400, 700, 400, 375)])
+        self.assertEqual(proof.semantic_id, "campaign/map/viewport/A1")
+        self.assertEqual(proof.median_cell_delta, (200.0, 0.0))
+        self.assertEqual(proof.coherent_cell_count, 5)
+        self.assertEqual(proof.target_before_point, Point(100.0, 100.0))
+        self.assertEqual(proof.target_after_point, Point(300.0, 100.0))
+        self.assertGreater(proof.post_generation, proof.input_generation)
+
+    def test_campaign_map_viewport_swipe_consumes_input_but_rejects_incoherence(self):
+        backend = make_campaign_map_backend()
+        oracle = make_oracle(backend)
+        state = oracle.campaign_map_state(
+            "12-4",
+            columns=3,
+            rows=2,
+            land_cells=((1, 0),),
+            expected_fleet_count=2,
+        )
+        self._arm_campaign_viewport_backend(backend, incoherent=True)
+
+        with self.assertRaisesRegex(SemanticGateClosed, "incoherent"):
+            oracle.campaign_map_viewport_swipe(
+                state,
+                "A1",
+                self._campaign_viewport_intent(),
+                start=(500, 400),
+                end=(700, 400),
+                duration_ms=375,
+                columns=3,
+                rows=2,
+                land_cells=((1, 0),),
+                expected_fleet_count=2,
+            )
+
+        self.assertEqual(backend.swipes, [(500, 400, 700, 400, 375)])
 
     def test_campaign_map_model_rejects_ambiguous_current_fleet_marker(self):
         backend = make_campaign_map_backend(generations=(10,))
@@ -2436,6 +2645,35 @@ class SemanticOracleTests(unittest.TestCase):
         backend.ui["texts"][0]["text"] = "是否购买资源？"
         self.assertFalse(oracle.enabled("overlay/network-reconnect/confirm"))
 
+    def test_dock_full_prompt_cannot_alias_network_reconnect_input(self):
+        popup = "root/Overlay/UIMain/Msgbox(Clone)/window/"
+        button_path = popup + "button_container/custom_button_1(Clone)"
+        backend = FakeBackend(
+            [
+                make_button("custom_button_1(Clone)", button_path, x, 515)
+                for x in (440, 640, 840)
+            ]
+        )
+        backend.ui = make_ui(
+            [
+                make_text(
+                    "船坞已满，请前往整理或扩展",
+                    popup + "msg_panel/content",
+                ),
+                *[
+                    make_text(label, button_path + "/pic")
+                    for label in ("整 理", "拓 展", "强 化")
+                ],
+            ]
+        )
+        oracle = make_oracle(backend)
+
+        self.assertTrue(oracle.dock_full_prompt_active())
+        self.assertFalse(oracle.enabled("overlay/network-reconnect/confirm"))
+        with self.assertRaisesRegex(SemanticGateClosed, "dock-full prompt"):
+            oracle.click("overlay/network-reconnect/confirm")
+        self.assertEqual(backend.taps, [])
+
     def test_reward_summary_counter_requires_exact_typed_page_identity(self):
         backend = FakeBackend(
             [
@@ -3333,6 +3571,56 @@ class SemanticOracleTests(unittest.TestCase):
 
         self.assertEqual(receipt.path, "root/ShipExpUI(Clone)/skipLayer")
         self.assertEqual(backend.taps, [(640, 360)])
+
+    def test_campaign_total_reward_blocks_background_but_allows_exact_exit(self):
+        backend = FakeBackend(
+            [
+                make_button(
+                    "battle",
+                    "root/LevelMainScene(Clone)/frame/bottom/frame/battle",
+                    1120,
+                    680,
+                ),
+                make_button(
+                    "ButtonExit",
+                    "root/LevelStageTotalRewardPanel(Clone)/Window/Fixed/ButtonExit",
+                    447,
+                    622,
+                ),
+            ]
+        )
+        oracle = make_oracle(backend)
+
+        self.assertFalse(oracle.enabled("main/battle"))
+        self.assertTrue(oracle.enabled("reward/campaign-total/exit"))
+        with self.assertRaises(SemanticGateClosed):
+            oracle.click("main/battle")
+        receipt = oracle.click("reward/campaign-total/exit")
+
+        self.assertEqual(
+            receipt.path,
+            "root/LevelStageTotalRewardPanel(Clone)/Window/Fixed/ButtonExit",
+        )
+        self.assertEqual(backend.taps, [(447, 622)])
+
+    def test_campaign_total_reward_exit_requires_native_top_raycast(self):
+        backend = FakeBackend(
+            [
+                make_button(
+                    "ButtonExit",
+                    "root/LevelStageTotalRewardPanel(Clone)/Window/Fixed/ButtonExit",
+                    447,
+                    622,
+                    raycast_top=None,
+                )
+            ]
+        )
+        oracle = make_oracle(backend)
+
+        self.assertFalse(oracle.enabled("reward/campaign-total/exit"))
+        with self.assertRaises(SemanticGateClosed):
+            oracle.click("reward/campaign-total/exit")
+        self.assertEqual(backend.taps, [])
 
     def test_generation_rollback_fails_closed(self):
         backend = FakeBackend([])

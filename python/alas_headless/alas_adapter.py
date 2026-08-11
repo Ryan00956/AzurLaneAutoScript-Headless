@@ -8,6 +8,7 @@ Chinese game build.  Semantic mode must never fall back to image coordinates.
 from __future__ import annotations
 
 import os
+import math
 import re
 import time
 from dataclasses import dataclass, field, replace
@@ -33,6 +34,8 @@ from .semantic_oracle import (
     CampaignFleetSelectionState,
     CampaignMapEntryState,
     CampaignMapState,
+    CampaignMapViewportSwipeIntent,
+    CampaignMapViewportSwipeProof,
     CampaignPageState,
     CommissionDetailState,
     CommissionRewardProof,
@@ -125,6 +128,7 @@ DEFAULT_ALAS_BUTTON_TARGETS: Mapping[str, str] = {
     "REWARD_GOTO_TACTICAL_WHITE": "reward/tactical/go",
     "LOGIN_ANNOUNCE": "overlay/bulletin/close",
     "LOGIN_ANNOUNCE_2": "overlay/bulletin/close",
+    "AUTO_SEARCH_MENU_EXIT": "reward/campaign-total/exit",
     "POPUP_CANCEL": "overlay/network-reconnect/cancel",
     "POPUP_CONFIRM": "overlay/network-reconnect/confirm",
     "POPUP_CONFIRM_UI_ADDITIONAL": "overlay/network-reconnect/confirm",
@@ -272,6 +276,8 @@ CAMPAIGN_VIRTUAL_RESOURCES = frozenset(
         "BACK_ARROW",
         "SWITCH_1_NORMAL",
         "SWITCH_1_HARD",
+        "SWITCH_2_HARD",
+        "SWITCH_2_EX",
         "GOTO_MAIN",
         "IN_MAP",
         "MAP_PREPARATION",
@@ -587,12 +593,16 @@ class _CampaignFlowContext:
     map_entry_state: Optional[CampaignMapEntryState] = None
     sortie_proof: Optional[CampaignSortieProof] = None
     combat_budget: int = 0
+    viewport_swipe_budget: int = 0
     map_state: Optional[CampaignMapState] = None
     map_columns: Optional[int] = None
     map_rows: Optional[int] = None
     map_land_cells: Tuple[Tuple[int, int], ...] = ()
     map_expected_fleet_count: Optional[int] = None
     combat_admission: Optional[AlasCampaignCombatAdmission] = None
+    viewport_swipe_required: bool = False
+    viewport_swipe_intent: Optional[CampaignMapViewportSwipeIntent] = None
+    viewport_swipe_proof: Optional[CampaignMapViewportSwipeProof] = None
     combat_receipt: Optional[ActionReceipt] = None
     combat_proof: Optional[AlasCampaignCombatProof] = None
     passive_transition_until: float = 0.0
@@ -649,6 +659,7 @@ class AlasSemanticAdapter:
         campaign_fleet_mutation_budget: int = 0,
         campaign_sortie_budget: int = 0,
         campaign_combat_budget: int = 0,
+        campaign_viewport_swipe_budget: int = 0,
     ) -> None:
         if package_gate is None:
             raise ValueError("semantic ALAS mode requires a package identity gate")
@@ -676,6 +687,7 @@ class AlasSemanticAdapter:
             ("campaign fleet mutation", campaign_fleet_mutation_budget),
             ("campaign sortie", campaign_sortie_budget),
             ("campaign combat", campaign_combat_budget),
+            ("campaign viewport swipe", campaign_viewport_swipe_budget),
         ):
             if (
                 isinstance(budget, bool)
@@ -697,6 +709,7 @@ class AlasSemanticAdapter:
         self._campaign_fleet_mutation_budget = campaign_fleet_mutation_budget
         self._campaign_sortie_budget = campaign_sortie_budget
         self._campaign_combat_budget = campaign_combat_budget
+        self._campaign_viewport_swipe_budget = campaign_viewport_swipe_budget
         self._mission_context: Optional[_MissionFlowContext] = None
         self._login_context: Optional[_LoginFlowContext] = None
         self._mail_context: Optional[_MailFlowContext] = None
@@ -992,6 +1005,7 @@ class AlasSemanticAdapter:
             fleet_mutation_budget=self._campaign_fleet_mutation_budget,
             sortie_budget=self._campaign_sortie_budget,
             combat_budget=self._campaign_combat_budget,
+            viewport_swipe_budget=self._campaign_viewport_swipe_budget,
             passive_transition_until=time.monotonic() + 20.0,
         )
 
@@ -1326,7 +1340,8 @@ class AlasSemanticAdapter:
         except SemanticGateClosed:
             if (
                 (
-                    context.map_preparation_receipt is not None
+                    context.entry_receipt is not None
+                    or context.map_preparation_receipt is not None
                     or context.cancel_receipt is not None
                     or context.sortie_receipt is not None
                 )
@@ -1756,7 +1771,18 @@ class AlasSemanticAdapter:
         try:
             result = self._appear_once(button)
         except SemanticGateClosed as exc:
-            if str(exc) != "observer snapshot is stale":
+            message = str(exc)
+            transient = message in (
+                "observer snapshot is stale",
+                "observer endpoints are not generation-coherent",
+                "Msgbox snapshots are not coherent",
+            )
+            if (
+                message == "game activity is not top-resumed"
+                and self._login_context is not None
+            ):
+                transient = True
+            if not transient:
                 raise
             now = time.monotonic()
             if self._observer_stale_since is None:
@@ -1781,8 +1807,23 @@ class AlasSemanticAdapter:
                 or name != campaign_stage_code
             ):
                 raise SemanticGateClosed("campaign stage identity changed")
-            return self.oracle.campaign_stage_actionable(campaign_stage_code)
+            try:
+                return self.oracle.campaign_stage_actionable(campaign_stage_code)
+            except SemanticGateClosed:
+                if (
+                    context.entry_receipt is not None
+                    and time.monotonic() <= context.passive_transition_until
+                ):
+                    return False
+                raise
         semantic_id = self._mappings.get(name)
+        if (
+            self._login_context is not None
+            and semantic_id == "login/enter"
+            and self._login_context.entry_receipt is not None
+            and time.monotonic() <= self._login_context.passive_transition_until
+        ):
+            return False
         if (
             semantic_id is None
             and name not in MISSION_VIRTUAL_RESOURCES
@@ -1940,16 +1981,26 @@ class AlasSemanticAdapter:
             expected = "normal" if name == "SWITCH_1_NORMAL" else "hard"
             return self.oracle.campaign_mode_switch_state() == expected
         if self._campaign_context is not None and name in (
+            "SWITCH_2_HARD",
+            "SWITCH_2_EX",
+        ):
+            # Main campaign chapters expose only the normal/hard switch.  The
+            # second switch belongs to event EX pages and is presence-only in
+            # ALAS' generic ModeSwitch probe.
+            return False
+        if self._campaign_context is not None and name in (
             "MAP_PREPARATION",
             "FLEET_PREPARATION",
             "MAP_PREPARATION_CANCEL",
         ):
+            if (
+                name == "MAP_PREPARATION"
+                and self._campaign_context.map_preparation_receipt is not None
+            ):
+                return False
             kind = self._campaign_preparation_kind()
             if name == "MAP_PREPARATION":
-                return bool(
-                    kind == "map"
-                    and self._campaign_context.map_preparation_receipt is None
-                )
+                return kind == "map"
             if name == "FLEET_PREPARATION":
                 if kind != "fleet":
                     return False
@@ -2565,7 +2616,24 @@ class AlasSemanticAdapter:
 
     def campaign_page_state(self) -> CampaignPageState:
         self._package_gate()
-        return self.oracle.campaign_page_state()
+        last_error = None
+        for _ in range(4):
+            try:
+                state = self.oracle.campaign_page_state()
+                if self._campaign_context is not None:
+                    self._campaign_context.passive_transition_until = (
+                        time.monotonic() + 20.0
+                    )
+                return state
+            except SemanticGateClosed as exc:
+                if str(exc) not in (
+                    "observer endpoints are not generation-coherent",
+                    "campaign snapshots are not coherent",
+                ):
+                    raise
+                last_error = exc
+        assert last_error is not None
+        raise last_error
 
     def campaign_oil(self) -> int:
         self._package_gate()
@@ -2626,7 +2694,14 @@ class AlasSemanticAdapter:
             raise SemanticGateClosed("campaign combat admission is single-use")
         if context.map_state is not state:
             raise SemanticGateClosed("campaign combat map state is not current")
-        target = self.oracle.campaign_map_cell_input(state, decision.target_node)
+        target = self.oracle.campaign_map_cell_viewport_target(
+            state, decision.target_node
+        )
+        viewport_required = target.raycast_top is not True
+        if viewport_required and context.viewport_swipe_budget != 1:
+            raise SemanticGateClosed(
+                "campaign combat covered target requires one viewport swipe budget"
+            )
         admission = prepare_alas_campaign_combat_admission(
             decision,
             state,
@@ -2639,7 +2714,264 @@ class AlasSemanticAdapter:
         ):
             raise SemanticGateClosed("campaign combat target changed during preflight")
         context.combat_admission = admission
+        context.viewport_swipe_required = viewport_required
         return admission
+
+    @staticmethod
+    def _campaign_swipe_pair(value: Any, label: str) -> Tuple[float, float]:
+        try:
+            pair = tuple(value)
+        except TypeError as exc:
+            raise SemanticGateClosed(label + " is malformed") from exc
+        if len(pair) != 2 or any(
+            isinstance(item, bool)
+            or not isinstance(item, (int, float))
+            or not math.isfinite(float(item))
+            for item in pair
+        ):
+            raise SemanticGateClosed(label + " is malformed")
+        return float(pair[0]), float(pair[1])
+
+    @staticmethod
+    def _campaign_swipe_box(
+        value: Any, label: str
+    ) -> Tuple[float, float, float, float]:
+        try:
+            area = tuple(value)
+        except TypeError as exc:
+            raise SemanticGateClosed(label + " is malformed") from exc
+        if len(area) != 4 or any(
+            isinstance(item, bool)
+            or not isinstance(item, (int, float))
+            or not math.isfinite(float(item))
+            for item in area
+        ):
+            raise SemanticGateClosed(label + " is malformed")
+        result = tuple(float(item) for item in area)
+        if result[0] >= result[2] or result[1] >= result[3]:
+            raise SemanticGateClosed(label + " is empty")
+        return result
+
+    @classmethod
+    def _campaign_swipe_areas(
+        cls, value: Any, label: str
+    ) -> Tuple[Tuple[float, float, float, float], ...]:
+        if value is None:
+            return ()
+        try:
+            areas = tuple(value)
+        except TypeError as exc:
+            raise SemanticGateClosed(label + " is malformed") from exc
+        if len(areas) > 128:
+            raise SemanticGateClosed(label + " is too large")
+        return tuple(cls._campaign_swipe_box(area, label) for area in areas)
+
+    def begin_campaign_map_swipe_vector(
+        self,
+        vector: Any,
+        *,
+        box: Any,
+        random_range: Any,
+        padding: Any,
+        duration: Any,
+        whitelist_area: Any,
+        blacklist_area: Any,
+        name: Any,
+        distance_check: Any,
+    ) -> CampaignMapViewportSwipeIntent:
+        """Authorize ALAS's complete map-swipe selection, but no raw input."""
+
+        self._package_gate()
+        context = self._require_campaign_context()
+        if (
+            not context.viewport_swipe_required
+            or context.viewport_swipe_budget != 1
+            or context.combat_admission is None
+            or context.map_state is None
+            or context.viewport_swipe_intent is not None
+            or context.viewport_swipe_proof is not None
+            or context.combat_receipt is not None
+        ):
+            raise SemanticGateClosed("campaign map viewport swipe is not authorized")
+        if not isinstance(name, str):
+            raise SemanticGateClosed("campaign map viewport swipe name is malformed")
+        match = re.fullmatch(r"MAP_SWIPE_(-?[0-9]+)_(-?[0-9]+)", name)
+        if match is None:
+            raise SemanticGateClosed("campaign map viewport swipe name is not canonical")
+        grid_vector = tuple(int(item) for item in match.groups())
+        if (
+            abs(grid_vector[0]) > 4
+            or abs(grid_vector[1]) > 3
+            or grid_vector == (0, 0)
+        ):
+            raise SemanticGateClosed("campaign map viewport grid vector is outside ALAS limits")
+        pixel_vector = self._campaign_swipe_pair(
+            vector, "campaign map viewport pixel vector"
+        )
+        if not 10.0 <= math.hypot(*pixel_vector) <= 1200.0:
+            raise SemanticGateClosed("campaign map viewport pixel vector is outside limits")
+        for grid, pixel in zip(grid_vector, pixel_vector):
+            if (grid == 0 and abs(pixel) > 1.0) or (grid != 0 and grid * pixel >= 0.0):
+                raise SemanticGateClosed(
+                    "campaign map viewport pixel vector disagrees with ALAS"
+                )
+        exact_box = self._campaign_swipe_box(box, "campaign map viewport box")
+        if exact_box != (123.0, 159.0, 1175.0, 628.0):
+            raise SemanticGateClosed("campaign map viewport box changed")
+        try:
+            exact_random_values = tuple(random_range)
+        except TypeError as exc:
+            raise SemanticGateClosed(
+                "campaign map viewport random range is malformed"
+            ) from exc
+        if len(exact_random_values) != 4 or any(
+            isinstance(item, bool)
+            or not isinstance(item, (int, float))
+            or not math.isfinite(float(item))
+            for item in exact_random_values
+        ):
+            raise SemanticGateClosed(
+                "campaign map viewport random range is malformed"
+            )
+        exact_random = tuple(float(item) for item in exact_random_values)
+        if exact_random != (0.0, 0.0, 0.0, 0.0):
+            raise SemanticGateClosed("campaign map viewport random range changed")
+        if isinstance(padding, bool) or not isinstance(padding, int) or padding != 15:
+            raise SemanticGateClosed("campaign map viewport padding changed")
+        duration_range = self._campaign_swipe_pair(
+            duration, "campaign map viewport duration"
+        )
+        if duration_range != (0.1, 0.2):
+            raise SemanticGateClosed("campaign map viewport duration changed")
+        if distance_check is not True:
+            raise SemanticGateClosed("campaign map viewport distance check is disabled")
+        intent = CampaignMapViewportSwipeIntent(
+            name=name,
+            grid_vector=grid_vector,
+            pixel_vector=pixel_vector,
+            box=tuple(int(item) for item in exact_box),
+            random_range=tuple(int(item) for item in exact_random),
+            padding=padding,
+            duration_range=duration_range,
+            whitelist_areas=self._campaign_swipe_areas(
+                whitelist_area, "campaign map viewport whitelist"
+            ),
+            blacklist_areas=self._campaign_swipe_areas(
+                blacklist_area, "campaign map viewport blacklist"
+            ),
+            distance_check=True,
+        )
+        context.viewport_swipe_intent = intent
+        return intent
+
+    def end_campaign_map_swipe_vector(
+        self, intent: CampaignMapViewportSwipeIntent
+    ) -> None:
+        context = self._require_campaign_context()
+        if context.viewport_swipe_intent is not intent:
+            raise SemanticGateClosed("campaign map viewport swipe token changed")
+        context.viewport_swipe_intent = None
+
+    @staticmethod
+    def _campaign_point_in_area(
+        point: Tuple[int, int], area: Tuple[float, float, float, float]
+    ) -> bool:
+        return area[0] <= point[0] <= area[2] and area[1] <= point[1] <= area[3]
+
+    def swipe(
+        self,
+        p1: Any,
+        p2: Any,
+        *,
+        duration: Any,
+        name: Any,
+        distance_check: Any,
+    ) -> CampaignMapViewportSwipeProof:
+        """Replace only the final dispatch of one armed ALAS map swipe."""
+
+        self._package_gate()
+        context = self._require_campaign_context()
+        intent = context.viewport_swipe_intent
+        if intent is None:
+            self.reject_raw_input("swipe")
+        assert intent is not None
+        if name != intent.name or distance_check is not True:
+            raise SemanticGateClosed("campaign map viewport final input changed")
+        start_pair = self._campaign_swipe_pair(p1, "campaign map viewport start")
+        end_pair = self._campaign_swipe_pair(p2, "campaign map viewport end")
+        if any(not float(item).is_integer() for item in (*start_pair, *end_pair)):
+            raise SemanticGateClosed("campaign map viewport endpoints are not integral")
+        start = tuple(int(item) for item in start_pair)
+        end = tuple(int(item) for item in end_pair)
+        left, top, right, bottom = intent.box
+        if any(
+            not (left <= point[0] <= right and top <= point[1] <= bottom)
+            for point in (start, end)
+        ):
+            raise SemanticGateClosed("campaign map viewport endpoint left its box")
+        expected_delta = tuple(int(round(value)) for value in intent.pixel_vector)
+        if (end[0] - start[0], end[1] - start[1]) != expected_delta:
+            raise SemanticGateClosed("campaign map viewport selected vector changed")
+        if intent.whitelist_areas and not any(
+            self._campaign_point_in_area(end, area)
+            for area in intent.whitelist_areas
+        ):
+            raise SemanticGateClosed("campaign map viewport endpoint left its whitelist")
+        segment_count = int(math.hypot(*expected_delta) // 70) + 1
+        for index in range(segment_count + 1):
+            point = (
+                int(round(end[0] - expected_delta[0] * index / segment_count)),
+                int(round(end[1] - expected_delta[1] * index / segment_count)),
+            )
+            if any(
+                self._campaign_point_in_area(point, area)
+                for area in intent.blacklist_areas
+            ):
+                raise SemanticGateClosed("campaign map viewport path entered its blacklist")
+        if (
+            isinstance(duration, bool)
+            or not isinstance(duration, (int, float))
+            or not math.isfinite(float(duration))
+            or not 0.20 <= float(duration) <= 0.60
+        ):
+            raise SemanticGateClosed("campaign map viewport final duration changed")
+        if (
+            context.viewport_swipe_budget != 1
+            or context.map_state is None
+            or context.map_columns is None
+            or context.map_rows is None
+            or context.map_expected_fleet_count is None
+            or context.combat_admission is None
+        ):
+            raise SemanticGateClosed("campaign map viewport lease is incomplete")
+
+        context.viewport_swipe_budget -= 1
+        proof = self.oracle.campaign_map_viewport_swipe(
+            context.map_state,
+            context.combat_admission.target_node,
+            intent,
+            start=start,
+            end=end,
+            duration_ms=int(round(float(duration) * 1000.0)),
+            columns=context.map_columns,
+            rows=context.map_rows,
+            land_cells=context.map_land_cells,
+            expected_fleet_count=context.map_expected_fleet_count,
+        )
+        context.viewport_swipe_proof = proof
+        context.viewport_swipe_required = False
+        context.map_state = proof.post_state
+        context.combat_admission = replace(
+            context.combat_admission,
+            input_generation=proof.post_generation,
+            point=proof.target_after_point,
+            bounds=proof.target_after_bounds,
+        )
+        return proof
+
+    def campaign_map_viewport_swipe_committed(self) -> bool:
+        context = self._require_campaign_context()
+        return context.viewport_swipe_proof is not None
 
     @staticmethod
     def _campaign_grid_location(button: Any) -> Optional[Tuple[int, int]]:
@@ -2677,6 +3009,10 @@ class AlasSemanticAdapter:
         location = self._campaign_grid_location(button)
         if admission is None or location is None or context.map_state is None:
             raise SemanticGateClosed("campaign combat grid input is not authorized")
+        if context.viewport_swipe_required:
+            raise SemanticGateClosed(
+                "campaign combat grid input requires proven viewport movement"
+            )
         node = self._campaign_node(location)
         if node != admission.target_node:
             raise SemanticGateClosed("campaign combat grid target changed")
@@ -3309,15 +3645,22 @@ class AlasSemanticAdapter:
                 raise SemanticGateClosed(
                     "campaign map-preparation transition is single-use"
                 )
-            if self._campaign_preparation_kind() != "map":
+            preparation_kind = self._campaign_preparation_kind()
+            if preparation_kind not in (None, "map"):
                 raise SemanticGateClosed(
                     "campaign map preparation is not the active layer"
                 )
+            # `appear(MAP_PREPARATION)` and this input call are separate ALAS
+            # operations.  During the bounded post-entry transition the
+            # adapter may get one incoherent read here and report no kind.
+            # The oracle action below performs a fresh, exact page/stage/
+            # raycast proof immediately before input, so let that final proof
+            # decide rather than failing on the advisory pre-read.
             receipt = self.oracle.click_campaign_map_preparation(
                 context.stage_code
             )
             context.map_preparation_receipt = receipt
-            context.passive_transition_until = time.monotonic() + 20.0
+            context.passive_transition_until = time.monotonic() + 60.0
             return receipt
         if (
             self._campaign_context is not None
@@ -3828,8 +4171,17 @@ class AlasSemanticAdapter:
             if semantic_id == "main/more" and self._mission_context is not None:
                 self._mission_context.summary_entry_clicked = True
                 self._mission_context.summary_entry_receipt = receipt
-            if semantic_id == "login/enter" and self._login_context is not None:
-                self._login_context.entry_receipt = receipt
+            if (
+                self._login_context is not None
+                and semantic_id in (
+                    "login/enter",
+                    "overlay/bulletin/close",
+                    "reward/award-info/close",
+                    "reward/award-info1/close",
+                )
+            ):
+                if semantic_id == "login/enter":
+                    self._login_context.entry_receipt = receipt
                 self._login_context.passive_transition_until = (
                     time.monotonic() + 20.0
                 )
@@ -4323,6 +4675,7 @@ class AlasSemanticSession:
         campaign_fleet_mutation_budget: int = 0,
         campaign_sortie_budget: int = 0,
         campaign_combat_budget: int = 0,
+        campaign_viewport_swipe_budget: int = 0,
         adb_command_timeout_seconds: int = 10,
         observer_max_age_ms: int = 2500,
         package_process_lease: Optional[AlasPackageProcessLease] = None,
@@ -4367,6 +4720,7 @@ class AlasSemanticSession:
             ("campaign fleet mutation", campaign_fleet_mutation_budget),
             ("campaign sortie", campaign_sortie_budget),
             ("campaign combat", campaign_combat_budget),
+            ("campaign viewport swipe", campaign_viewport_swipe_budget),
         ):
             if (
                 isinstance(budget, bool)
@@ -4388,6 +4742,7 @@ class AlasSemanticSession:
         self.campaign_fleet_mutation_budget = campaign_fleet_mutation_budget
         self.campaign_sortie_budget = campaign_sortie_budget
         self.campaign_combat_budget = campaign_combat_budget
+        self.campaign_viewport_swipe_budget = campaign_viewport_swipe_budget
         self.package_process_lease = package_process_lease
         self.observer_max_age_ms = observer_max_age_ms
         self.bridge = AdbObserverBridge(
@@ -4443,6 +4798,9 @@ class AlasSemanticSession:
         raw_campaign_combat_budget = os.environ.get(
             "ALAS_SEMANTIC_CAMPAIGN_COMBAT_BUDGET", "0"
         )
+        raw_campaign_viewport_swipe_budget = os.environ.get(
+            "ALAS_SEMANTIC_CAMPAIGN_VIEWPORT_SWIPE_BUDGET", "0"
+        )
         for label, value in (
             ("ADB command timeout", raw_adb_timeout),
             ("tactical assign", raw_tactical_assign_budget),
@@ -4457,6 +4815,7 @@ class AlasSemanticSession:
             ("campaign fleet mutation", raw_campaign_fleet_mutation_budget),
             ("campaign sortie", raw_campaign_sortie_budget),
             ("campaign combat", raw_campaign_combat_budget),
+            ("campaign viewport swipe", raw_campaign_viewport_swipe_budget),
         ):
             if re.fullmatch(r"0|[1-9][0-9]*", value) is None:
                 raise SemanticGateClosed(
@@ -4495,6 +4854,9 @@ class AlasSemanticSession:
             ),
             campaign_sortie_budget=int(raw_campaign_sortie_budget),
             campaign_combat_budget=int(raw_campaign_combat_budget),
+            campaign_viewport_swipe_budget=int(
+                raw_campaign_viewport_swipe_budget
+            ),
             adb_command_timeout_seconds=int(raw_adb_timeout),
         )
 
@@ -4548,6 +4910,9 @@ class AlasSemanticSession:
                 ),
                 campaign_sortie_budget=self.campaign_sortie_budget,
                 campaign_combat_budget=self.campaign_combat_budget,
+                campaign_viewport_swipe_budget=(
+                    self.campaign_viewport_swipe_budget
+                ),
             )
             return self.adapter
         except Exception:
@@ -4690,6 +5055,36 @@ class AlasSemanticSession:
         battle_count_after: int,
     ) -> AlasCampaignCombatProof:
         return self.open().confirm_campaign_combat(battle_count_after)
+
+    def begin_campaign_map_swipe_vector(
+        self, vector: Any, **kwargs: Any
+    ) -> CampaignMapViewportSwipeIntent:
+        return self.open().begin_campaign_map_swipe_vector(vector, **kwargs)
+
+    def end_campaign_map_swipe_vector(
+        self, intent: CampaignMapViewportSwipeIntent
+    ) -> None:
+        self.open().end_campaign_map_swipe_vector(intent)
+
+    def swipe(
+        self,
+        p1: Any,
+        p2: Any,
+        *,
+        duration: Any,
+        name: Any,
+        distance_check: Any,
+    ) -> CampaignMapViewportSwipeProof:
+        return self.open().swipe(
+            p1,
+            p2,
+            duration=duration,
+            name=name,
+            distance_check=distance_check,
+        )
+
+    def campaign_map_viewport_swipe_committed(self) -> bool:
+        return self.open().campaign_map_viewport_swipe_committed()
 
     def campaign_stage_entry_allowed(self) -> bool:
         return self.open().campaign_stage_entry_allowed()

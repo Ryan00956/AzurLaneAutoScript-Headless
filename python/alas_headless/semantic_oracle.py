@@ -540,6 +540,47 @@ class CampaignMapState:
         )
 
 
+@dataclass(frozen=True)
+class CampaignMapViewportSwipeIntent:
+    """One ALAS-produced map swipe before its final input dispatch."""
+
+    name: str
+    grid_vector: Tuple[int, int]
+    pixel_vector: Tuple[float, float]
+    box: Tuple[int, int, int, int]
+    random_range: Tuple[int, int, int, int]
+    padding: int
+    duration_range: Tuple[float, float]
+    whitelist_areas: Tuple[Tuple[float, float, float, float], ...]
+    blacklist_areas: Tuple[Tuple[float, float, float, float], ...]
+    distance_check: bool
+
+
+@dataclass(frozen=True)
+class CampaignMapViewportSwipeProof:
+    """Same-map proof for one already-injected ALAS viewport gesture."""
+
+    semantic_id: str
+    target_node: str
+    pre_generation: int
+    input_generation: int
+    post_generation: int
+    name: str
+    grid_vector: Tuple[int, int]
+    pixel_vector: Tuple[float, float]
+    start: Tuple[int, int]
+    end: Tuple[int, int]
+    duration_ms: int
+    coherent_cell_count: int
+    median_cell_delta: Tuple[float, float]
+    maximum_delta_residual: float
+    target_path: str
+    target_before_point: Point
+    target_after_point: Point
+    target_after_bounds: Bounds
+    post_state: CampaignMapState
+
+
 class ResearchProjectStatus(str, Enum):
     DETAIL = "detail"
     RUNNING = "running"
@@ -1167,6 +1208,11 @@ DEFAULT_TARGETS: Tuple[SemanticTarget, ...] = (
         "skipLayer",
         "ShipExpUI(Clone)/skipLayer",
     ),
+    SemanticTarget(
+        "reward/campaign-total/exit",
+        "ButtonExit",
+        "LevelStageTotalRewardPanel(Clone)/Window/Fixed/ButtonExit",
+    ),
 )
 
 
@@ -1363,6 +1409,11 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
         ("reward/ship-exp/close",),
     ),
     BlockerRule(
+        "campaign-total-reward",
+        "/LevelStageTotalRewardPanel(Clone)/",
+        ("reward/campaign-total/exit",),
+    ),
+    BlockerRule(
         "mail-manager",
         "/MailMgrMsgboxUI(Clone)/",
         (
@@ -1467,6 +1518,7 @@ DEFAULT_BLOCKERS: Tuple[BlockerRule, ...] = (
             "campaign/map-preparation/proceed",
             "campaign/map-preparation/cancel",
             "campaign/fleet-preparation/cancel",
+            "reward/campaign-total/exit",
             *_CAMPAIGN_FLEET_INPUT_TARGETS,
         ),
     ),
@@ -3918,10 +3970,11 @@ class SemanticOracle:
                 "chetui_butten",
             ),
         )
-        preparation_markers = (
+        blocking_scene_markers = (
             "/LevelMainScene(Clone)/",
             "/LevelStageInfoView(Clone)/",
             "/LevelFleetSelectView(Clone)/",
+            "/CombatUIStandard(Clone)/",
         )
         active_buttons = tuple(
             button
@@ -3977,12 +4030,12 @@ class SemanticOracle:
         fixed_button_paths = (*retreat_button_paths, stage_back_button_path)
         if any(
             marker in item.path
-            for marker in preparation_markers
+            for marker in blocking_scene_markers
             for item in (*button_state.buttons, *ui_state.texts)
             if item.active_in_hierarchy and item.active_and_enabled
         ):
             raise SemanticGateClosed(
-                "campaign map and preparation identities overlap"
+                "campaign map and blocking identities overlap"
             )
         return CampaignMapEntryState(
             generation=button_state.generation,
@@ -4070,7 +4123,9 @@ class SemanticOracle:
         previous = self._retry_transition_read(reader, attempts=12)
         for _ in range(11):
             self._sleep(0.25)
-            current = self._retry_transition_read(reader, attempts=1)
+            current = self._retry_transition_read(
+                reader, attempts=12, interval_seconds=0.05
+            )
             if (
                 current.generation > previous.generation
                 and current.signature == previous.signature
@@ -4079,19 +4134,13 @@ class SemanticOracle:
             previous = current
         raise SemanticGateClosed("campaign map model did not stabilize")
 
-    def campaign_map_cell_input(
+    def _campaign_map_cell_target(
         self,
         state: CampaignMapState,
         node: str,
+        *,
+        require_top_raycast: bool,
     ) -> ButtonState:
-        """Revalidate one exact actionable map cell without injecting input.
-
-        A map-cell quad may be active while its center is covered by the map
-        HUD.  Requiring the exact cell to remain the top raycast target keeps
-        the semantic coordinate fail-closed; a covered center must be exposed
-        by the owning ALAS camera state machine before it can be clicked.
-        """
-
         if not isinstance(state, CampaignMapState):
             raise SemanticGateClosed("campaign map-cell input requires a typed state")
         matches = tuple(cell for cell in state.cells if cell.node == node)
@@ -4108,19 +4157,184 @@ class SemanticOracle:
             raise SemanticGateClosed("campaign map-cell Button identity changed")
         target = buttons[0]
         if (
-            not target.actionable
+            not target.active_in_hierarchy
+            or not target.active_and_enabled
+            or not target.interactable
+            or target.raycast_top not in (True, False)
+            or target.point is None
+            or target.bounds is None
+            or not target.bounds.contains(target.point)
             or target.point != cell.point
             or target.bounds != cell.bounds
         ):
             raise SemanticGateClosed("campaign map-cell geometry or actionability changed")
+        if require_top_raycast and target.raycast_top is not True:
+            raise SemanticGateClosed("campaign map-cell geometry or actionability changed")
         if self._blocking_rules(observed, "campaign/map/grid"):
             raise SemanticGateClosed("campaign map-cell input is blocked")
-        if not (
+        if require_top_raycast and not (
             0 <= target.point.x < self.fingerprint.width
             and 0 <= target.point.y < self.fingerprint.height
         ):
             raise SemanticGateClosed("campaign map-cell point is outside the screen")
         return target
+
+    def campaign_map_cell_viewport_target(
+        self,
+        state: CampaignMapState,
+        node: str,
+    ) -> ButtonState:
+        """Revalidate exact cell geometry while allowing a covered center.
+
+        This read is only an input to the owning ALAS camera state machine.  A
+        false top-raycast result is preserved and can authorize one viewport
+        movement, but it can never authorize the eventual grid tap.
+        """
+
+        return self._campaign_map_cell_target(
+            state, node, require_top_raycast=False
+        )
+
+    def campaign_map_cell_input(
+        self,
+        state: CampaignMapState,
+        node: str,
+    ) -> ButtonState:
+        """Revalidate one exact actionable map cell without injecting input.
+
+        A map-cell quad may be active while its center is covered by the map
+        HUD.  Requiring the exact cell to remain the top raycast target keeps
+        the semantic coordinate fail-closed; a covered center must be exposed
+        by the owning ALAS camera state machine before it can be clicked.
+        """
+
+        return self._campaign_map_cell_target(
+            state, node, require_top_raycast=True
+        )
+
+    @staticmethod
+    def _median(values: Sequence[float]) -> float:
+        ordered = sorted(values)
+        middle = len(ordered) // 2
+        if len(ordered) % 2:
+            return float(ordered[middle])
+        return float((ordered[middle - 1] + ordered[middle]) / 2.0)
+
+    def campaign_map_viewport_swipe(
+        self,
+        state: CampaignMapState,
+        target_node: str,
+        intent: CampaignMapViewportSwipeIntent,
+        *,
+        start: Tuple[int, int],
+        end: Tuple[int, int],
+        duration_ms: int,
+        columns: int,
+        rows: int,
+        land_cells: Sequence[Tuple[int, int]],
+        expected_fleet_count: int,
+    ) -> CampaignMapViewportSwipeProof:
+        """Inject and prove one typed ALAS-requested campaign viewport swipe."""
+
+        if self._swipe is None:
+            raise SemanticGateClosed("campaign map viewport input backend is absent")
+        if not isinstance(intent, CampaignMapViewportSwipeIntent):
+            raise SemanticGateClosed("campaign map viewport intent is not typed")
+        before_target = self.campaign_map_cell_viewport_target(state, target_node)
+        if before_target.raycast_top is not False:
+            raise SemanticGateClosed(
+                "campaign map viewport movement requires a covered target"
+            )
+        if self._foreground_component() != self.fingerprint.component:
+            raise SemanticGateClosed("foreground changed immediately before input")
+        input_generation = self._last_generation or state.generation
+
+        # This is the only state-changing statement in the method.  Callers
+        # consume their one-use lease before entering here, so a failed
+        # postcondition can never replay the gesture.
+        self._swipe(start[0], start[1], end[0], end[1], duration_ms)
+
+        post_state = self.campaign_map_state(
+            state.stage_code,
+            columns=columns,
+            rows=rows,
+            land_cells=land_cells,
+            expected_fleet_count=expected_fleet_count,
+        )
+        if post_state.generation <= input_generation:
+            raise SemanticGateClosed("campaign map viewport post-state predates input")
+        if post_state.signature != state.signature:
+            raise SemanticGateClosed("campaign map viewport changed logical map state")
+        after_target = self.campaign_map_cell_input(post_state, target_node)
+        if after_target.path != before_target.path:
+            raise SemanticGateClosed("campaign map viewport target identity changed")
+
+        before_cells = {cell.node: cell for cell in state.cells}
+        after_cells = {cell.node: cell for cell in post_state.cells}
+        if set(before_cells) != set(after_cells) or len(before_cells) < 4:
+            raise SemanticGateClosed("campaign map viewport cell set changed")
+        deltas = tuple(
+            (
+                after_cells[node].point.x - before_cells[node].point.x,
+                after_cells[node].point.y - before_cells[node].point.y,
+            )
+            for node in sorted(before_cells)
+        )
+        median_dx = self._median(tuple(delta[0] for delta in deltas))
+        median_dy = self._median(tuple(delta[1] for delta in deltas))
+        median_norm = math.hypot(median_dx, median_dy)
+        finger_dx = float(end[0] - start[0])
+        finger_dy = float(end[1] - start[1])
+        finger_norm = math.hypot(finger_dx, finger_dy)
+        if finger_norm < 10.0 or median_norm < 10.0:
+            raise SemanticGateClosed("campaign map viewport did not move")
+        alignment = (
+            median_dx * finger_dx + median_dy * finger_dy
+        ) / (median_norm * finger_norm)
+        if alignment < 0.75:
+            raise SemanticGateClosed(
+                "campaign map viewport moved against the ALAS gesture"
+            )
+        residuals = tuple(
+            math.hypot(dx - median_dx, dy - median_dy) for dx, dy in deltas
+        )
+        maximum_residual = max(residuals)
+        if maximum_residual > max(12.0, median_norm * 0.20):
+            raise SemanticGateClosed(
+                "campaign map viewport cell displacement is incoherent"
+            )
+        if any(
+            dx * median_dx + dy * median_dy <= 0.0 for dx, dy in deltas
+        ):
+            raise SemanticGateClosed(
+                "campaign map viewport contains a contradictory cell displacement"
+            )
+        assert before_target.point is not None
+        assert after_target.point is not None and after_target.bounds is not None
+        if after_target.point == before_target.point:
+            raise SemanticGateClosed("campaign map viewport target did not move")
+
+        return CampaignMapViewportSwipeProof(
+            semantic_id="campaign/map/viewport/" + target_node,
+            target_node=target_node,
+            pre_generation=state.generation,
+            input_generation=input_generation,
+            post_generation=post_state.generation,
+            name=intent.name,
+            grid_vector=intent.grid_vector,
+            pixel_vector=intent.pixel_vector,
+            start=start,
+            end=end,
+            duration_ms=duration_ms,
+            coherent_cell_count=len(deltas),
+            median_cell_delta=(median_dx, median_dy),
+            maximum_delta_residual=maximum_residual,
+            target_path=after_target.path,
+            target_before_point=before_target.point,
+            target_after_point=after_target.point,
+            target_after_bounds=after_target.bounds,
+            post_state=post_state,
+        )
 
     def click_campaign_map_cell(
         self,
@@ -4551,8 +4765,12 @@ class SemanticOracle:
 
         try:
             self._campaign_map_entry_state_once()
-        except SemanticGateClosed:
-            pass
+        except SemanticGateClosed as exc:
+            if str(exc) in (
+                "campaign map and blocking identities overlap",
+                "campaign map and preparation identities overlap",
+            ):
+                return False
         else:
             return True
 
@@ -4586,6 +4804,19 @@ class SemanticOracle:
 
     def campaign_page_state(self) -> CampaignPageState:
         """Read the visible chapter and stage labels without enabling a stage click."""
+
+        # The three observer endpoints are independently refreshed on the
+        # Unity main thread.  Keep the original <=2-generation contract, but
+        # sample long enough to obtain one actually coherent pair under the
+        # campaign page's heavier UI collection load.
+        return self._retry_transition_read(
+            self._campaign_page_state_once,
+            attempts=12,
+            interval_seconds=0.05,
+        )
+
+    def _campaign_page_state_once(self) -> CampaignPageState:
+        """Read one generation-coherent campaign chapter view."""
 
         button_state = self.read_state()
         back = self._unique(button_state, "campaign-menu/page/back")
@@ -4742,6 +4973,10 @@ class SemanticOracle:
             self.campaign_page_state()
         except SemanticTargetMissing:
             return False
+        except SemanticGateClosed as exc:
+            if str(exc) == "campaign entrance is not a chapter page":
+                return False
+            raise
         return True
 
     def campaign_stage_state(self, stage_code: str) -> CampaignStageState:
@@ -4917,17 +5152,28 @@ class SemanticOracle:
         """Read exact fleet preparation, including its separately gated sortie."""
 
         return self._retry_transition_read(
-            lambda: self._campaign_fleet_preparation_state_once(stage_code)
+            lambda: self._campaign_fleet_preparation_state_once(stage_code),
+            attempts=12,
+            interval_seconds=0.05,
         )
 
     def _campaign_fleet_preparation_state_once(
-        self, stage_code: str
+        self,
+        stage_code: str,
+        *,
+        button_state: Optional[OracleState] = None,
+        ui_state: Optional[UiState] = None,
     ) -> CampaignPreparationState:
         match = re.fullmatch(r"([1-9][0-9]*)-([1-9][0-9]*)", stage_code)
         if match is None:
             raise SemanticGateClosed("campaign stage code is not canonical")
         stage_id = int(match.group(1)) * 100 + int(match.group(2))
-        button_state = self.read_state()
+        if (button_state is None) != (ui_state is None):
+            raise ValueError("fleet preparation snapshots must be supplied together")
+        if button_state is None:
+            button_state = self.read_state()
+            ui_state = self.read_ui_state()
+        assert ui_state is not None
         cancel = self._unique(
             button_state, "campaign/fleet-preparation/cancel"
         )
@@ -4975,7 +5221,6 @@ class SemanticOracle:
                 "campaign fleet-preparation stage underlay is absent or ambiguous"
             )
 
-        ui_state = self.read_ui_state()
         if (
             ui_state.generation < button_state.generation
             or ui_state.generation > button_state.generation + 2
@@ -5079,9 +5324,13 @@ class SemanticOracle:
     def _campaign_fleet_selection_state_once(
         self, stage_code: str
     ) -> CampaignFleetSelectionState:
-        preparation = self._campaign_fleet_preparation_state_once(stage_code)
         button_state = self.read_state()
         ui_state = self.read_ui_state()
+        preparation = self._campaign_fleet_preparation_state_once(
+            stage_code,
+            button_state=button_state,
+            ui_state=ui_state,
+        )
         if (
             ui_state.generation < button_state.generation
             or ui_state.generation > button_state.generation + 2
@@ -5406,7 +5655,11 @@ class SemanticOracle:
         """Click one exact stage after revalidating its typed Unity identity."""
 
         observed = self.campaign_stage_state(stage_code)
-        state = self.read_state()
+        state = self._retry_transition_read(
+            self.read_state,
+            attempts=12,
+            interval_seconds=0.05,
+        )
         matches = tuple(
             button
             for button in state.buttons
@@ -6975,14 +7228,23 @@ class SemanticOracle:
         return len(images) == 1
 
     def click_toggle(self, semantic_id: str) -> ActionReceipt:
-        button_state = self.read_state()
-        ui_state = self.read_ui_state()
-        if ui_state.method_mask & 0x1 == 0:
-            raise SemanticGateClosed("typed Unity Toggle snapshot is incomplete")
-        if (
-            ui_state.generation < button_state.generation
-            or ui_state.generation > button_state.generation + 2
-        ):
+        button_state: Optional[OracleState] = None
+        ui_state: Optional[UiState] = None
+        for attempt in range(8):
+            candidate_buttons = self.read_state()
+            candidate_ui = self.read_ui_state()
+            if candidate_ui.method_mask & 0x1 == 0:
+                raise SemanticGateClosed("typed Unity Toggle snapshot is incomplete")
+            if (
+                candidate_ui.generation >= candidate_buttons.generation
+                and candidate_ui.generation <= candidate_buttons.generation + 2
+            ):
+                button_state = candidate_buttons
+                ui_state = candidate_ui
+                break
+            if attempt < 7:
+                self._sleep(0.05)
+        if button_state is None or ui_state is None:
             raise SemanticGateClosed("button and toggle snapshots are not coherent")
         matches = self._toggle_matches(ui_state, semantic_id)
         delegated_build_pool = self._build_pool_delegated_raycast_proven(
@@ -7231,6 +7493,48 @@ class SemanticOracle:
             and confirm == "确定"
         )
 
+    def _dock_full_prompt_matches(self, state: OracleState) -> bool:
+        ui_state = self.read_ui_state()
+        if (
+            ui_state.generation < state.generation
+            or ui_state.generation > state.generation + 2
+        ):
+            raise SemanticGateClosed("dock-full Msgbox snapshots are not coherent")
+        content = tuple(
+            text
+            for text in ui_state.texts
+            if text.path.endswith("Msgbox(Clone)/window/msg_panel/content")
+            and text.active_in_hierarchy
+            and text.active_and_enabled
+            and not text.truncated
+            and text.bounds is not None
+        )
+        labels = tuple(
+            text
+            for text in ui_state.texts
+            if text.path.endswith(
+                "Msgbox(Clone)/window/button_container/"
+                "custom_button_1(Clone)/pic"
+            )
+            and text.active_in_hierarchy
+            and text.active_and_enabled
+            and not text.truncated
+            and text.bounds is not None
+        )
+        buttons = self._matches(state, "overlay/network-reconnect/confirm")
+        return bool(
+            len(content) == 1
+            and content[0].text.strip() == "船坞已满，请前往整理或扩展"
+            and len(buttons) == 3
+            and sorted("".join(label.text.split()) for label in labels)
+            == sorted(("整理", "拓展", "强化"))
+        )
+
+    def dock_full_prompt_active(self) -> bool:
+        return self._retry_transition_read(
+            lambda: self._dock_full_prompt_matches(self.read_state())
+        )
+
     def _build_warning_prompt_matches(self, state: OracleState) -> bool:
         parts = self._msgbox_prompt_parts(state)
         if parts is None:
@@ -7339,6 +7643,14 @@ class SemanticOracle:
 
     def _enabled_once(self, semantic_id: str) -> bool:
         state = self.read_state()
+        if (
+            semantic_id in (
+                "overlay/network-reconnect/cancel",
+                "overlay/network-reconnect/confirm",
+            )
+            and self._dock_full_prompt_matches(state)
+        ):
+            return False
         matches = self._matches(state, semantic_id)
         if len(matches) > 1:
             raise SemanticGateClosed("semantic target mapping is ambiguous")
@@ -7531,6 +7843,18 @@ class SemanticOracle:
 
     def click(self, semantic_id: str) -> ActionReceipt:
         state = self.read_state()
+        if semantic_id in (
+            "overlay/network-reconnect/cancel",
+            "overlay/network-reconnect/confirm",
+        ):
+            if self._dock_full_prompt_matches(state):
+                raise SemanticGateClosed(
+                    "dock-full prompt cannot use network reconnect input"
+                )
+            if not self._network_reconnect_prompt_matches(state):
+                raise SemanticGateClosed(
+                    "network reconnect prompt identity is not proven"
+                )
         target = self._unique(state, semantic_id)
         dorm_back_delegated = (
             semantic_id == "dorm/page/back"
@@ -7549,14 +7873,6 @@ class SemanticOracle:
             and not self._tactical_continue_prompt_matches(state)
         ):
             raise SemanticGateClosed("tactical continue prompt identity is not proven")
-        if (
-            semantic_id in (
-                "overlay/network-reconnect/cancel",
-                "overlay/network-reconnect/confirm",
-            )
-            and not self._network_reconnect_prompt_matches(state)
-        ):
-            raise SemanticGateClosed("network reconnect prompt identity is not proven")
         if (
             semantic_id in ("build/warning/cancel", "build/warning/confirm")
             and not self._build_warning_prompt_matches(state)
