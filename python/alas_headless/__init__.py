@@ -13,6 +13,10 @@ from .alas_camera_view import (
     build_alas_campaign_camera_view,
     install_alas_campaign_camera_view,
 )
+from .alas_camera_positioning import (
+    AlasCampaignCameraPositioning,
+    position_alas_campaign_camera_for_qualification,
+)
 from .alas_decision_preview import (
     AlasCampaignDecisionPreview,
     preview_alas_campaign_decision,
@@ -163,6 +167,7 @@ from .alas_adapter import (
     AlasSemanticAdapter,
     AlasSemanticSession,
     AlasSemanticUnmapped,
+    CampaignCameraPositioningAdmission,
     CampaignFleetPreparationProof,
     CampaignMapTargetRecheckProof,
     CampaignSortieProof,
@@ -293,6 +298,7 @@ __all__ = (
     "ALAS_COMBAT_CONTROLLED_EPISODE_VERIFICATION_SCHEMA",
     "ALAS_COMBAT_MAP_CHECKPOINT_SCHEMA",
     "AlasCampaignCameraViewObservation",
+    "AlasCampaignCameraPositioning",
     "AlasCampaignFleetPlan",
     "AlasCampaignCombatAdmission",
     "AlasCampaignCombatProof",
@@ -342,6 +348,7 @@ __all__ = (
     "BuildPool",
     "BuildSubmitState",
     "CampaignFleetDropdownState",
+    "CampaignCameraPositioningAdmission",
     "CampaignFleetPreparationProof",
     "CampaignSortieProof",
     "CampaignFleetRowState",
@@ -444,6 +451,7 @@ __all__ = (
     "commit_alas_combat_resource_action_for_evidence",
     "preview_alas_campaign_goto_input",
     "preview_alas_campaign_viewport_continuation",
+    "position_alas_campaign_camera_for_qualification",
     "prepare_alas_campaign_combat_admission",
     "prepare_alas_combat_resource_action",
     "prove_alas_campaign_combat_transition",

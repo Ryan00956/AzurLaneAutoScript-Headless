@@ -1,11 +1,12 @@
-"""Qualify ALAS's original camera update and `_goto()` target recheck.
+"""Qualify a naturally out-of-sight ALAS `_goto()` camera branch.
 
 The pinned ALAS ``focus_to() -> map_swipe() -> _map_swipe() ->
 device.swipe_vector()`` chain owns the grid vector, pixel scaling, random safe
 path selection, duration conversion, and distance check.  Its original
-``Camera.update()`` consumes a typed Unity View, then original ``_goto()``
-rechecks the target.  The qualifier stops at the exact grid-click statement
-without injecting that grid input or entering combat.
+``Camera.update()`` consumes a typed Unity View.  A separate qualification-only
+empty-cell gesture first places the camera out of sight; ALAS then chooses the
+same target again and original ``_goto()`` owns the camera request and recheck.
+The qualifier stops at the exact grid-click statement without injecting it.
 """
 
 from __future__ import annotations
@@ -32,7 +33,10 @@ from alas_headless import (  # noqa: E402
     alas_package_process_lease_from_trace,
     load_alas_combat_observer_manifest,
     load_alas_combat_observer_trace,
+    position_alas_campaign_camera_for_qualification,
+    preview_alas_campaign_decision,
     preview_alas_campaign_viewport_continuation,
+    synchronize_alas_campaign_map,
 )
 
 
@@ -64,7 +68,7 @@ def utc_now() -> str:
 
 def proof_to_json(proof: CampaignMapViewportSwipeProof, *, pid: int) -> dict:
     return {
-        "schema": "alas-headless.g34-campaign-viewport-continuation/v1",
+        "schema": "alas-headless.g35-natural-goto-camera/v1",
         "captured_at_utc": utc_now(),
         "pid": pid,
         "semantic_id": proof.semantic_id,
@@ -136,6 +140,7 @@ def main() -> int:
         campaign_sortie_budget=1,
         campaign_combat_budget=1,
         campaign_viewport_swipe_budget=1,
+        campaign_camera_positioning_budget=2,
         adb_command_timeout_seconds=args.adb_command_timeout_seconds,
         package_process_lease=process_lease,
     )
@@ -143,6 +148,10 @@ def main() -> int:
     original_preview = alas_headless.preview_alas_campaign_goto_input
     proofs = []
     continuations = []
+    camera_positionings = []
+    camera_positioning_proofs = []
+    camera_positioning_proof_sequences = []
+    decision_revalidations = []
     dismissed_overlays = []
     startup_page_records = []
 
@@ -192,20 +201,119 @@ def main() -> int:
 
     def qualify_viewport(campaign, projection, decision, admission, state):
         if proofs:
-            raise SemanticGateClosed("G34 attempted a second viewport input")
+            raise SemanticGateClosed("G35 attempted a second viewport input")
+        map_kwargs = {
+            "columns": campaign.MAP.shape[0] + 1,
+            "rows": campaign.MAP.shape[1] + 1,
+            "land_cells": tuple(
+                grid.location for grid in campaign.MAP if grid.is_land
+            ),
+            "expected_fleet_count": sum(
+                (
+                    bool(campaign.config.Fleet_Fleet1),
+                    bool(campaign.config.Fleet_Fleet2),
+                )
+            ),
+        }
+        original_identity = (
+            decision.branch_name,
+            decision.battle_count,
+            decision.fleet_index,
+            decision.fleet_marker,
+            decision.target_kind,
+            decision.target_node,
+            decision.expected,
+            decision.cost,
+            decision.route_nodes,
+            decision.goto_nodes,
+        )
+
+        # The live camera is currently centered on F6.  Use one independent,
+        # qualification-only empty-cell gesture to place it at F3, close that
+        # flow, then reacquire the map and let ALAS independently choose again.
+        session.end_campaign_pre_sortie()
+        session.begin_campaign_pre_sortie(state.stage_code)
+        positioning_state = session.campaign_map_state(**map_kwargs)
+        positioning_projection = synchronize_alas_campaign_map(
+            campaign, positioning_state
+        )
+        positioning = position_alas_campaign_camera_for_qualification(
+            campaign,
+            positioning_projection,
+            positioning_state,
+            target_node="F3",
+            semantic_session=session,
+        )
+        positioning_proof = session.campaign_camera_positioning_proof()
+        positioning_proof_sequence = (
+            session.campaign_camera_positioning_proofs()
+        )
+        camera_positionings.append(positioning)
+        camera_positioning_proofs.append(positioning_proof)
+        camera_positioning_proof_sequences.append(
+            positioning_proof_sequence
+        )
+
+        session.end_campaign_pre_sortie()
+        session.begin_campaign_pre_sortie(state.stage_code)
+        fresh_state = session.campaign_map_state(**map_kwargs)
+        fresh_projection = synchronize_alas_campaign_map(
+            campaign, fresh_state
+        )
+        fresh_decision = preview_alas_campaign_decision(
+            campaign, fresh_projection
+        )
+        fresh_identity = (
+            fresh_decision.branch_name,
+            fresh_decision.battle_count,
+            fresh_decision.fleet_index,
+            fresh_decision.fleet_marker,
+            fresh_decision.target_kind,
+            fresh_decision.target_node,
+            fresh_decision.expected,
+            fresh_decision.cost,
+            fresh_decision.route_nodes,
+            fresh_decision.goto_nodes,
+        )
+        if fresh_identity != original_identity:
+            raise SemanticGateClosed(
+                "G35 camera setup changed ALAS's original decision"
+            )
+        decision_revalidations.append(
+            {
+                "before_generation": decision.generation,
+                "after_generation": fresh_decision.generation,
+                "branch_name": fresh_decision.branch_name,
+                "fleet_index": fresh_decision.fleet_index,
+                "fleet_marker": fresh_decision.fleet_marker,
+                "target_kind": fresh_decision.target_kind,
+                "target_node": fresh_decision.target_node,
+                "route_nodes": list(fresh_decision.route_nodes),
+                "goto_nodes": list(fresh_decision.goto_nodes),
+                "unchanged": True,
+            }
+        )
+        fresh_admission = session.authorize_campaign_combat(
+            fresh_decision, fresh_state
+        )
+        if fresh_admission is None:
+            raise SemanticGateClosed(
+                "G35 did not receive a fresh combat admission"
+            )
         continuation = preview_alas_campaign_viewport_continuation(
             campaign,
-            projection,
-            decision,
-            admission,
-            state,
+            fresh_projection,
+            fresh_decision,
+            fresh_admission,
+            fresh_state,
             semantic_session=session,
+            original_goto_initiates_camera=True,
         )
         proof = session.campaign_map_viewport_swipe_proof()
         proofs.append(proof)
         continuations.append(continuation)
         raise ScriptEnd(
-            "Semantic ALAS viewport continuation validation complete"
+            "Semantic ALAS natural goto camera validation complete"
         )
 
     AlasSemanticSession.from_environment = classmethod(leased_factory)
@@ -526,7 +634,7 @@ def main() -> int:
                 )
         except ScriptEnd as exc:
             if str(exc) != (
-                "Semantic ALAS viewport continuation validation complete"
+                "Semantic ALAS natural goto camera validation complete"
             ):
                 raise
     finally:
@@ -538,9 +646,16 @@ def main() -> int:
         except ObserverTransportError:
             pass
 
-    if len(proofs) != 1 or len(continuations) != 1:
+    if (
+        len(proofs) != 1
+        or len(continuations) != 1
+        or len(camera_positionings) != 1
+        or len(camera_positioning_proofs) != 1
+        or len(camera_positioning_proof_sequences) != 1
+        or len(decision_revalidations) != 1
+    ):
         raise SystemExit(
-            "pinned ALAS did not prove exactly one viewport continuation"
+            "pinned ALAS did not prove one setup and one natural goto gesture"
         )
     record = proof_to_json(proofs[0], pid=session.bridge.pid or 0)
     continuation = continuations[0]
@@ -560,8 +675,43 @@ def main() -> int:
         "original_alas_goto_recheck_owner": (
             continuation.original_alas_goto_recheck_owner
         ),
+        "original_alas_goto_camera_initiator": (
+            continuation.original_alas_goto_camera_initiator
+        ),
+    }
+    positioning = camera_positionings[0]
+    positioning_proof = camera_positioning_proofs[0]
+    positioning_proof_sequence = camera_positioning_proof_sequences[0]
+    record["qualification_camera_setup"] = {
+        "target_node": positioning.target_node,
+        "camera_before_node": positioning.camera_before_node,
+        "camera_after_node": positioning.camera_after_node,
+        "camera_before_offset": list(positioning.camera_before_offset),
+        "camera_after_offset": list(positioning.camera_after_offset),
+        "requested_grid_vector": list(positioning.requested_grid_vector),
+        "gesture_grid_vectors": [
+            list(item) for item in positioning.gesture_grid_vectors
+        ],
+        "gesture_count": positioning.gesture_count,
+        "pre_generation": positioning_proof.pre_generation,
+        "input_generation": positioning_proof.input_generation,
+        "post_generation": positioning_proof.post_generation,
+        "proof_generations": [
+            {
+                "pre": item.pre_generation,
+                "input": item.input_generation,
+                "post": item.post_generation,
+            }
+            for item in positioning_proof_sequence
+        ],
+        "call_order": list(positioning.call_order),
+        "input_injected": positioning.input_injected,
+        "qualification_only": positioning.qualification_only,
+        "production_enabled": positioning.production_enabled,
     }
     record["grid_input_injected"] = continuation.grid_input_injected
+    record["decision_revalidation_after_setup"] = decision_revalidations[0]
+    record["total_camera_inputs"] = positioning.gesture_count + 1
     record["production_enabled"] = continuation.production_enabled
     record["dismissed_overlays"] = dismissed_overlays
     record["startup_page_bootstrap"] = startup_page_records

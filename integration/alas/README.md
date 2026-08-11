@@ -122,7 +122,17 @@ qualification continues through original `_goto()` and captures its final
 `device.click(grid)` statement without delegating it. On the live F6 case,
 `grid_input_injected=false`. Because that target was already within
 `_walk_sight`, the harness used original `focus_to(F6)` as a bounded prelude;
-an organically out-of-sight `_goto()`-initiated swipe remains a later gate.
+G35 separately closes the organically out-of-sight branch. A qualification-
+only empty-cell setup places the camera at F3 and closes; after a fresh typed
+map and unchanged ALAS decision, original `_goto(F6)` itself requests the
+single `(0,1)` camera gesture to F4. Its final grid click remains intercepted.
+
+The camera setup budget is explicit-constructor-only, defaults to zero, and
+has no environment-variable production opt-in. It accepts only an exact empty
+sea cell and at most two correction gestures from the same original
+`focus_to()` invocation. Completion requires the final typed target camera
+state and clears any unused setup budget before the combat-decision context is
+opened.
 
 Campaign combat has a separate canonical integer budget and remains closed by
 default:

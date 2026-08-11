@@ -54,12 +54,54 @@ class AlasCampaignViewportContinuation:
     call_order: Tuple[str, ...]
     original_camera_update_owner: bool
     original_alas_goto_recheck_owner: bool
+    original_alas_goto_camera_initiator: bool
     grid_input_injected: bool
     production_enabled: bool
 
 
 class _ViewportGridCaptured(Exception):
     pass
+
+
+def _natural_goto_camera_vector(
+    camera: Tuple[int, int],
+    target: Tuple[int, int],
+    camera_sight: Tuple[int, int, int, int],
+) -> Tuple[int, int]:
+    """Mirror pinned ALAS ``in_sight(..., sight=_walk_sight)`` exactly."""
+
+    if (
+        len(camera) != 2
+        or len(target) != 2
+        or len(camera_sight) != 4
+        or any(isinstance(item, bool) or not isinstance(item, int) for item in (
+            *camera,
+            *target,
+            *camera_sight,
+        ))
+        or not (
+            camera_sight[0] <= 0 <= camera_sight[2]
+            and camera_sight[1] <= 0 <= camera_sight[3]
+        )
+    ):
+        raise SemanticGateClosed(
+            "ALAS natural goto camera geometry is malformed"
+        )
+    target_delta = tuple(target[index] - camera[index] for index in range(2))
+    walk_sight = (camera_sight[0], 0, camera_sight[2], camera_sight[3])
+    result = []
+    for value, lower, upper in zip(
+        target_delta,
+        (walk_sight[0], walk_sight[1]),
+        (walk_sight[2], walk_sight[3]),
+    ):
+        if value > upper:
+            result.append(value - upper)
+        elif value < lower:
+            result.append(value - lower)
+        else:
+            result.append(0)
+    return tuple(result)
 
 
 class _ViewportContinuationDevice:
@@ -72,6 +114,7 @@ class _ViewportContinuationDevice:
         target_point: Any,
         target_bounds: Any,
         call_order: list[str],
+        before_grid_click: Any = None,
     ) -> None:
         self._real_device = real_device
         self._target_location = target_location
@@ -79,6 +122,7 @@ class _ViewportContinuationDevice:
         self._target_point = target_point
         self._target_bounds = target_bounds
         self._call_order = call_order
+        self._before_grid_click = before_grid_click
         self.captured_grid = None
         self.swipe_vector_count = 0
 
@@ -96,6 +140,13 @@ class _ViewportContinuationDevice:
             raise SemanticGateClosed(
                 "ALAS viewport continuation changed the typed grid"
             )
+        if self._before_grid_click is not None:
+            callback = self._before_grid_click
+            self._before_grid_click = None
+            target = callback(button)
+            self._target_path = target.path
+            self._target_point = target.point
+            self._target_bounds = target.bounds
         if getattr(button, "__str__", None) != self._target_location:
             raise SemanticGateClosed(
                 "ALAS viewport continuation changed the global target"
@@ -124,6 +175,7 @@ def preview_alas_campaign_viewport_continuation(
     state: CampaignMapState,
     *,
     semantic_session: Any,
+    original_goto_initiates_camera: bool = False,
 ) -> AlasCampaignViewportContinuation:
     """Run one original Camera update and `_goto()` recheck without grid input."""
 
@@ -178,10 +230,18 @@ def preview_alas_campaign_viewport_continuation(
         raise SemanticGateClosed(
             "ALAS viewport continuation initial target changed"
         )
-    requested_grid_vector = tuple(
+    target_delta = tuple(
         target_location[index] - initial_observation.camera_location[index]
         for index in range(2)
     )
+    if original_goto_initiates_camera:
+        requested_grid_vector = _natural_goto_camera_vector(
+            initial_observation.camera_location,
+            target_location,
+            tuple(campaign.map.camera_sight),
+        )
+    else:
+        requested_grid_vector = target_delta
     if (
         requested_grid_vector == (0, 0)
         or abs(requested_grid_vector[0]) > 4
@@ -205,6 +265,7 @@ def preview_alas_campaign_viewport_continuation(
     originals = {
         name: getattr(sandbox, name)
         for name in (
+            "focus_to",
             "map_swipe",
             "_map_swipe",
             "update",
@@ -240,6 +301,7 @@ def preview_alas_campaign_viewport_continuation(
         return wrapped
 
     for name in (
+        "focus_to",
         "map_swipe",
         "_map_swipe",
         "update",
@@ -307,6 +369,23 @@ def preview_alas_campaign_viewport_continuation(
         enemy_searching_color_initial, sandbox
     )
 
+    rechecks = []
+
+    def recheck_before_grid_click(button: Any) -> Any:
+        if button is not None and not isinstance(
+            button, AlasSemanticCampaignGrid
+        ):
+            raise SemanticGateClosed(
+                "ALAS viewport continuation changed grid before recheck"
+            )
+        current_state = sandbox.view.semantic_state
+        call_order.append("target_recheck")
+        proof = semantic_session.recheck_campaign_combat_target_after_camera_view(
+            current_state
+        )
+        rechecks.append(proof)
+        return proof
+
     projected_map = copy.deepcopy(campaign.map)
     with _DECISION_LOCK, _native_map_overlay(
         campaign.MAP, projected_map
@@ -322,43 +401,27 @@ def preview_alas_campaign_viewport_continuation(
             target_point=admission.point,
             target_bounds=admission.bounds,
             call_order=call_order,
+            before_grid_click=(
+                recheck_before_grid_click
+                if original_goto_initiates_camera
+                else None
+            ),
         )
         sandbox.device = device
-        call_order.append("focus_to")
-        sandbox.focus_to(target_location)
-
-        if (
-            device.swipe_vector_count != 1
-            or not semantic_session.campaign_map_viewport_swipe_committed()
-            or len(camera_observations) != 1
-        ):
-            raise SemanticGateClosed(
-                "ALAS viewport continuation did not prove one camera update"
-            )
-        viewport = semantic_session.campaign_map_viewport_swipe_proof()
-        if not isinstance(viewport, CampaignMapViewportSwipeProof):
-            raise SemanticGateClosed(
-                "ALAS viewport continuation lost typed swipe proof"
-            )
-        after_observation = camera_observations[0]
-        if (
-            viewport.grid_vector != requested_grid_vector
-            or tuple(sandbox.camera) != after_observation.camera_location
-            or after_observation.camera_location != target_location
-            or viewport.post_generation > after_observation.generation
-        ):
-            raise SemanticGateClosed(
-                "original ALAS camera update disagrees with typed movement"
-            )
-
-        current_state = sandbox.view.semantic_state
-        call_order.append("target_recheck")
-        recheck = semantic_session.recheck_campaign_combat_target_after_camera_view(
-            current_state
-        )
-        device._target_path = recheck.path
-        device._target_point = recheck.point
-        device._target_bounds = recheck.bounds
+        if not original_goto_initiates_camera:
+            sandbox.focus_to(target_location)
+            if (
+                device.swipe_vector_count != 1
+                or not semantic_session.campaign_map_viewport_swipe_committed()
+                or len(camera_observations) != 1
+            ):
+                raise SemanticGateClosed(
+                    "ALAS viewport continuation did not prove one camera update"
+                )
+            recheck = recheck_before_grid_click(None)
+            device._target_path = recheck.path
+            device._target_point = recheck.point
+            device._target_bounds = recheck.bounds
 
         call_order.append("_goto")
         try:
@@ -379,27 +442,77 @@ def preview_alas_campaign_viewport_continuation(
                 "ALAS viewport continuation returned without grid capture"
             )
 
+        if (
+            device.swipe_vector_count != 1
+            or not semantic_session.campaign_map_viewport_swipe_committed()
+            or len(camera_observations) != 1
+            or len(rechecks) != 1
+        ):
+            raise SemanticGateClosed(
+                "ALAS viewport continuation did not prove one camera update"
+            )
+        viewport = semantic_session.campaign_map_viewport_swipe_proof()
+        if not isinstance(viewport, CampaignMapViewportSwipeProof):
+            raise SemanticGateClosed(
+                "ALAS viewport continuation lost typed swipe proof"
+            )
+        after_observation = camera_observations[0]
+        expected_camera = tuple(
+            initial_observation.camera_location[index]
+            + requested_grid_vector[index]
+            for index in range(2)
+        )
+        if (
+            viewport.grid_vector != requested_grid_vector
+            or tuple(sandbox.camera) != after_observation.camera_location
+            or after_observation.camera_location != expected_camera
+            or viewport.post_generation > after_observation.generation
+        ):
+            raise SemanticGateClosed(
+                "original ALAS camera update disagrees with typed movement"
+            )
+        recheck = rechecks[0]
+
     if semantic_session.campaign_combat_committed():
         raise SemanticGateClosed(
             "ALAS viewport continuation unexpectedly injected grid input"
         )
-    required_order = (
-        "focus_to",
-        "device.swipe_vector",
-        "update",
-        "_update_view",
-        "_update_view_data",
-        "target_recheck",
-        "_goto",
-        "hp_retreat_triggered",
-        "fleet_set",
-        "in_sight",
-        "focus_to_grid_center",
-        "convert_global_to_local",
-        "ambush_color_initial",
-        "enemy_searching_color_initial",
-        "device.click",
-    )
+    if original_goto_initiates_camera:
+        required_order = (
+            "_goto",
+            "hp_retreat_triggered",
+            "fleet_set",
+            "in_sight",
+            "focus_to",
+            "device.swipe_vector",
+            "update",
+            "_update_view",
+            "_update_view_data",
+            "focus_to_grid_center",
+            "convert_global_to_local",
+            "ambush_color_initial",
+            "enemy_searching_color_initial",
+            "target_recheck",
+            "device.click",
+        )
+    else:
+        required_order = (
+            "focus_to",
+            "device.swipe_vector",
+            "update",
+            "_update_view",
+            "_update_view_data",
+            "target_recheck",
+            "_goto",
+            "hp_retreat_triggered",
+            "fleet_set",
+            "in_sight",
+            "focus_to_grid_center",
+            "convert_global_to_local",
+            "ambush_color_initial",
+            "enemy_searching_color_initial",
+            "device.click",
+        )
     cursor = 0
     for name in call_order:
         if cursor < len(required_order) and name == required_order[cursor]:
@@ -433,6 +546,7 @@ def preview_alas_campaign_viewport_continuation(
         call_order=tuple(call_order),
         original_camera_update_owner=True,
         original_alas_goto_recheck_owner=True,
+        original_alas_goto_camera_initiator=original_goto_initiates_camera,
         grid_input_injected=False,
         production_enabled=False,
     )

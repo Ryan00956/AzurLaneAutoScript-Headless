@@ -4,6 +4,33 @@ Status is evidence-scoped. A later gate is not implied by an earlier pass.
 
 ## 2026-08-11
 
+### G35 natural `_goto()` camera branch: qualification passed
+
+- A qualification-only, default-zero camera setup contract accepts only an
+  empty sea cell, at most two original-ALAS correction gestures, and an exact
+  typed completion that clears unused budget. It has no environment-variable
+  production opt-in.
+- After setup placed the camera at F3 and closed its context, ALAS reacquired
+  the map and independently selected the same `battle_0`, fleet 1, enemy F6,
+  and `E8,E7,E6,F6` route.
+- Original `_goto(F6)` owned the out-of-sight branch and naturally called
+  `in_sight -> focus_to(F4) -> device.swipe_vector -> Camera.update`. The live
+  `(870,434) -> (870,317)` gesture moved F3 -> F4 while preserving all 68
+  logical cells with `0.001030` pixel maximum projective residual.
+- `_goto()` continued to the fresh exact top-raycast F6 grid and its own
+  `device.click(grid)` statement. That click was intercepted:
+  `grid_input_injected=false` and `production_enabled=false`.
+- The first setup attempt F6 -> F4 is retained as negative evidence; its
+  second correction was rejected before input by the former one-gesture cap.
+  No grid or combat input occurred in either attempt.
+- The next gate is the guarded final grid click followed by original ALAS's
+  live post-click wait/combat/result/map-mutation state machine. Harness-driven
+  replay is not sufficient evidence for that ownership handoff.
+- The full Python suite passes `384/384`; the canonical patch remains clean on
+  pinned ALAS `81ccf63`.
+
+See [G35 natural `_goto()` camera validation](g35-natural-goto-camera-validation-report.md).
+
 ### G34 original camera update and `_goto()` recheck: qualification passed
 
 - The canonical patch now replaces only `Camera._update_view()` input during a

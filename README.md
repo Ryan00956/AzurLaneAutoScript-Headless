@@ -153,9 +153,12 @@ ALAS's existing `_update_view()` input boundary. The original `Camera.update()`
 then updates F4 to F6 and the original `_goto()` rechecks the fresh target,
 centers it, converts global to local, and reaches its own `device.click(grid)`
 statement. That final click is captured without injection, so production stays
-disabled. Because F6 was already within `_walk_sight`, the qualifying gesture
-was initiated by an original `focus_to(F6)` prelude; a natural out-of-sight
-`_goto()` camera branch remains unclaimed. Lua/game-state coverage,
+disabled. G35 now closes the natural out-of-sight branch: an isolated
+qualification-only empty-cell setup puts the camera at F3, ALAS independently
+selects F6 again, and original `_goto(F6)` itself owns
+`in_sight -> focus_to(F4) -> Camera.update` before reaching its intercepted
+grid-click statement. The setup budget has no environment opt-in and is closed
+before the fresh decision. Lua/game-state coverage,
 formation-layout changes, campaign movement execution, battle state,
 weekly-only end-to-end
 coverage, repeated sorties, and full unattended ALAS task coverage remain

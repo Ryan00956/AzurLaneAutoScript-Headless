@@ -596,6 +596,18 @@ class CampaignMapTargetRecheckProof:
     bounds: Bounds
 
 
+@dataclass(frozen=True)
+class CampaignCameraPositioningAdmission:
+    """Qualification-only authority for one empty-cell camera gesture."""
+
+    target_node: str
+    generation: int
+    map_signature: str
+    path: str
+    point: Point
+    bounds: Bounds
+
+
 @dataclass
 class _CampaignFlowContext:
     stage_code: str
@@ -626,6 +638,7 @@ class _CampaignFlowContext:
     sortie_proof: Optional[CampaignSortieProof] = None
     combat_budget: int = 0
     viewport_swipe_budget: int = 0
+    camera_positioning_budget: int = 0
     map_state: Optional[CampaignMapState] = None
     map_columns: Optional[int] = None
     map_rows: Optional[int] = None
@@ -635,6 +648,13 @@ class _CampaignFlowContext:
     viewport_swipe_required: bool = False
     viewport_swipe_intent: Optional[CampaignMapViewportSwipeIntent] = None
     viewport_swipe_proof: Optional[CampaignMapViewportSwipeProof] = None
+    camera_positioning_admission: Optional[
+        CampaignCameraPositioningAdmission
+    ] = None
+    camera_positioning_proofs: List[
+        CampaignMapViewportSwipeProof
+    ] = field(default_factory=list)
+    camera_positioning_completed: bool = False
     target_recheck_proof: Optional[CampaignMapTargetRecheckProof] = None
     combat_receipt: Optional[ActionReceipt] = None
     combat_proof: Optional[AlasCampaignCombatProof] = None
@@ -693,6 +713,7 @@ class AlasSemanticAdapter:
         campaign_sortie_budget: int = 0,
         campaign_combat_budget: int = 0,
         campaign_viewport_swipe_budget: int = 0,
+        campaign_camera_positioning_budget: int = 0,
     ) -> None:
         if package_gate is None:
             raise ValueError("semantic ALAS mode requires a package identity gate")
@@ -721,6 +742,7 @@ class AlasSemanticAdapter:
             ("campaign sortie", campaign_sortie_budget),
             ("campaign combat", campaign_combat_budget),
             ("campaign viewport swipe", campaign_viewport_swipe_budget),
+            ("campaign camera positioning", campaign_camera_positioning_budget),
         ):
             if (
                 isinstance(budget, bool)
@@ -730,6 +752,10 @@ class AlasSemanticAdapter:
                 raise ValueError(
                     "{0} budget must be a non-negative integer".format(label)
                 )
+        if campaign_camera_positioning_budget > 2:
+            raise ValueError(
+                "campaign camera positioning budget must be at most two"
+            )
         self._commission_reward_budget = commission_reward_budget
         self._tactical_assign_budget = tactical_assign_budget
         self._commission_start_budget = commission_start_budget
@@ -743,6 +769,9 @@ class AlasSemanticAdapter:
         self._campaign_sortie_budget = campaign_sortie_budget
         self._campaign_combat_budget = campaign_combat_budget
         self._campaign_viewport_swipe_budget = campaign_viewport_swipe_budget
+        self._campaign_camera_positioning_budget = (
+            campaign_camera_positioning_budget
+        )
         self._mission_context: Optional[_MissionFlowContext] = None
         self._login_context: Optional[_LoginFlowContext] = None
         self._mail_context: Optional[_MailFlowContext] = None
@@ -1045,6 +1074,9 @@ class AlasSemanticAdapter:
             sortie_budget=self._campaign_sortie_budget,
             combat_budget=self._campaign_combat_budget,
             viewport_swipe_budget=self._campaign_viewport_swipe_budget,
+            camera_positioning_budget=(
+                self._campaign_camera_positioning_budget
+            ),
             passive_transition_until=time.monotonic() + 20.0,
         )
 
@@ -2748,6 +2780,64 @@ class AlasSemanticAdapter:
         context.map_expected_fleet_count = expected_fleet_count
         return state
 
+    def authorize_campaign_camera_positioning(
+        self, target_node: str, state: CampaignMapState
+    ) -> CampaignCameraPositioningAdmission:
+        """Arm one qualification-only camera gesture toward an empty cell."""
+
+        self._package_gate()
+        context = self._require_campaign_context()
+        if not 1 <= context.camera_positioning_budget <= 2:
+            raise SemanticGateClosed(
+                "campaign camera positioning requires one or two budget units"
+            )
+        if (
+            context.map_state is not state
+            or context.camera_positioning_admission is not None
+            or context.camera_positioning_proofs
+            or context.camera_positioning_completed
+            or context.viewport_swipe_intent is not None
+            or context.combat_admission is not None
+            or context.combat_receipt is not None
+        ):
+            raise SemanticGateClosed(
+                "campaign camera positioning is not available"
+            )
+        cells = tuple(cell for cell in state.cells if cell.node == target_node)
+        occupied = (
+            set(state.land_nodes)
+            | {item.node for item in state.fleets}
+            | {item.node for item in state.enemies}
+            | {item.node for item in state.pickups}
+        )
+        if len(cells) != 1 or target_node in occupied:
+            raise SemanticGateClosed(
+                "campaign camera positioning target is not one empty sea cell"
+            )
+        target = self.oracle.campaign_map_cell_viewport_target(
+            state, target_node
+        )
+        cell = cells[0]
+        if (
+            target.path != cell.button_path
+            or target.point != cell.point
+            or target.bounds != cell.bounds
+        ):
+            raise SemanticGateClosed(
+                "campaign camera positioning target changed during preflight"
+            )
+        assert target.point is not None and target.bounds is not None
+        admission = CampaignCameraPositioningAdmission(
+            target_node=target_node,
+            generation=state.generation,
+            map_signature=state.signature,
+            path=target.path,
+            point=target.point,
+            bounds=target.bounds,
+        )
+        context.camera_positioning_admission = admission
+        return admission
+
     def authorize_campaign_combat(
         self,
         decision: AlasCampaignDecisionPreview,
@@ -2865,14 +2955,25 @@ class AlasSemanticAdapter:
 
         self._package_gate()
         context = self._require_campaign_context()
+        combat_ready = (
+            context.viewport_swipe_required
+            and context.viewport_swipe_budget == 1
+            and context.combat_admission is not None
+            and context.camera_positioning_admission is None
+            and context.viewport_swipe_proof is None
+            and context.combat_receipt is None
+        )
+        positioning_ready = (
+            1 <= context.camera_positioning_budget <= 2
+            and context.camera_positioning_admission is not None
+            and context.combat_admission is None
+            and not context.camera_positioning_completed
+            and context.combat_receipt is None
+        )
         if (
-            not context.viewport_swipe_required
-            or context.viewport_swipe_budget != 1
-            or context.combat_admission is None
+            combat_ready == positioning_ready
             or context.map_state is None
             or context.viewport_swipe_intent is not None
-            or context.viewport_swipe_proof is not None
-            or context.combat_receipt is not None
         ):
             raise SemanticGateClosed("campaign map viewport swipe is not authorized")
         if not isinstance(name, str):
@@ -3048,20 +3149,33 @@ class AlasSemanticAdapter:
             or not 0.20 <= float(duration) <= 0.60
         ):
             raise SemanticGateClosed("campaign map viewport final duration changed")
+        positioning = context.camera_positioning_admission
+        combat = context.combat_admission
         if (
-            context.viewport_swipe_budget != 1
-            or context.map_state is None
+            context.map_state is None
             or context.map_columns is None
             or context.map_rows is None
             or context.map_expected_fleet_count is None
-            or context.combat_admission is None
+            or (positioning is None) == (combat is None)
         ):
             raise SemanticGateClosed("campaign map viewport lease is incomplete")
 
-        context.viewport_swipe_budget -= 1
+        if positioning is not None:
+            if not 1 <= context.camera_positioning_budget <= 2:
+                raise SemanticGateClosed(
+                    "campaign camera positioning lease is incomplete"
+                )
+            context.camera_positioning_budget -= 1
+            target_node = positioning.target_node
+        else:
+            if context.viewport_swipe_budget != 1:
+                raise SemanticGateClosed("campaign map viewport lease is incomplete")
+            assert combat is not None
+            context.viewport_swipe_budget -= 1
+            target_node = combat.target_node
         proof = self.oracle.campaign_map_viewport_swipe(
             context.map_state,
-            context.combat_admission.target_node,
+            target_node,
             intent,
             start=start,
             end=end,
@@ -3071,15 +3185,19 @@ class AlasSemanticAdapter:
             land_cells=context.map_land_cells,
             expected_fleet_count=context.map_expected_fleet_count,
         )
-        context.viewport_swipe_proof = proof
-        context.viewport_swipe_required = False
         context.map_state = proof.post_state
-        context.combat_admission = replace(
-            context.combat_admission,
-            input_generation=proof.post_generation,
-            point=proof.target_after_point,
-            bounds=proof.target_after_bounds,
-        )
+        if positioning is not None:
+            context.camera_positioning_proofs.append(proof)
+        else:
+            assert combat is not None
+            context.viewport_swipe_proof = proof
+            context.viewport_swipe_required = False
+            context.combat_admission = replace(
+                combat,
+                input_generation=proof.post_generation,
+                point=proof.target_after_point,
+                bounds=proof.target_after_bounds,
+            )
         return proof
 
     def campaign_map_viewport_swipe_committed(self) -> bool:
@@ -3094,6 +3212,59 @@ class AlasSemanticAdapter:
         if proof is None:
             raise SemanticGateClosed("campaign map viewport swipe is not proven")
         return proof
+
+    def campaign_camera_positioning_committed(self) -> bool:
+        context = self._require_campaign_context()
+        return context.camera_positioning_completed
+
+    def complete_campaign_camera_positioning(
+        self, state: CampaignMapState
+    ) -> Tuple[CampaignMapViewportSwipeProof, ...]:
+        """Close the setup lease only after ALAS observes its exact target."""
+
+        self._package_gate()
+        context = self._require_campaign_context()
+        admission = context.camera_positioning_admission
+        if (
+            admission is None
+            or context.camera_positioning_completed
+            or context.map_state is not state
+            or not 1 <= len(context.camera_positioning_proofs) <= 2
+            or state.signature != admission.map_signature
+        ):
+            raise SemanticGateClosed(
+                "campaign camera positioning cannot be completed"
+            )
+        target = self.oracle.campaign_map_cell_input(
+            state, admission.target_node
+        )
+        if target.path != admission.path:
+            raise SemanticGateClosed(
+                "campaign camera positioning completion changed target"
+            )
+        context.camera_positioning_budget = 0
+        context.camera_positioning_completed = True
+        return tuple(context.camera_positioning_proofs)
+
+    def campaign_camera_positioning_proof(
+        self,
+    ) -> CampaignMapViewportSwipeProof:
+        context = self._require_campaign_context()
+        if not context.camera_positioning_completed:
+            raise SemanticGateClosed(
+                "campaign camera positioning is not proven"
+            )
+        return context.camera_positioning_proofs[-1]
+
+    def campaign_camera_positioning_proofs(
+        self,
+    ) -> Tuple[CampaignMapViewportSwipeProof, ...]:
+        context = self._require_campaign_context()
+        if not context.camera_positioning_completed:
+            raise SemanticGateClosed(
+                "campaign camera positioning is not proven"
+            )
+        return tuple(context.camera_positioning_proofs)
 
     def campaign_camera_state(self) -> CampaignMapState:
         """Return one fresh map observation to ALAS's original Camera.update."""
@@ -3123,13 +3294,24 @@ class AlasSemanticAdapter:
             raise SemanticGateClosed(
                 "campaign camera observation changed admitted map state"
             )
+        positioning = context.camera_positioning_admission
+        if (
+            positioning is not None
+            and state.signature != positioning.map_signature
+        ):
+            raise SemanticGateClosed(
+                "campaign camera observation changed positioning map state"
+            )
         context.map_state = state
         return state
 
     def campaign_camera_target_node(self) -> Optional[str]:
         context = self._require_campaign_context()
         admission = context.combat_admission
-        return None if admission is None else admission.target_node
+        if admission is not None:
+            return admission.target_node
+        positioning = context.camera_positioning_admission
+        return None if positioning is None else positioning.target_node
 
     def recheck_campaign_combat_target_after_camera_view(
         self, state: CampaignMapState
@@ -4942,6 +5124,7 @@ class AlasSemanticSession:
         campaign_sortie_budget: int = 0,
         campaign_combat_budget: int = 0,
         campaign_viewport_swipe_budget: int = 0,
+        campaign_camera_positioning_budget: int = 0,
         adb_command_timeout_seconds: int = 10,
         observer_max_age_ms: int = 2500,
         package_process_lease: Optional[AlasPackageProcessLease] = None,
@@ -4987,6 +5170,7 @@ class AlasSemanticSession:
             ("campaign sortie", campaign_sortie_budget),
             ("campaign combat", campaign_combat_budget),
             ("campaign viewport swipe", campaign_viewport_swipe_budget),
+            ("campaign camera positioning", campaign_camera_positioning_budget),
         ):
             if (
                 isinstance(budget, bool)
@@ -4996,6 +5180,10 @@ class AlasSemanticSession:
                 raise ValueError(
                     "{0} budget must be a non-negative integer".format(label)
                 )
+        if campaign_camera_positioning_budget > 2:
+            raise ValueError(
+                "campaign camera positioning budget must be at most two"
+            )
         self.commission_reward_budget = commission_reward_budget
         self.tactical_assign_budget = tactical_assign_budget
         self.commission_start_budget = commission_start_budget
@@ -5009,6 +5197,9 @@ class AlasSemanticSession:
         self.campaign_sortie_budget = campaign_sortie_budget
         self.campaign_combat_budget = campaign_combat_budget
         self.campaign_viewport_swipe_budget = campaign_viewport_swipe_budget
+        self.campaign_camera_positioning_budget = (
+            campaign_camera_positioning_budget
+        )
         self.package_process_lease = package_process_lease
         self.observer_max_age_ms = observer_max_age_ms
         self.bridge = AdbObserverBridge(
@@ -5179,6 +5370,9 @@ class AlasSemanticSession:
                 campaign_viewport_swipe_budget=(
                     self.campaign_viewport_swipe_budget
                 ),
+                campaign_camera_positioning_budget=(
+                    self.campaign_camera_positioning_budget
+                ),
             )
             return self.adapter
         except Exception:
@@ -5313,6 +5507,13 @@ class AlasSemanticSession:
     ) -> Optional[AlasCampaignCombatAdmission]:
         return self.open().authorize_campaign_combat(decision, state)
 
+    def authorize_campaign_camera_positioning(
+        self, target_node: str, state: CampaignMapState
+    ) -> CampaignCameraPositioningAdmission:
+        return self.open().authorize_campaign_camera_positioning(
+            target_node, state
+        )
+
     def campaign_combat_committed(self) -> bool:
         return self.open().campaign_combat_committed()
 
@@ -5356,6 +5557,24 @@ class AlasSemanticSession:
         self,
     ) -> CampaignMapViewportSwipeProof:
         return self.open().campaign_map_viewport_swipe_proof()
+
+    def campaign_camera_positioning_committed(self) -> bool:
+        return self.open().campaign_camera_positioning_committed()
+
+    def complete_campaign_camera_positioning(
+        self, state: CampaignMapState
+    ) -> Tuple[CampaignMapViewportSwipeProof, ...]:
+        return self.open().complete_campaign_camera_positioning(state)
+
+    def campaign_camera_positioning_proof(
+        self,
+    ) -> CampaignMapViewportSwipeProof:
+        return self.open().campaign_camera_positioning_proof()
+
+    def campaign_camera_positioning_proofs(
+        self,
+    ) -> Tuple[CampaignMapViewportSwipeProof, ...]:
+        return self.open().campaign_camera_positioning_proofs()
 
     def campaign_camera_state(self) -> CampaignMapState:
         return self.open().campaign_camera_state()

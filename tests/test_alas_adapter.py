@@ -2356,6 +2356,197 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertEqual(oracle.campaign_map_swipe_calls, [])
         adapter.end_campaign_pre_sortie()
 
+    def test_campaign_camera_positioning_is_separate_one_use_empty_cell_contract(self):
+        oracle = FakeOracle()
+        state = make_campaign_combat_state()
+        empty = CampaignMapCellState(
+            row=3,
+            column=6,
+            node="F3",
+            button_path="root/DragLayer/plane/quads/chapter_cell_quad_3_6",
+            point=Point(640, 80),
+            bounds=Bounds(600, 40, 680, 120),
+        )
+        state = replace(state, cells=state.cells + (empty,))
+        oracle.campaign_map_state_value = state
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            campaign_camera_positioning_budget=1,
+        )
+        adapter.begin_campaign_pre_sortie("12-4")
+        current = adapter.campaign_map_state(
+            columns=11,
+            rows=8,
+            land_cells=((0, 0),),
+            expected_fleet_count=1,
+        )
+
+        admission = adapter.authorize_campaign_camera_positioning(
+            "F3", current
+        )
+        self.assertEqual(admission.target_node, "F3")
+        intent = adapter.begin_campaign_map_swipe_vector(
+            (0.0, 200.0),
+            box=(123, 159, 1175, 628),
+            random_range=(0, 0, 0, 0),
+            padding=15,
+            duration=(0.1, 0.2),
+            whitelist_area=None,
+            blacklist_area=None,
+            name="MAP_SWIPE_0_-3",
+            distance_check=True,
+        )
+        proof = adapter.swipe(
+            (500, 300),
+            (500, 500),
+            duration=0.35,
+            name="MAP_SWIPE_0_-3",
+            distance_check=True,
+        )
+        adapter.end_campaign_map_swipe_vector(intent)
+        positioned_state = adapter.campaign_camera_state()
+        completed = adapter.complete_campaign_camera_positioning(
+            positioned_state
+        )
+
+        self.assertEqual(proof.target_node, "F3")
+        self.assertEqual(completed, (proof,))
+        self.assertTrue(adapter.campaign_camera_positioning_committed())
+        self.assertIs(adapter.campaign_camera_positioning_proof(), proof)
+        with self.assertRaisesRegex(SemanticGateClosed, "not proven"):
+            adapter.campaign_map_viewport_swipe_proof()
+        with self.assertRaisesRegex(SemanticGateClosed, "budget unit"):
+            adapter.authorize_campaign_camera_positioning("F3", current)
+        adapter.end_campaign_pre_sortie()
+
+    def test_campaign_camera_positioning_rejects_enemy_or_default_zero_budget(self):
+        state = make_campaign_combat_state()
+        for budget, message in ((0, "budget"), (1, "empty sea cell")):
+            oracle = FakeOracle()
+            oracle.campaign_map_state_value = state
+            adapter = AlasSemanticAdapter(
+                oracle,
+                lambda: None,
+                campaign_camera_positioning_budget=budget,
+            )
+            adapter.begin_campaign_pre_sortie("12-4")
+            current = adapter.campaign_map_state(
+                columns=11,
+                rows=8,
+                land_cells=((0, 0),),
+                expected_fleet_count=1,
+            )
+            with self.subTest(budget=budget):
+                with self.assertRaisesRegex(SemanticGateClosed, message):
+                    adapter.authorize_campaign_camera_positioning(
+                        "D6", current
+                    )
+            adapter.end_campaign_pre_sortie()
+        with self.assertRaisesRegex(ValueError, "at most two"):
+            AlasSemanticAdapter(
+                FakeOracle(),
+                lambda: None,
+                campaign_camera_positioning_budget=3,
+            )
+        with self.assertRaisesRegex(ValueError, "at most two"):
+            AlasSemanticSession(
+                "emulator-test",
+                "be80ce591a481c12d60c50d6040d40c035b40a2b",
+                campaign_camera_positioning_budget=3,
+            )
+
+    def test_campaign_camera_positioning_allows_two_original_focus_corrections_then_closes(self):
+        oracle = FakeOracle()
+        state = make_campaign_combat_state()
+        empty = CampaignMapCellState(
+            row=3,
+            column=6,
+            node="F3",
+            button_path="root/DragLayer/plane/quads/chapter_cell_quad_3_6",
+            point=Point(640, 80),
+            bounds=Bounds(600, 40, 680, 120),
+        )
+        oracle.campaign_map_state_value = replace(
+            state, cells=state.cells + (empty,)
+        )
+        adapter = AlasSemanticAdapter(
+            oracle,
+            lambda: None,
+            campaign_camera_positioning_budget=2,
+        )
+        adapter.begin_campaign_pre_sortie("12-4")
+        current = adapter.campaign_map_state(
+            columns=11,
+            rows=8,
+            land_cells=((0, 0),),
+            expected_fleet_count=1,
+        )
+        adapter.authorize_campaign_camera_positioning("F3", current)
+
+        first_intent = adapter.begin_campaign_map_swipe_vector(
+            (0.0, 260.0),
+            box=(123, 159, 1175, 628),
+            random_range=(0, 0, 0, 0),
+            padding=15,
+            duration=(0.1, 0.2),
+            whitelist_area=None,
+            blacklist_area=None,
+            name="MAP_SWIPE_0_-3",
+            distance_check=True,
+        )
+        first = adapter.swipe(
+            (500, 250),
+            (500, 510),
+            duration=0.35,
+            name="MAP_SWIPE_0_-3",
+            distance_check=True,
+        )
+        adapter.end_campaign_map_swipe_vector(first_intent)
+        second_intent = adapter.begin_campaign_map_swipe_vector(
+            (0.0, 80.0),
+            box=(123, 159, 1175, 628),
+            random_range=(0, 0, 0, 0),
+            padding=15,
+            duration=(0.1, 0.2),
+            whitelist_area=None,
+            blacklist_area=None,
+            name="MAP_SWIPE_0_-1",
+            distance_check=True,
+        )
+        second = adapter.swipe(
+            (500, 370),
+            (500, 450),
+            duration=0.35,
+            name="MAP_SWIPE_0_-1",
+            distance_check=True,
+        )
+        adapter.end_campaign_map_swipe_vector(second_intent)
+        positioned_state = adapter.campaign_camera_state()
+
+        completed = adapter.complete_campaign_camera_positioning(
+            positioned_state
+        )
+
+        self.assertEqual(completed, (first, second))
+        self.assertEqual(
+            adapter.campaign_camera_positioning_proofs(),
+            (first, second),
+        )
+        with self.assertRaisesRegex(SemanticGateClosed, "not authorized"):
+            adapter.begin_campaign_map_swipe_vector(
+                (0.0, 80.0),
+                box=(123, 159, 1175, 628),
+                random_range=(0, 0, 0, 0),
+                padding=15,
+                duration=(0.1, 0.2),
+                whitelist_area=None,
+                blacklist_area=None,
+                name="MAP_SWIPE_0_-1",
+                distance_check=True,
+            )
+        adapter.end_campaign_pre_sortie()
+
     def test_campaign_combat_rejects_route_drift_before_input(self):
         oracle = FakeOracle()
         state = make_campaign_combat_state()
@@ -3678,6 +3869,7 @@ class AlasSemanticAdapterTests(unittest.TestCase):
         self.assertEqual(session.campaign_sortie_budget, 9)
         self.assertEqual(session.campaign_combat_budget, 10)
         self.assertEqual(session.campaign_viewport_swipe_budget, 11)
+        self.assertEqual(session.campaign_camera_positioning_budget, 0)
 
         environment["ALAS_SEMANTIC_DORM_FEED_BUDGET"] = "05"
         with patch.dict("os.environ", environment, clear=True):

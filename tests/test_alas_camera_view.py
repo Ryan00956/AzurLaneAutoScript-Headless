@@ -11,6 +11,9 @@ from alas_headless import (
     build_alas_campaign_camera_view,
     install_alas_campaign_camera_view,
 )
+from alas_headless.alas_viewport_continuation import (
+    _natural_goto_camera_vector,
+)
 
 
 def make_state(*, generation=10, dx=0.0, dy=0.0, deform=False):
@@ -124,6 +127,26 @@ class AlasCampaignCameraViewTests(unittest.TestCase):
 
         with self.assertRaisesRegex(SemanticGateClosed, "changed map"):
             before.predict_swipe(after)
+
+    def test_natural_goto_camera_vector_matches_walk_sight(self):
+        sight = (-3, -1, 3, 2)
+
+        self.assertEqual(
+            _natural_goto_camera_vector((5, 2), (5, 5), sight),
+            (0, 1),
+        )
+        self.assertEqual(
+            _natural_goto_camera_vector((5, 3), (5, 5), sight),
+            (0, 0),
+        )
+        self.assertEqual(
+            _natural_goto_camera_vector((1, 4), (5, 3), sight),
+            (1, -1),
+        )
+
+    def test_natural_goto_camera_vector_rejects_malformed_sight(self):
+        with self.assertRaisesRegex(SemanticGateClosed, "malformed"):
+            _natural_goto_camera_vector((5, 2), (5, 5), (1, -1, 3, 2))
 
 
 if __name__ == "__main__":
