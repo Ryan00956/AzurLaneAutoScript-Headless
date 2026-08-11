@@ -293,3 +293,21 @@ so this remains a zero-input preflight rather than a movement or battle pass.
 G19 separately replays the full original combat chain without a Device:
 ALAS advances battle `0 -> 1`, ammunition `5 -> 4`, clears D6, confirms arrival,
 and rebuilds paths while all four intended actions remain virtual records.
+
+## License and third-party boundaries
+
+Except where a file or directory has an explicit different notice, this
+project is licensed under the GNU General Public License v3.0 only
+(`GPL-3.0-only`); see [LICENSE](LICENSE). The pinned ALAS integration patch is
+GPL-covered. ANGLE patches and overlay sources retain ANGLE's BSD-style
+license. The complete attribution and distribution boundary is recorded in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+The Git repository intentionally excludes built APKs, Android images, game
+packages/resources, account data, and local `artifacts/` or `evidence/`.
+Publishing this source repository does not authorize redistributing those
+outputs. Binary releases require a separate provenance, license-notice,
+corresponding-source, and privacy review.
+
+This is an unofficial research project and is not affiliated with or endorsed
+by the Azur Lane rights holders, ALAS maintainers, Google/ANGLE, or Unity.
