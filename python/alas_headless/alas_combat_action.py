@@ -21,7 +21,11 @@ from .alas_combat_observer import (
 )
 from .alas_combat_state_replay import ALAS_COMBAT_RESOURCE_ACTION_TARGETS
 from .alas_combat_trace import build_alas_combat_trace_frame
-from .semantic_oracle import ActionReceipt, SemanticGateClosed
+from .semantic_oracle import (
+    ActionReceipt,
+    SemanticGateClosed,
+    request_observer_state,
+)
 
 
 ALAS_COMBAT_RESOURCE_ACTION_COMMIT_SCHEMA = (
@@ -114,8 +118,7 @@ def _read_action(
     resource_name: str,
     action_name: Optional[str],
 ) -> Tuple[Mapping[str, Any], Any, ActionReceipt]:
-    snapshot_payload = bridge.request("GET /v1/snapshot\n")
-    button_payload = bridge.request("GET /v1/buttons\n")
+    snapshot_payload, button_payload, _ = request_observer_state(bridge.request)
     ui_payload = bridge.request("GET /v1/ui\n")
     frame, snapshot = build_alas_combat_trace_frame(
         snapshot_payload, button_payload, ui_payload, manifest

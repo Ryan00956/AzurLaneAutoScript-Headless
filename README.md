@@ -19,6 +19,12 @@ coordinates.
 - `G5`: replace one ALAS task flow at a time with stable, fail-closed semantics.
 
 See [acceptance gates](docs/acceptance-gates.md) and [architecture](docs/architecture.md).
+The backend-neutral lifecycle, immutable artifact lock, bounded trace, and
+exact-fingerprint evidence index are documented in the
+[runtime foundation](docs/runtime-foundation.md). This foundation is offline
+infrastructure with executable reference adapters for external ADB and Linux
+KVM. Redroid, TCG, and ARM64 QEMU remain explicit plan-only adapters; none of
+this claims a validated long-running ALAS workload.
 The latest evidence-scoped result is recorded in [validation status](docs/status.md).
 The completed Android NULL contract run is documented in the
 [G1 validation report](docs/g1-validation-report.md).

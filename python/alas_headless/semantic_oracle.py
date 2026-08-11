@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
+from .runtime_trace import RuntimeTraceRecorder
+
 
 OBSERVER_SCHEMA = "alas-headless.observer/v1"
 BUTTON_SCHEMA = "alas-headless.buttons/v1"
@@ -37,6 +39,32 @@ class SemanticTargetMissing(SemanticGateClosed):
 
 class ObserverTransportError(SemanticOracleError):
     """The local observer transport failed or returned malformed data."""
+
+
+def request_observer_state(
+    request: Callable[[str], Mapping[str, Any]]
+) -> Tuple[Mapping[str, Any], Mapping[str, Any], bool]:
+    """Read snapshot/buttons in one round trip, with an explicit legacy fallback."""
+
+    combined = request("GET /v1/state\n")
+    combined_response = (
+        isinstance(combined, dict)
+        and combined.get("protocol_schema") == OBSERVER_SCHEMA
+        and combined.get("status") == "ok"
+        and isinstance(combined.get("snapshot"), dict)
+        and isinstance(combined.get("buttons"), dict)
+    )
+    if combined_response:
+        return combined["snapshot"], combined["buttons"], True
+    if isinstance(combined, dict) and combined.get("status") == "bad-request":
+        # Compatibility with pre-state observer builds. The atomic endpoint
+        # reduces this pair to one socket round trip without changing cadence.
+        return (
+            request("GET /v1/snapshot\n"),
+            request("GET /v1/buttons\n"),
+            False,
+        )
+    raise ObserverTransportError("combined observer response is malformed")
 
 
 @dataclass(frozen=True)
@@ -1741,19 +1769,24 @@ class TcpObserverTransport:
         port: int,
         timeout_seconds: float = 3.0,
         maximum_response_bytes: int = 1024 * 1024,
+        trace: Optional[RuntimeTraceRecorder] = None,
     ) -> None:
         self._host = host
         self._port = port
         self._timeout_seconds = timeout_seconds
         self._maximum_response_bytes = maximum_response_bytes
+        self._trace = trace
 
     def request(self, request_line: str) -> Mapping[str, Any]:
         if request_line not in (
             "GET /v1/snapshot\n",
             "GET /v1/buttons\n",
             "GET /v1/ui\n",
+            "GET /v1/state\n",
         ):
             raise ObserverTransportError("client refused an unsupported observer request")
+        started_ns = time.monotonic_ns()
+        endpoint = request_line.split(" ", 1)[1].strip()
         try:
             with socket.create_connection(
                 (self._host, self._port), self._timeout_seconds
@@ -1770,18 +1803,71 @@ class TcpObserverTransport:
                         raise ObserverTransportError("observer response exceeded size limit")
                     if b"\n" in chunk:
                         break
+        except ObserverTransportError as exc:
+            if self._trace is not None:
+                self._trace.emit(
+                    "observer.request",
+                    outcome="error",
+                    duration_ns=time.monotonic_ns() - started_ns,
+                    fields={"endpoint": endpoint, "exception_type": type(exc).__name__},
+                )
+            raise
         except (OSError, TimeoutError) as exc:
+            if self._trace is not None:
+                self._trace.emit(
+                    "observer.request",
+                    outcome="error",
+                    duration_ns=time.monotonic_ns() - started_ns,
+                    fields={"endpoint": endpoint, "exception_type": type(exc).__name__},
+                )
             raise ObserverTransportError("observer socket request failed") from exc
 
         line = bytes(chunks).split(b"\n", 1)[0]
         if not line:
+            if self._trace is not None:
+                self._trace.emit(
+                    "observer.request",
+                    outcome="error",
+                    duration_ns=time.monotonic_ns() - started_ns,
+                    fields={"endpoint": endpoint, "failure_stage": "empty-response"},
+                )
             raise ObserverTransportError("observer returned an empty response")
         try:
             value = json.loads(line.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            if self._trace is not None:
+                self._trace.emit(
+                    "observer.request",
+                    outcome="error",
+                    duration_ns=time.monotonic_ns() - started_ns,
+                    fields={"endpoint": endpoint, "failure_stage": "decode-json"},
+                )
             raise ObserverTransportError("observer returned invalid JSON") from exc
         if not isinstance(value, dict):
+            if self._trace is not None:
+                self._trace.emit(
+                    "observer.request",
+                    outcome="error",
+                    duration_ns=time.monotonic_ns() - started_ns,
+                    fields={"endpoint": endpoint, "failure_stage": "response-shape"},
+                )
             raise ObserverTransportError("observer response is not a JSON object")
+        if self._trace is not None:
+            trace_fields = {"endpoint": endpoint, "response_bytes": len(line)}
+            identity_source = value
+            if endpoint == "/v1/state" and isinstance(value.get("snapshot"), dict):
+                identity_source = value["snapshot"]
+            generation = identity_source.get("generation")
+            age_ms = identity_source.get("age_ms")
+            if isinstance(generation, int) and not isinstance(generation, bool):
+                trace_fields["generation"] = generation
+            if isinstance(age_ms, (int, float)) and not isinstance(age_ms, bool):
+                trace_fields["snapshot_age_ms"] = age_ms
+            self._trace.emit(
+                "observer.request",
+                duration_ns=time.monotonic_ns() - started_ns,
+                fields=trace_fields,
+            )
         return value
 
 
@@ -1789,7 +1875,7 @@ class AdbObserverBridge:
     """ADB forwarding, foreground inspection, and tap injection for one game PID."""
 
     _FOREGROUND_PATTERN = re.compile(
-        r"topResumedActivity=.*?\bu\d+\s+([^\s}]+/[^\s}]+)"
+        r"(?:topResumedActivity|mResumedActivity)\s*[:=].*?\bu\d+\s+([^\s}]+/[^\s}]+)"
     )
     _DEVICE_PATH_PATTERN = re.compile(r"^/[A-Za-z0-9_./:+@=~-]+$")
     _SHA256_PATTERN = re.compile(r"^([0-9a-fA-F]{64})(?:\s|$)")
@@ -1800,11 +1886,13 @@ class AdbObserverBridge:
         package: str,
         adb: str = "adb",
         command_timeout_seconds: float = 10.0,
+        trace: Optional[RuntimeTraceRecorder] = None,
     ) -> None:
         self.serial = serial
         self.package = package
         self.adb = adb
         self.command_timeout_seconds = command_timeout_seconds
+        self.trace = trace
         self.pid: Optional[int] = None
         self.port: Optional[int] = None
         self.transport: Optional[TcpObserverTransport] = None
@@ -1819,6 +1907,8 @@ class AdbObserverBridge:
             if timeout_seconds is None
             else timeout_seconds
         )
+        operation = self._classify_adb_operation(arguments)
+        started_ns = time.monotonic_ns()
         try:
             completed = subprocess.run(
                 [self.adb, "-s", self.serial, *arguments],
@@ -1828,8 +1918,55 @@ class AdbObserverBridge:
                 timeout=timeout,
             )
         except (OSError, subprocess.SubprocessError) as exc:
+            if self.trace is not None:
+                self.trace.emit(
+                    "adb.command",
+                    outcome="error",
+                    duration_ns=time.monotonic_ns() - started_ns,
+                    fields={"operation": operation, "exception_type": type(exc).__name__},
+                )
             raise ObserverTransportError("ADB command failed") from exc
+        if self.trace is not None:
+            self.trace.emit(
+                "adb.command",
+                duration_ns=time.monotonic_ns() - started_ns,
+                fields={"operation": operation},
+            )
         return completed.stdout.strip()
+
+    @staticmethod
+    def _classify_adb_operation(arguments: Sequence[str]) -> str:
+        parts = tuple(arguments)
+        if parts == ("get-state",):
+            return "get-state"
+        if parts[:2] == ("shell", "pidof"):
+            return "pidof-package"
+        if parts[:2] == ("forward", "--remove"):
+            return "forward-remove"
+        if parts[:1] == ("forward",):
+            return "forward-add"
+        if parts[:4] == ("shell", "dumpsys", "activity", "activities"):
+            return "foreground-activity"
+        if parts[:3] == ("shell", "dumpsys", "package"):
+            return "package-metadata"
+        if parts[:3] == ("shell", "input", "tap"):
+            return "input-tap"
+        if parts[:3] == ("shell", "input", "swipe"):
+            return "input-swipe"
+        if parts[:2] == ("shell", "sha256sum"):
+            return "file-sha256"
+        if parts[:3] == ("shell", "pm", "path"):
+            return "package-path"
+        if parts[:4] == ("shell", "settings", "get", "global"):
+            return "settings-read"
+        if parts[:4] in (
+            ("shell", "settings", "put", "global"),
+            ("shell", "settings", "delete", "global"),
+        ):
+            return "settings-write"
+        if parts[:2] == ("shell", "find"):
+            return "file-find"
+        return "other"
 
     def open(self) -> "AdbObserverBridge":
         if self.transport is not None:
@@ -1850,7 +1987,7 @@ class AdbObserverBridge:
         if not port_text.isdigit():
             raise ObserverTransportError("ADB did not return a forwarding port")
         self.port = int(port_text)
-        self.transport = TcpObserverTransport("127.0.0.1", self.port)
+        self.transport = TcpObserverTransport("127.0.0.1", self.port, trace=self.trace)
         return self
 
     def close(self) -> None:
@@ -2326,8 +2463,9 @@ class SemanticOracle:
     def read_state(self) -> OracleState:
         if self._foreground_component() != self.fingerprint.component:
             raise SemanticGateClosed("game activity is not top-resumed")
-        snapshot = self._request("GET /v1/snapshot\n")
-        buttons_snapshot = self._request("GET /v1/buttons\n")
+        snapshot, buttons_snapshot, combined_response = request_observer_state(
+            self._request
+        )
         if not isinstance(snapshot, dict) or not isinstance(buttons_snapshot, dict):
             raise ObserverTransportError("observer response is not a mapping")
         self._validate_identity(snapshot)
@@ -2354,7 +2492,11 @@ class SemanticOracle:
         button_generation = self._integer(
             buttons_snapshot.get("generation"), "button generation"
         )
-        if button_generation < generation or button_generation > generation + 2:
+        if combined_response and button_generation != generation:
+            raise SemanticGateClosed("combined observer state is not generation-atomic")
+        if not combined_response and (
+            button_generation < generation or button_generation > generation + 2
+        ):
             raise SemanticGateClosed("observer endpoints are not generation-coherent")
         if self._last_generation is not None and generation < self._last_generation:
             raise SemanticGateClosed("observer generation moved backwards")

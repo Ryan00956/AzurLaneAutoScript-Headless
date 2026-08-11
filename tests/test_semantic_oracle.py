@@ -2,6 +2,7 @@ import copy
 import unittest
 
 from alas_headless.semantic_oracle import (
+    AdbObserverBridge,
     Bounds,
     BuildPool,
     CampaignMapEntryState,
@@ -246,8 +247,44 @@ class FakeBackend:
         self.swipes = []
         self.on_tap = None
         self.on_swipe = None
+        self.support_state = True
+        self.requests = []
 
     def request(self, request_line):
+        self.requests.append(request_line)
+        if request_line == "GET /v1/state\n":
+            if not self.support_state:
+                return {"status": "bad-request"}
+            snapshot_from_sequence = bool(self.snapshot_sequence)
+            buttons_from_sequence = bool(self.buttons_sequence)
+            snapshot = (
+                self.snapshot_sequence.pop(0)
+                if snapshot_from_sequence
+                else self.snapshot
+            )
+            buttons = (
+                self.buttons_sequence.pop(0)
+                if buttons_from_sequence
+                else self.buttons
+            )
+            snapshot = copy.deepcopy(snapshot)
+            buttons = copy.deepcopy(buttons)
+            if snapshot_from_sequence:
+                atomic_generation = snapshot["generation"]
+            elif buttons_from_sequence:
+                atomic_generation = buttons["generation"]
+            else:
+                atomic_generation = max(
+                    snapshot["generation"], buttons["generation"]
+                )
+            snapshot["generation"] = atomic_generation
+            buttons["generation"] = atomic_generation
+            return {
+                "protocol_schema": "alas-headless.observer/v1",
+                "status": "ok",
+                "snapshot": snapshot,
+                "buttons": buttons,
+            }
         if request_line == "GET /v1/snapshot\n":
             if self.snapshot_sequence:
                 return copy.deepcopy(self.snapshot_sequence.pop(0))
@@ -398,6 +435,61 @@ def make_campaign_map_backend(generations=(10, 11)):
 
 
 class SemanticOracleTests(unittest.TestCase):
+    def test_foreground_parser_accepts_resumed_markers_only(self):
+        for output in (
+            "topResumedActivity=ActivityRecord{abc u0 " + COMPONENT + " t42}",
+            "mResumedActivity: ActivityRecord{abc u0 " + COMPONENT + " t42}",
+        ):
+            with self.subTest(output=output):
+                match = AdbObserverBridge._FOREGROUND_PATTERN.search(output)
+                self.assertIsNotNone(match)
+                self.assertEqual(match.group(1), COMPONENT)
+        self.assertIsNone(
+            AdbObserverBridge._FOREGROUND_PATTERN.search(
+                "mFocusedActivity=ActivityRecord{abc u0 " + COMPONENT + " t42}"
+            )
+        )
+
+    def test_read_state_uses_atomic_endpoint_and_falls_back_for_old_observer(self):
+        backend = FakeBackend([])
+        oracle = make_oracle(backend)
+        oracle.read_state()
+        self.assertEqual(backend.requests, ["GET /v1/state\n"])
+
+        legacy = FakeBackend([])
+        legacy.support_state = False
+        make_oracle(legacy).read_state()
+        self.assertEqual(
+            legacy.requests,
+            ["GET /v1/state\n", "GET /v1/snapshot\n", "GET /v1/buttons\n"],
+        )
+
+    def test_atomic_state_rejects_different_generations(self):
+        backend = FakeBackend([])
+
+        def mismatched_state(request_line):
+            self.assertEqual(request_line, "GET /v1/state\n")
+            return {
+                "protocol_schema": "alas-headless.observer/v1",
+                "status": "ok",
+                "snapshot": make_snapshot(generation=10),
+                "buttons": make_buttons([], generation=11),
+            }
+
+        oracle = SemanticOracle(
+            mismatched_state,
+            backend.foreground_component,
+            backend.tap,
+            OracleFingerprint(
+                package=PACKAGE,
+                component=COMPONENT,
+                driver_revision=DRIVER_REVISION,
+                expected_pid=1234,
+            ),
+        )
+        with self.assertRaisesRegex(SemanticGateClosed, "generation-atomic"):
+            oracle.read_state()
+
     def test_exact_text_marker_and_indexed_list_groups(self):
         backend = FakeBackend([])
         backend.ui = make_ui(

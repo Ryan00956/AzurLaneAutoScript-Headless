@@ -1,0 +1,45 @@
+{
+  "schema": "alas-headless.runtime-lock/v1",
+  "core": {
+    "core_commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "alas_upstream_commit": "cccccccccccccccccccccccccccccccccccccccc",
+    "alas_patch_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "angle": {
+    "revision": "dddddddddddddddddddddddddddddddddddddddd",
+    "patchset_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "abi": "x86_64",
+    "apk_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "observer_schema": "alas-headless.observer/v1"
+  },
+  "android": {
+    "backend": "kvm",
+    "build_fingerprint": "example/android/build",
+    "api_level": 35,
+    "abi": "x86_64",
+    "system_image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "provision_profile_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "game": {
+    "package": "com.bilibili.azurlane",
+    "region": "cn",
+    "version_name": "9.9.9",
+    "version_code": 999,
+    "abi": "x86_64",
+    "base_apk_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "libil2cpp_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "resources": {
+    "resource_set_id": "6683e748147dfdd26004aa6f2b548dce0ff481e8332777c8e70b52393030c2fd",
+    "resource_epoch": 1,
+    "manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "shared_public_paths": [
+      "game/public-assets",
+      "game/cache/bundles"
+    ]
+  },
+  "userdata": {
+    "generation": 1,
+    "account_scope": "per-instance"
+  }
+}

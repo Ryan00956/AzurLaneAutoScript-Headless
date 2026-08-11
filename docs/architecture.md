@@ -20,7 +20,18 @@ Unity/IL2CPP game
         -> independent installed-package fingerprint gate
         -> reviewed ALAS resource-name mapping
         -> ADB input only after foreground/freshness/generation/blocker gates
+
+Controller/runtime boundary
+  -> immutable runtime lock (core + ANGLE + Android + game + resources + userdata)
+  -> one frozen RuntimeBackend selection
+     -> kvm | redroid | tcg | arm64-qemu | external-adb profile
+  -> common lifecycle and opt-in bounded trace
+  -> exact-fingerprint offline evidence index
 ```
+
+Backend profiles own provisioning and tuning. The common runtime contract does
+not select MTTCG, vCPU count, affinity, cpusets, governor policy, Android service
+removal, or NULL refresh rate. See [runtime foundation](runtime-foundation.md).
 
 ## Trust boundaries
 

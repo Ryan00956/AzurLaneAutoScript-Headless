@@ -1,0 +1,16 @@
+{
+  "schema": "alas-headless.runtime-config/v1",
+  "backend": "external-adb",
+  "serial": "127.0.0.1:5555",
+  "package": "com.bilibili.azurlane",
+  "component": "com.bilibili.azurlane/com.manjuu.azurlane.MainActivity",
+  "host_class": "android-arm64-external",
+  "adb": "adb",
+  "angle_package": "org.chromium.angle",
+  "unity_command_line": null,
+  "launch_game": false,
+  "manage_angle_routing": false,
+  "allow_game_restart": false,
+  "allow_android_restart": false,
+  "poll_interval_seconds": 1.0
+}

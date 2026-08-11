@@ -23,6 +23,7 @@ from .alas_combat_admission import (
 )
 from .alas_decision_preview import AlasCampaignDecisionPreview
 from .alas_package_process_lease import AlasPackageProcessLease
+from .runtime_trace import RuntimeTraceRecorder
 from .semantic_oracle import (
     ActionReceipt,
     AdbObserverBridge,
@@ -5128,6 +5129,7 @@ class AlasSemanticSession:
         adb_command_timeout_seconds: int = 10,
         observer_max_age_ms: int = 2500,
         package_process_lease: Optional[AlasPackageProcessLease] = None,
+        trace: Optional[RuntimeTraceRecorder] = None,
     ) -> None:
         if not serial:
             raise ValueError("semantic ALAS mode requires an ADB serial")
@@ -5202,11 +5204,13 @@ class AlasSemanticSession:
         )
         self.package_process_lease = package_process_lease
         self.observer_max_age_ms = observer_max_age_ms
+        self.trace = trace
         self.bridge = AdbObserverBridge(
             serial,
             package,
             adb=adb,
             command_timeout_seconds=float(adb_command_timeout_seconds),
+            trace=trace,
         )
         self.adapter: Optional[AlasSemanticAdapter] = None
 
@@ -5374,14 +5378,27 @@ class AlasSemanticSession:
                     self.campaign_camera_positioning_budget
                 ),
             )
+            if self.trace is not None:
+                self.trace.emit(
+                    "semantic.session.open",
+                    fields={"observer_max_age_ms": self.observer_max_age_ms},
+                )
             return self.adapter
-        except Exception:
+        except Exception as exc:
+            if self.trace is not None:
+                self.trace.emit(
+                    "semantic.session.open",
+                    outcome="error",
+                    fields={"exception_type": type(exc).__name__},
+                )
             self.bridge.close()
             raise
 
     def close(self) -> None:
         self.adapter = None
         self.bridge.close()
+        if self.trace is not None:
+            self.trace.emit("semantic.session.close")
 
     def __enter__(self) -> AlasSemanticAdapter:
         return self.open()
