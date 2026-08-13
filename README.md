@@ -19,6 +19,9 @@ coordinates.
 - `G5`: replace one ALAS task flow at a time with stable, fail-closed semantics.
 
 See [acceptance gates](docs/acceptance-gates.md) and [architecture](docs/architecture.md).
+The host/ABI coverage, physical-device boundaries, current evidence, and open
+blockers are tracked in the
+[runtime support matrix](docs/runtime-support-matrix.md).
 The backend-neutral lifecycle, immutable artifact lock, bounded trace, and
 exact-fingerprint evidence index are documented in the
 [runtime foundation](docs/runtime-foundation.md). This foundation is offline
