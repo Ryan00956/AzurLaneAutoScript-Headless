@@ -13,6 +13,7 @@
 | --- | --- |
 | 主线可执行 | qualify_runtime.py 的 execute 模式有主线后端实现，并具有真实环境生命周期证据。 |
 | 真实探索 | 真实宿主或设备通过了写明的平台、合同或游戏边界，但主线后端尚未产品化。 |
+| 后续候选 | 外部工具链和架构路径可行，但本仓库尚无真实资格证据；不计入当前支持。 |
 | 部分通过 | 只通过前置门，或者在进入下一门前遇到明确阻塞。 |
 | 未验证 | 有设计、构件或相邻平台经验，但该矩阵格本身没有真实资格证据。 |
 | 不支持 | 当前权限或系统合同明确阻止目标路径。 |
@@ -105,6 +106,64 @@ framework 启动和大 APK 安装以十几至二十分钟计，且没有 observe
 主线 external-adb 后端只负责附着到一个明确指定的设备并执行身份/生命周期合同，
 不会声称拥有设备 provisioning、root、bootloader、持久化或系统升级。
 
+## Apple 设备后续支持
+
+Apple 设备当前全部属于后续支持或实验研究，不计入已支持平台。必须区分
+“Mac 作为 ALAS/Android 宿主”和“iPhone/iPad 作为被控游戏设备”；Mac 能运行
+控制程序不等于本项目已经支持 iOS 游戏。
+
+### Mac 宿主矩阵
+
+| Mac 路径 | 当前状态 | 可行性与边界 |
+| --- | --- | --- |
+| Intel x86_64 Mac + Android Emulator | **后续候选。** | Android Emulator 可在 macOS 上使用 Hypervisor.Framework，并运行同架构 x86/x86_64 guest。可复用现有 x86_64 Android 经验，但当前 `kvm` 后端是 Linux `/dev/kvm` 专用，本仓库没有 macOS 生命周期或真实游戏证据。 |
+| Apple Silicon Mac + Android Emulator | **后续候选；Mac 主线首选。** | Android Emulator 可使用 Hypervisor.Framework 运行 ARM64 guest。需要独立验证 ARM64 游戏、ANGLE NULL、observer、恢复和 ALAS；现有 ARM64 Android 相邻证据不能直接覆盖 Mac。 |
+| Apple Silicon Mac + MuMu Pro | **上游真实探索，本仓库未验证。** | 上游 ALAS 已合并 macOS MuMu Pro 设备识别修复并报告真实截图方向验证；本仓库仍固定在较早的 ALAS revision，尚未吸收或复验该路径。 |
+| Apple Silicon Mac + PlayCover | **实验性上游候选。** | 上游有开放中的 PlayCover 支持 PR，通过修改版 PlayCover/PlayTools 提供截图、触控和应用控制并绕过 ADB；仍有字体、抗锯齿、模板及 ADB 专属功能差异，不能视为正式支持。 |
+| Intel Mac + PlayCover/iOS 应用 | **不作为候选。** | macOS 直接运行兼容 iPhone/iPad 应用是 Apple Silicon 路径，不能推广到 Intel Mac。 |
+| Mac + Redroid | **暂不支持。** | Redroid 依赖 Linux Binder/BinderFS 等宿主内核能力；Docker Desktop 的 Linux VM 不能等同于原生可控的 Redroid 宿主。 |
+| Mac + QEMU TCG | **低优先级 fallback。** | 理论上可运行，但 Mac 已有 Hypervisor.Framework；在 HVF 路径未验证前不投入 TCG 性能和产品化工作。 |
+
+Mac Android 第一阶段应复用 `external-adb`，只附着到宿主直接启动的 Android
+Emulator 或已知模拟器，验证设备身份、ANGLE、Unity、observer、游戏边界和
+ALAS workload。通过后再实现独立 `macos-hvf` 后端，负责 AVD 启停、ready、
+recovery、cleanup 和 runtime lock；不得把 Hypervisor.Framework 冒充 Linux KVM。
+
+参考外部状态：
+
+- [Android Emulator 硬件加速](https://developer.android.com/studio/run/emulator-acceleration)
+  说明 macOS 使用 Hypervisor.Framework，并要求 host 与加速 guest 架构匹配；
+- [上游 MuMu Pro macOS 修复](https://github.com/LmeSzinc/AzurLaneAutoScript/pull/5821)
+  已合并，但只代表上游对应实现和报告环境；
+- [上游 PlayCover 支持](https://github.com/LmeSzinc/AzurLaneAutoScript/pull/5866)
+  截至本快照仍是开放 PR，不得作为发布依赖。
+
+### iPhone 与 iPad
+
+| iOS/iPadOS 路径 | 当前状态 | 主要阻塞或条件 |
+| --- | --- | --- |
+| 非越狱 iPhone/iPad 实机 | **研究项，不是当前产品方向。** | 没有 ADB。可研究 macOS + Xcode + Appium/XCUITest + WebDriverAgent，但需要设备信任、Developer Mode、UI Automation、代码签名和 provisioning profile，并承担 WDA 会话及系统升级兼容成本。 |
+| 越狱 iPhone/iPad | **暂不支持。** | 系统版本、越狱工具、注入权限和安全边界高度碎片化；当前不建立正式 backend 或发布承诺。 |
+| iOS Simulator | **对正式游戏阻塞。** | Simulator 需要面向 Simulator 构建的应用。本项目没有碧蓝航线源码或对应构建，不能把普通 App Store IPA 当作可资格验证的模拟器制品。 |
+| Apple Silicon Mac 直接运行 iOS 游戏 | **只按 PlayCover 实验处理。** | 是否可从 Mac App Store 直接安装由发行方决定；侧载、修改运行时或 PlayCover 不能与官方可用性混为一谈。 |
+
+iOS 实机若进入 spike，只允许先验证截图延迟、点击/滑动、应用启动停止、Unity
+accessibility hierarchy、断线恢复和长会话稳定性。若 Unity 场景不能提供完整、
+稳定且可身份绑定的语义结构，就只能形成独立的截图/OCR 兼容线；不得静默回退并
+冒充当前 semantic observer。也不得把开发证书、provisioning profile、设备 UDID、
+账号数据或解密 IPA 写入 Git、公开镜像或证据包。
+
+参考外部约束：
+
+- [Appium XCUITest 真实设备准备](https://appium.github.io/appium-xcuitest-driver/latest/getting-started/device-setup/)
+  列出设备信任、Developer Mode、UI Automation 和 WDA provisioning 要求；
+- [Apple 开发 provisioning profile](https://developer.apple.com/help/account/provisioning-profiles/create-a-development-provisioning-profile/)
+  要求 App ID、开发证书和注册设备；
+- [Apple Silicon Mac 运行 iPhone/iPad 应用](https://support.apple.com/en-gb/guide/app-store/fird2c7092da/mac)
+  只说明发行方允许的兼容应用，不证明碧蓝航线当前可用；
+- [上游 iOS 支持讨论](https://github.com/LmeSzinc/AzurLaneAutoScript/issues/5348)
+  仍是开放性讨论，没有正式 backend。
+
 ## 镜像制造能力与运行支持的区别
 
 Android 镜像线已经实现或验证双 ABI ANGLE/Unity 制品、更新实验、内容哈希、
@@ -143,6 +202,12 @@ arm64-qemu-qualification 和 arm64-venus-qualification 分支是证据与实现�
 5. 获得真实 ARM64 KVM 服务器后，从 host Q0 开始建立独立 ARM KVM 证据。
 6. TCG 保持 fallback；在有可重复 ALAS trace 前不继续 MTTCG、密度或主机特化调优。
 7. 无 root 设备直接路由 release 游戏不作为当前主产品方向。
+8. 核心 Android 主线稳定后，在真实 Apple Silicon Mac 上以 external-adb 启动
+   ARM64 Android Emulator，建立独立的 Mac Q0-G4 与 recovery 证据。
+9. Mac external-adb 资格通过后再实现 `macos-hvf` 后端；Intel Mac 仅在有真实
+   设备和维护价值时补充 x86_64 对照。
+10. PlayCover 只跟踪上游并保持实验隔离；iPhone/iPad 实机只做有停止条件的 WDA
+    spike，越狱与 iOS Simulator 不进入当前路线图。
 
 ## 状态更新规则
 
